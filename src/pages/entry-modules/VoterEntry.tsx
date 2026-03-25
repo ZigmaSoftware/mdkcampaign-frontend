@@ -413,12 +413,12 @@ export default function VoterEntry() {
     }
   }, [boothMap, partyMap])
 
-  const allVoterRecords = useMemo(() => voters.map(mapVoter), [voters, mapVoter])
+  const allVoterRecords = useMemo(() => (voters ?? []).map(mapVoter), [voters, mapVoter])
 
-  const filtered = useMemo(() => voters.map(mapVoter), [voters, mapVoter])
+  const filtered = useMemo(() => (voters ?? []).map(mapVoter), [voters, mapVoter])
 
   const usedSubCastes = useMemo(
-    () => [...new Set(voters.map(v => v.sub_caste).filter(Boolean))].sort() as string[],
+    () => [...new Set((voters ?? []).map(v => v.sub_caste).filter(Boolean))].sort() as string[],
     [voters]
   )
 

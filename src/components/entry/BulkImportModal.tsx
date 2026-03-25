@@ -127,6 +127,7 @@ export default function BulkImportModal({ config, onClose }: Props) {
     try {
       const { data } = await apiClient.post<BulkResult>(config.uploadEndpoint, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 300000,  // 5 minutes for large files
       })
       setResult(data)
       setStep('done')

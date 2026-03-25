@@ -2,21 +2,23 @@ import React, { useState } from 'react'
 import RecordItem from './RecordItem'
 import type { EntryRecord } from '../../types/entry.types'
 
-const PAGE_SIZE = 10
+const DEFAULT_PAGE_SIZE = 10
 
 export interface FilterOption { value: string; label: string }
 export interface FilterConfig { key: string; label: string; options: FilterOption[] }
 
 interface RecordListProps {
-  records:       EntryRecord[]
-  editingId?:    string | null
-  emptyMsg:      string
-  icon:          string
-  iconBg:        string
-  iconColor:     string
-  onEdit:        (id: string) => void
-  onDelete:      (id: string) => void
-  filterConfig?: FilterConfig[]
+  records:        EntryRecord[]
+  editingId?:     string | null
+  emptyMsg:       string
+  icon:           string
+  iconBg:         string
+  iconColor:      string
+  onEdit:         (id: string) => void
+  onDelete:       (id: string) => void
+  filterConfig?:  FilterConfig[]
+  itemsPerPage?:  number
+  serverTotal?:   number
 }
 
 export default function RecordList({
@@ -29,6 +31,8 @@ export default function RecordList({
   onEdit,
   onDelete,
   filterConfig,
+  itemsPerPage = DEFAULT_PAGE_SIZE,
+  serverTotal,
 }: RecordListProps) {
   const [page,    setPage]    = useState(1)
   const [filters, setFilters] = useState<Record<string, string>>({})
@@ -45,9 +49,9 @@ export default function RecordList({
       )
     : records
 
-  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(visible.length / itemsPerPage))
   const safePage   = Math.min(page, totalPages)
-  const paged      = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  const paged      = visible.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage)
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
@@ -84,7 +88,7 @@ export default function RecordList({
             </button>
           )}
           <span className="ml-auto text-[10px] text-muted">
-            {visible.length} {visible.length === 1 ? 'record' : 'records'}
+            {(serverTotal ?? visible.length).toLocaleString('en-IN')} {(serverTotal ?? visible.length) === 1 ? 'record' : 'records'}
           </span>
         </div>
       )}
@@ -115,7 +119,7 @@ export default function RecordList({
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
               <span className="text-muted text-[10px]">
-                {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, visible.length)} of {visible.length}
+                {(safePage - 1) * itemsPerPage + 1}–{Math.min(safePage * itemsPerPage, visible.length)} of {visible.length}
               </span>
               <div className="flex items-center gap-1">
                 <button

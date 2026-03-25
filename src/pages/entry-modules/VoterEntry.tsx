@@ -126,26 +126,35 @@ export default function VoterEntry() {
   const pendingFill = useRef<Record<string, string> | null>(null)
   const pendingBools = useRef<{ is_contacted: boolean; has_attended_event: boolean; is_volunteer: boolean } | null>(null)
 
+  // Keep stable refs to avoid re-creating callbacks when api object reference changes
+  const apiRef = useRef(api)
+  apiRef.current = api
+  const masterApiRef = useRef(masterApi)
+  masterApiRef.current = masterApi
+
   const loadVoters = useCallback((p: number, q: string) => {
-    api.fetchVoters(undefined, q || undefined, p, PAGE_SIZE).then(d => {
-      if (d) { setVoters(d.results); setTotalCount(d.count) }
+    apiRef.current.fetchVoters(undefined, q || undefined, p, PAGE_SIZE).then(d => {
+      setVoters(d?.results ?? [])
+      setTotalCount(d?.count ?? 0)
     })
-  }, [api, PAGE_SIZE])
+  }, [PAGE_SIZE])
 
   useEffect(() => {
     loadVoters(1, '')
-    api.fetchBooths().then(d => d && setBooths(d))
-    masterApi.fetchVillages().then(d => d && setVillages(d))
-    masterApi.fetchParties().then(d => d && setParties(d))
-    masterApi.fetchSchemes().then(d => d && setSchemes(d))
-    api.fetchFieldSurveys().then(d => d && setSurveys(d))
-  }, [])
+    apiRef.current.fetchBooths().then(d => d && setBooths(d))
+    masterApiRef.current.fetchVillages().then(d => d && setVillages(d))
+    masterApiRef.current.fetchParties().then(d => d && setParties(d))
+    masterApiRef.current.fetchSchemes().then(d => d && setSchemes(d))
+    apiRef.current.fetchFieldSurveys().then(d => d && setSurveys(d))
+  }, [loadVoters])
 
-  // Debounced server-side search
+  // Debounced server-side search — skip the initial mount run (handled above)
+  const isFirstSearchRender = useRef(true)
   useEffect(() => {
+    if (isFirstSearchRender.current) { isFirstSearchRender.current = false; return }
     const t = setTimeout(() => { setPage(1); loadVoters(1, search) }, 400)
     return () => clearTimeout(t)
-  }, [search])
+  }, [search, loadVoters])
 
   useEffect(() => {
     if (!pendingFill.current) return
@@ -459,7 +468,7 @@ export default function VoterEntry() {
         <EntryListHeader
           title="Voter Records"
           icon="ph ph-user"
-          count={voters.length}
+          count={totalCount}
           onAddNew={() => { setEditing(null); clear(); setFormOpen(true) }}
           addLabel="Add Voter"
           onImport={() => setShowImport(true)}
@@ -515,6 +524,8 @@ export default function VoterEntry() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             filterConfig={voterFilterConfig}
+            itemsPerPage={PAGE_SIZE}
+            serverTotal={totalCount}
           />
           {/* Pagination */}
           {totalCount > PAGE_SIZE && (

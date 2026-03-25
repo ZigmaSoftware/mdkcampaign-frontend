@@ -1,0 +1,12 @@
+export const ELECTION_DATE = new Date('2026-04-23T07:00:00+05:30')
+export const NOMINATION_DATE = '2026-04-15'
+export const CONSTITUENCY_NO = '100'
+export const CONSTITUENCY_NAME = 'Modakkurichi'
+export const CANDIDATE_NAME = 'Mrs. Kirthika Shivkumar'
+export const CANDIDATE_NAME_TAMIL = 'கிருத்திகா சிவ்குமார்'
+export const PARTY = 'BJP'
+export const DISTRICT = 'Erode District'
+export const STATE = 'Tamil Nadu'
+export const ELECTION_YEAR = '2026'
+export const TOTAL_BOOTHS = 274
+export const TOTAL_VOTERS = 242185

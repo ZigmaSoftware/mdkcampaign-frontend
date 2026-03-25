@@ -1,0 +1,224 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: #f0f4f8;
+    color: #1a1a2e;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* Scrollbar — nav tabs horizontal */
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { scrollbar-width: none; }
+}
+
+@layer components {
+  /* ── TRICOLOR BAR ──────────────────────────────────── */
+  .tricolor-bar {
+    height: 4px;
+    background: linear-gradient(90deg,#FF9933 33.33%,#fff 33.33% 66.66%,#138808 66.66%);
+  }
+
+  /* ── LIVE DOT ──────────────────────────────────────── */
+  .live-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: #22c55e;
+    animation: livePulse 1.4s ease-in-out infinite;
+  }
+
+  /* ── PAGE TRANSITION ───────────────────────────────── */
+  .page-enter {
+    animation: fadeInUp 0.25s ease both;
+  }
+
+  /* ── STAT CARD PROGRESS BAR ────────────────────────── */
+  .prog-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s ease;
+  }
+
+  /* ── CUSTOM BAR CHART ──────────────────────────────── */
+  .bar-chart-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    height: 180px;
+    position: relative;
+  }
+
+  /* ── TIMELINE VERTICAL LINE ────────────────────────── */
+  .tl-line::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 5px;
+    bottom: 5px;
+    width: 2px;
+    background: linear-gradient(180deg, #FF9933, #0d2455);
+  }
+
+  .tl-dot::before {
+    content: '';
+    position: absolute;
+    left: -18px;
+    top: 5px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #FF9933;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px #FF9933;
+  }
+
+  /* ── DONUT CHART ───────────────────────────────────── */
+  .donut-svg {
+    transform: rotate(-90deg);
+  }
+
+  /* ── MASTER ROW ────────────────────────────────────── */
+  .master-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    background: #f8faff;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border-left: 3px solid #FF9933;
+    transition: background 0.15s;
+  }
+  .master-row:hover {
+    background: #f1f5ff;
+  }
+
+  /* ── RECORD ITEM ───────────────────────────────────── */
+  .rec-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #f8faff;
+    border-radius: 8px;
+    margin-bottom: 7px;
+    border-left: 3px solid #FF9933;
+    transition: background 0.3s;
+  }
+  .rec-item:hover {
+    background: #eef2ff;
+  }
+
+  /* ── FORM INPUT FOCUS ──────────────────────────────── */
+  .form-input {
+    padding: 9px 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 7px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #1a1a2e;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+  .form-input:focus {
+    border-color: #FF9933;
+    box-shadow: 0 0 0 3px rgba(255,153,51,0.12);
+  }
+
+  /* ── POLL TICKER ───────────────────────────────────── */
+  .poll-ticker-scroll {
+    animation: ticker 28s linear infinite;
+    white-space: nowrap;
+  }
+
+  /* ── TOAST ─────────────────────────────────────────── */
+  .toast-show {
+    animation: toastIn 0.3s ease both;
+  }
+  .toast-hide {
+    animation: toastOut 0.25s ease both;
+  }
+
+  /* ── TABLE ─────────────────────────────────────────── */
+  .data-table th {
+    background: #f1f5fd;
+    color: #0d2455;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 9.5px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    border-bottom: 2px solid #e2e8f0;
+    font-weight: 700;
+  }
+  .data-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    color: #1a1a2e;
+    vertical-align: middle;
+    font-size: 12px;
+  }
+  .data-table tr:last-child td {
+    border-bottom: none;
+  }
+  .data-table tr:hover td {
+    background: #f8faff;
+  }
+
+  /* ── ENTRY NAV / MASTERS TAB BAR ───────────────────── */
+  .mtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 9px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #7090c0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .mtab:hover,
+  .mtab.active {
+    color: #fff;
+    border-bottom-color: #FF9933;
+  }
+  .mtab.active {
+    background: rgba(255,153,51,0.08);
+  }
+}
+
+@layer utilities {
+  .text-2xs   { font-size: 9px; }
+  .text-2xs\+ { font-size: 9.5px; }
+  .text-3xs   { font-size: 8px; }
+  .text-3xs\+ { font-size: 8.5px; }
+}

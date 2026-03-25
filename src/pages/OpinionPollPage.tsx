@@ -172,7 +172,19 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => navigator.clipboard?.writeText(pollUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })}
+            onClick={() => {
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(pollUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+              } else {
+                const el = document.createElement('textarea')
+                el.value = pollUrl
+                el.style.position = 'fixed'; el.style.opacity = '0'
+                document.body.appendChild(el); el.select()
+                document.execCommand('copy')
+                document.body.removeChild(el)
+                setCopied(true); setTimeout(() => setCopied(false), 2000)
+              }
+            }}
             className="flex items-center gap-2 text-[11px] font-bold px-4 py-2 rounded-lg border-none cursor-pointer"
             style={{ background: '#FF9933', color: '#0d2455' }}
           >

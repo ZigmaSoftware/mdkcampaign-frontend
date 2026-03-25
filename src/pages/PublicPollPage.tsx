@@ -81,7 +81,7 @@ export default function PublicPollPage() {
   }, [selId, poll, busy, voted])
 
   /* ── Share ── */
-  const shareUrl = `${window.location.origin}${window.location.pathname}#poll`
+  const shareUrl = `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
   const share = (p: 'wa'|'fb'|'copy') => {
     const text = `🏵 மக்கள் கருத்து கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n${shareUrl}\n\nவாக்களித்து நண்பர்களுக்கும் அனுப்புங்கள்! 🪷`
     if (p === 'wa')   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')

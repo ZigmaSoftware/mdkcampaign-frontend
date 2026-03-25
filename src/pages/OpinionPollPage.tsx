@@ -144,7 +144,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
   const q1Sorted = [...q1Options].sort((a, b) => (a.vote_count ?? 0) - (b.vote_count ?? 0))
   const q2Sorted = [...q2Options].sort((a, b) => (a.vote_count ?? 0) - (b.vote_count ?? 0))
 
-  const pollUrl = `${window.location.origin}/#poll`
+  const pollUrl = `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
 
   const filtered = [...votes].filter(v => {
     if (filterParty && v.q1_key !== filterParty) return false
@@ -167,7 +167,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
         style={{ background: '#1a0a00', border: '1px solid #FF9933' }}>
         <div>
           <div className="text-[11px] font-extrabold text-saffron tracking-[1px] uppercase mb-1">Public Poll Link</div>
-          <div className="text-[13px] text-white font-mono">{pollUrl}</div>
+          <a href={pollUrl} target="_blank" rel="noreferrer" className="text-[13px] font-mono underline" style={{ color: '#FF9933' }}>{pollUrl}</a>
           <div className="text-[10px] text-[#888] mt-1">Share with voters — no login required</div>
         </div>
         <div className="flex gap-2">

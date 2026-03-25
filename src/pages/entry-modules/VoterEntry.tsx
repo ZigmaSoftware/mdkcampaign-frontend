@@ -469,10 +469,10 @@ export default function VoterEntry() {
             config={{
               title: 'Import Voters',
               uploadEndpoint: '/voters/voters/bulk-upload/',
-              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'gender', 'phone', 'alt_phone', 'booth_code', 'ward_code', 'caste', 'sentiment', 'religion', 'address'],
+              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'date_of_birth', 'gender', 'phone', 'alt_phone', 'booth_code', 'ward_code', 'caste', 'sentiment', 'religion', 'address'],
               sampleRow: {
                 voter_id: 'VTR001', name: 'Rajesh Kumar', father_name: 'Suresh Kumar',
-                age: '42', gender: 'm', phone: '9876543210', alt_phone: '9123456780',
+                age: '42', date_of_birth: '1982-06-15', gender: 'm', phone: '9876543210', alt_phone: '9123456780',
                 booth_code: 'B001', ward_code: 'W001', caste: 'BC', sentiment: 'positive',
                 religion: 'Hindu', address: '12 Main Street, Erode',
               },
@@ -481,6 +481,7 @@ export default function VoterEntry() {
                 name: 'Full name of voter',
                 father_name: 'Father or husband name',
                 age: 'Age as number',
+                date_of_birth: 'Format: YYYY-MM-DD (e.g. 1982-06-15)',
                 gender: 'm / f / o',
                 phone: '10-digit mobile',
                 alt_phone: 'Alternate mobile number',

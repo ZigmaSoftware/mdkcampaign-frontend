@@ -607,16 +607,6 @@ export function BoothMaster() {
             <input ref={addrRef} className={inputCls} placeholder="Full address" />
           </FormGroup>
         </FormRow>
-        <FormRow cols={1}>
-          <FormGroup label="Booth Agent (Volunteer)">
-            <select ref={agentRef} className={selectCls}>
-              <option value="">-- Select Volunteer --</option>
-              {volunteers.map(v => (
-                <option key={v.id} value={v.id}>{v.user_name}{v.phone ? ` — ${v.phone}` : ''}</option>
-              ))}
-            </select>
-          </FormGroup>
-        </FormRow>
         <FormActions
           onSave={handleSave}
           onClear={() => { clearFields(); setEditing(null) }}

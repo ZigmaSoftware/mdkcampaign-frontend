@@ -242,7 +242,10 @@ export default function PublicPollPage() {
 
         {/* Share bar */}
         <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #ffe0b2' }}>
-          <div style={{ fontSize:10, color:'#aaa', fontWeight:700, letterSpacing:1.5, textAlign:'center', marginBottom:8, fontFamily:F }}>SHARE THIS POLL</div>
+          <div style={{ fontSize:10, color:'#aaa', fontWeight:700, letterSpacing:1.5, textAlign:'center', marginBottom:6, fontFamily:F }}>SHARE THIS POLL</div>
+          <div style={{ textAlign:'center', marginBottom:8 }}>
+            <a href={shareUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:'#FF9933', fontFamily:'monospace', wordBreak:'break-all', textDecoration:'underline' }}>{shareUrl}</a>
+          </div>
           <div style={{ display:'flex', gap:8 }}>
             {[
               { label:'💬 WhatsApp', bg:'#25D366', fn: ()=>share('wa') },

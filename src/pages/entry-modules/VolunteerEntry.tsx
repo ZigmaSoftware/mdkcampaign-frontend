@@ -4,8 +4,6 @@ import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Booth, Ward } from '../../hooks/useMasterAPI'
-import { useUserAPI } from '../../hooks/usePollAPI'
-import type { UserRecord } from '../../hooks/usePollAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
@@ -50,13 +48,11 @@ const STATUS_REVERSE: Record<string, string> = {
 export default function VolunteerEntry() {
   const api = useEntryAPI()
   const masterApi = useMasterAPI()
-  const userApi = useUserAPI()
   const { showToast } = useToast()
 
   const [volunteers, setVolunteers] = useState<VolunteerRecord[]>([])
   const [booths, setBooths]         = useState<Booth[]>([])
   const [wards, setWards]           = useState<Ward[]>([])
-  const [users, setUsers]           = useState<UserRecord[]>([])
   const [editing, setEditing]       = useState<VolunteerRecord | null>(null)
   const [isFormOpen, setFormOpen]   = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -65,7 +61,6 @@ export default function VolunteerEntry() {
     api.fetchVolunteers().then(d => d && setVolunteers(d))
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchWards().then(d => d && setWards(d))
-    userApi.fetchUsers().then(d => d && setUsers(d))
   }, [])
 
   const blocks = useBlocks()
@@ -77,7 +72,7 @@ export default function VolunteerEntry() {
   }, [editing, isFormOpen, blocks])
 
   const r = {
-    user:    useRef<HTMLSelectElement>(null),
+    name:    useRef<HTMLInputElement>(null),
     block:   useRef<HTMLSelectElement>(null),
     phone:   useRef<HTMLInputElement>(null),
     phone2:  useRef<HTMLInputElement>(null),
@@ -101,6 +96,7 @@ export default function VolunteerEntry() {
   }
 
   const fillFromRecord = (v: VolunteerRecord) => {
+    if (r.name.current)   r.name.current.value   = v.user_name || ''
     if (r.block.current)  r.block.current.value  = v.block  || ''
     if (r.booth.current)  r.booth.current.value  = v.booth ? String(v.booth)  : ''
     if (r.ward.current)   r.ward.current.value   = v.ward  ? String(v.ward)   : ''
@@ -129,6 +125,7 @@ export default function VolunteerEntry() {
     const ageVal    = r.age.current?.value    ? parseInt(r.age.current.value)    : null
 
     const commonFields = {
+      name:        r.name.current?.value    || '',
       phone:       phone,
       phone2:      r.phone2.current?.value  || '',
       block:       r.block.current?.value   || '',
@@ -157,15 +154,7 @@ export default function VolunteerEntry() {
         showToast('<i class="ph ph-x-circle"></i> Failed to update volunteer. Please check all required fields.', '#dc2626')
       }
     } else {
-      const userId = r.user.current?.value ? parseInt(r.user.current.value) : null
-      if (!userId) {
-        showToast('<i class="ph ph-warning"></i> Select a user!', '#dc2626')
-        return
-      }
-      const created = await api.createVolunteer({
-        user: userId,
-        ...commonFields,
-      } as any)
+      const created = await api.createVolunteer({ ...commonFields } as any)
       if (created) {
         setVolunteers(prev => [...prev, created])
         showToast('<i class="ph ph-check-circle"></i> Volunteer saved!', '#138808')
@@ -195,11 +184,8 @@ export default function VolunteerEntry() {
     }
   }
 
-  const assignedUserIds = new Set(volunteers.map(v => v.user).filter(Boolean))
-  const availableUsers  = users.filter(u => !assignedUserIds.has(u.id))
-
   const getVolName = (v: VolunteerRecord) =>
-    v.user_name?.trim() || v.username || `Volunteer #${v.id}`
+    v.name || v.user_name?.trim() || v.username || `Volunteer #${v.id}`
 
   const mapVolunteer = (v: VolunteerRecord): EntryRecord => {
     const boothInfo = booths.find(b => b.id === v.booth)
@@ -248,18 +234,20 @@ export default function VolunteerEntry() {
             config={{
               title: 'Import Volunteers',
               uploadEndpoint: '/volunteers/volunteers/bulk-upload/',
-              sampleColumns: ['username', 'phone', 'booth_code', 'ward_code', 'assignment_type', 'status'],
+              sampleColumns: ['name', 'phone', 'alt_phone', 'booth_code', 'ward_code', 'role', 'volunteer_type', 'status'],
               sampleRow: {
-                username: 'john_volunteer', phone: '9876543210',
+                name: 'Rajesh Kumar', phone: '9876543210', alt_phone: '',
                 booth_code: 'B001', ward_code: 'W001',
-                assignment_type: 'booth', status: 'active',
+                role: 'Booth Agent', volunteer_type: 'paid_volunteer', status: 'active',
               },
               columnNotes: {
-                username: 'Username of existing user account',
-                phone: '10-digit mobile number',
+                name: 'Full name of volunteer (required)',
+                phone: '10-digit mobile',
+                alt_phone: 'Alternate mobile number',
                 booth_code: 'Booth code from master',
                 ward_code: 'Ward code from master',
-                assignment_type: 'booth / ward / constituency',
+                role: 'Booth Agent / Street Captain / ...',
+                volunteer_type: 'paid_volunteer / social_media_volunteer / alliance_volunteer',
                 status: 'active / inactive / on_leave',
               },
               onSuccess: () => { api.fetchVolunteers().then(d => d && setVolunteers(d)) },
@@ -320,26 +308,11 @@ export default function VolunteerEntry() {
         isEditing={!!editing}
         onClose={() => { setFormOpen(false); setEditing(null); clear() }}
       >
-        {/* User selector (create only) or name display (edit) */}
-        {editing ? (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-[#f0f4ff] border border-border text-[13px] text-navy font-semibold">
-            <i className="ph ph-user mr-2" />
-            {getVolName(editing)}
-          </div>
-        ) : (
-          <FormRow cols={1}>
-            <FormGroup label="User" required>
-              <select ref={r.user} className={selectCls}>
-                <option value="">Select user to assign as volunteer</option>
-                {availableUsers.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {u.full_name || `${u.first_name} ${u.last_name}`.trim() || u.username} ({u.username})
-                  </option>
-                ))}
-              </select>
-            </FormGroup>
-          </FormRow>
-        )}
+        <FormRow cols={1}>
+          <FormGroup label="Name" required>
+            <input ref={r.name} className={inputCls} placeholder="Volunteer full name" />
+          </FormGroup>
+        </FormRow>
 
         <FormRow cols={3}>
           <FormGroup label="Phone">

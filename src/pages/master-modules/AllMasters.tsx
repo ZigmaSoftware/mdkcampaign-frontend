@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react'
 import BulkImportModal from '../../components/entry/BulkImportModal'
+import apiClient from '../../utils/api'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Candidate, Party } from '../../hooks/useMasterAPI'
 import type { MasterRecord } from '../../types/master.types'
@@ -512,19 +513,23 @@ export function BoothMaster() {
   const bnameRef = useRef<HTMLInputElement>(null)
   const addrRef  = useRef<HTMLInputElement>(null)
   const wardRef  = useRef<HTMLSelectElement>(null)
+  const agentRef = useRef<HTMLSelectElement>(null)
   const [booths, setBooths] = useState<Booth[]>([])
   const [wards, setWards]   = useState<Ward[]>([])
+  const [volunteers, setVolunteers] = useState<{ id: number; user_name: string; phone: string }[]>([])
   const [editing, setEditing] = useState<Booth | null>(null)
   const [showImport, setShowImport] = useState(false)
 
   useEffect(() => {
     api.fetchBooths().then(d => d && setBooths(d))
     api.fetchWards().then(d => d && setWards(d))
+    apiClient.get('/volunteers/volunteers/names/').then(r => setVolunteers(r.data || []))
   }, [])
 
   const clearFields = () => {
     ;[numRef, bnameRef, addrRef].forEach(r => { if (r.current) r.current.value = '' })
-    if (wardRef.current) wardRef.current.value = ''
+    if (wardRef.current)  wardRef.current.value  = ''
+    if (agentRef.current) agentRef.current.value = ''
   }
 
   const handleSave = async () => {
@@ -532,11 +537,13 @@ export function BoothMaster() {
     const bname = bnameRef.current?.value.trim() ?? ''
     const addr  = addrRef.current?.value.trim() ?? ''
     const wardId = wardRef.current?.value ? parseInt(wardRef.current.value) : undefined
+    const agentId = agentRef.current?.value ? parseInt(agentRef.current.value) : null
     if (!num) return
 
     if (editing) {
       const updated = await api.updateBooth(editing.id, {
         number: num, name: bname || `Booth ${num}`, address: addr || undefined,
+        primary_volunteer: agentId,
       })
       if (updated) {
         setBooths(prev => prev.map(b => b.id === editing.id ? { ...b, ...updated } : b))
@@ -547,6 +554,7 @@ export function BoothMaster() {
       const created = await api.createBooth({
         number: num, name: bname || `Booth ${num}`, code: `B${String(Date.now() % 10000).padStart(4, '0')}`,
         ...(wardId ? { ward: wardId } : {}), address: addr || `Booth ${num}`, total_voters: 0,
+        ...(agentId ? { primary_volunteer: agentId } : {}),
       })
       if (created) {
         setBooths(prev => [...prev, created])
@@ -564,6 +572,7 @@ export function BoothMaster() {
     if (bnameRef.current) bnameRef.current.value = booth.name
     if (addrRef.current)  addrRef.current.value  = booth.address || ''
     if (wardRef.current)  wardRef.current.value  = String(booth.ward)
+    if (agentRef.current) agentRef.current.value = booth.primary_volunteer ? String(booth.primary_volunteer) : ''
   }
 
   const handleDelete = async (id: string) => {
@@ -598,6 +607,16 @@ export function BoothMaster() {
             <input ref={addrRef} className={inputCls} placeholder="Full address" />
           </FormGroup>
         </FormRow>
+        <FormRow cols={1}>
+          <FormGroup label="Booth Agent (Volunteer)">
+            <select ref={agentRef} className={selectCls}>
+              <option value="">-- Select Volunteer --</option>
+              {volunteers.map(v => (
+                <option key={v.id} value={v.id}>{v.user_name}{v.phone ? ` — ${v.phone}` : ''}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </FormRow>
         <FormActions
           onSave={handleSave}
           onClear={() => { clearFields(); setEditing(null) }}
@@ -618,9 +637,9 @@ export function BoothMaster() {
           config={{
             title: 'Import Booths',
             uploadEndpoint: '/masters/booths/bulk-upload/',
-            sampleColumns: ['code', 'number', 'name', 'ward_code', 'address', 'total_voters', 'male_voters', 'female_voters', 'status', 'sentiment'],
-            sampleRow: { code: 'B001', number: '1', name: 'Panchayat School Booth', ward_code: 'W001', address: 'Main Road', total_voters: '500', male_voters: '250', female_voters: '250', status: 'pending', sentiment: 'neutral' },
-            columnNotes: { code: 'Unique booth code (required)', number: 'Booth number', name: 'Booth name / location', ward_code: 'Ward code from master', address: 'Full address', total_voters: 'Total voters count', male_voters: 'Male voter count', female_voters: 'Female voter count', status: 'pending / assigned / working / completed / issue', sentiment: 'positive / neutral / negative' },
+            sampleColumns: ['code', 'number', 'name', 'ward_code', 'address', 'total_voters', 'male_voters', 'female_voters', 'status', 'sentiment', 'volunteer_name'],
+            sampleRow: { code: 'B001', number: '1', name: 'Panchayat School Booth', ward_code: 'W001', address: 'Main Road', total_voters: '500', male_voters: '250', female_voters: '250', status: 'pending', sentiment: 'neutral', volunteer_name: 'Rajesh Kumar' },
+            columnNotes: { code: 'Unique booth code (required)', number: 'Booth number', name: 'Booth name / location', ward_code: 'Ward code from master', address: 'Full address', total_voters: 'Total voters count', male_voters: 'Male voter count', female_voters: 'Female voter count', status: 'pending / assigned / working / completed / issue', sentiment: 'positive / neutral / negative', volunteer_name: 'Volunteer name to assign as booth agent' },
             onSuccess: () => { api.fetchBooths().then(d => d && setBooths(d)) },
           }}
           onClose={() => setShowImport(false)}

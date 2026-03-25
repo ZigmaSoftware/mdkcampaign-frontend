@@ -30,6 +30,7 @@ interface Booth {
   village?: string; notes?: string
   primary_agent?: number | null; agent_name?: string
   agent_ids?: number[]; agent_names?: string[]
+  primary_volunteer?: number | null; primary_volunteer_name?: string
 }
 
 interface VolunteerName {

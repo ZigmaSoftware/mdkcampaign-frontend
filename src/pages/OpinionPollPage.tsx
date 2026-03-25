@@ -419,6 +419,7 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
 
   const q1Options = poll.options.filter(o => o.question_no === 1)
   const q2Options = poll.options.filter(o => o.question_no === 2)
+  const pollUrl = `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
 
   const handleSubmit = async () => {
     if (!selectedQ1) { showToast('<i class="ph ph-warning"></i> Please select Q1 answer!', '#dc2626'); return }
@@ -554,6 +555,13 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
               <i className="ph ph-paper-plane-tilt mr-1" /> Submit Vote
             </button>
           )}
+        </div>
+
+        <div className="text-center px-5 py-[10px]" style={{ background: '#0a0a0a', borderTop: '1px solid #1a1a1a' }}>
+          <a href={pollUrl} target="_blank" rel="noreferrer"
+            className="font-mono text-[11px] underline" style={{ color: '#FF9933', wordBreak: 'break-all' }}>
+            {pollUrl}
+          </a>
         </div>
 
         <div className="font-tamil text-[8.5px] text-[#444] text-center px-5 py-[10px]"

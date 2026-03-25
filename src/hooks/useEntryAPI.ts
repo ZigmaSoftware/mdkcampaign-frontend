@@ -50,6 +50,7 @@ interface VolunteerRecord {
   user: number | null        // FK id
   user_name?: string         // full name from backend
   username?: string          // username from backend
+  name?: string              // direct name field
   phone?: string
   phone2?: string
   booth: number | null

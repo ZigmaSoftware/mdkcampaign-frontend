@@ -192,7 +192,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
           </button>
           <button
             onClick={() => {
-              const waText = `🗳 மக்கள் கருத்துக் கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n👉 ${pollUrl}\n\nஉங்கள் கருத்தை பதிவு செய்து நண்பர்களுக்கும் அனுப்புங்கள்! 🪷\nBJP + ADMK · INC + DMK · TVK · NTK · Others\n23 April 2026 · Constituency 100 · Modakkurichi`
+              const waText = `🏵 மக்கள் கருத்து கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n${pollUrl}\n\nவாக்களித்து நண்பர்களுக்கும் அனுப்புங்கள்! 🪷`
               window.open(`https://wa.me/?text=${encodeURIComponent(waText)}`, '_blank')
             }}
             className="flex items-center gap-2 text-[11px] font-bold px-4 py-2 rounded-lg border-none cursor-pointer"

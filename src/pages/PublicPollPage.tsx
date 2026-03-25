@@ -108,8 +108,8 @@ export default function PublicPollPage() {
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <div className="mk-blink" style={{ width:12, height:12, borderRadius:'50%', background:'#FF9933', flexShrink:0 }} />
             <div>
-              <div style={{ fontSize:18, fontWeight:900, letterSpacing:2, color:'#e06500' }}>MAKKAL KURAL</div>
-              <div style={{ fontFamily:TA, fontSize:9, color:'#888', letterSpacing:1, marginTop:1 }}>மக்கள் குரல் · OPINION POLL</div>
+              <div style={{ fontSize:18, fontWeight:900, letterSpacing:2, color:'#e06500' }}>MAKKAL UNARVU</div>
+              <div style={{ fontFamily:TA, fontSize:9, color:'#888', letterSpacing:1, marginTop:1 }}>மக்கள் உணர்வு · OPINION POLL</div>
             </div>
           </div>
           <div style={{ textAlign:'right' }}>

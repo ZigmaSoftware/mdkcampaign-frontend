@@ -125,6 +125,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
   const [filterParty, setFilterParty] = useState('')
   const [filterName,  setFilterName]  = useState('')
   const [page,        setPage]        = useState(1)
+  const [copied,      setCopied]      = useState(false)
 
   const totalVotes = poll.total_votes
   const q1Options  = poll.options.filter(o => o.question_no === 1)
@@ -171,11 +172,11 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => navigator.clipboard?.writeText(pollUrl).then(() => {})}
+            onClick={() => navigator.clipboard?.writeText(pollUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })}
             className="flex items-center gap-2 text-[11px] font-bold px-4 py-2 rounded-lg border-none cursor-pointer"
             style={{ background: '#FF9933', color: '#0d2455' }}
           >
-            <i className="ph ph-copy" /> Copy Link
+            <i className={copied ? 'ph ph-check' : 'ph ph-copy'} /> {copied ? 'Copied!' : 'Copy Link'}
           </button>
           <button
             onClick={onRefresh}
@@ -275,7 +276,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
               )
             })}
           </div>
-        </div>
+        </div> 
       </div>
 
       {/* Votes Table */}

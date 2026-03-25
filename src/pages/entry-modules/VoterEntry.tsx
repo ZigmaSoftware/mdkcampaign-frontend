@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react'
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VoterRecord, BoothRecord, FieldSurveyRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
@@ -114,6 +114,9 @@ export default function VoterEntry() {
   const [editKey,    setEditKey]   = useState(0)
   const [villageFilter, setVillageFilter] = useState('')
   const [casteVal,   setCasteVal]  = useState('')
+  const [page,       setPage]      = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const PAGE_SIZE = 200
 
   // Boolean flag state (can't use value refs for checkboxes)
   const [isContacted,      setIsContacted]      = useState(false)
@@ -123,14 +126,26 @@ export default function VoterEntry() {
   const pendingFill = useRef<Record<string, string> | null>(null)
   const pendingBools = useRef<{ is_contacted: boolean; has_attended_event: boolean; is_volunteer: boolean } | null>(null)
 
+  const loadVoters = useCallback((p: number, q: string) => {
+    api.fetchVoters(undefined, q || undefined, p, PAGE_SIZE).then(d => {
+      if (d) { setVoters(d.results); setTotalCount(d.count) }
+    })
+  }, [api, PAGE_SIZE])
+
   useEffect(() => {
-    api.fetchVoters().then(d => d && setVoters(d))
+    loadVoters(1, '')
     api.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchVillages().then(d => d && setVillages(d))
     masterApi.fetchParties().then(d => d && setParties(d))
     masterApi.fetchSchemes().then(d => d && setSchemes(d))
     api.fetchFieldSurveys().then(d => d && setSurveys(d))
   }, [])
+
+  // Debounced server-side search
+  useEffect(() => {
+    const t = setTimeout(() => { setPage(1); loadVoters(1, search) }, 400)
+    return () => clearTimeout(t)
+  }, [search])
 
   useEffect(() => {
     if (!pendingFill.current) return
@@ -162,7 +177,7 @@ export default function VoterEntry() {
     aadhaar:     useRef<HTMLInputElement>(null),
     village:     useRef<HTMLSelectElement>(null),
     booth:       useRef<HTMLSelectElement>(null),
-    address:     useRef<HTMLInputElement>(null),
+    address:     useRef<HTMLTextAreaElement>(null),
     religion:    useRef<HTMLSelectElement>(null),
     caste:       useRef<HTMLSelectElement>(null),
     sub_caste:   useRef<HTMLSelectElement>(null),
@@ -192,8 +207,6 @@ export default function VoterEntry() {
     Object.fromEntries(Object.entries(r).map(([k, ref]) => [k, ref.current?.value ?? '']))
 
   const voterToFormData = (v: VoterRecord): Record<string, string> => {
-    const addrParts = (v.address || '').split(',').map(s => s.trim())
-    const address = addrParts.length > 1 ? addrParts[0] : (v.address || '')
     return {
       name:        v.name,
       father_name: v.father_name || '',
@@ -204,7 +217,7 @@ export default function VoterEntry() {
       aadhaar:     v.aadhaar || '',
       booth:       String(v.booth   || ''),
       village:     String(v.village || ''),
-      address,
+      address:     v.address || '',
       sentiment:   SENTIMENT_REVERSE[v.sentiment || ''] || '',
       gender:      GENDER_REVERSE[v.gender || ''] || '',
       dob:         v.date_of_birth || '',
@@ -402,20 +415,7 @@ export default function VoterEntry() {
 
   const allVoterRecords = useMemo(() => voters.map(mapVoter), [voters, mapVoter])
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return voters
-      .filter(v => {
-        if (!q) return true
-        return (
-          v.name.toLowerCase().includes(q) ||
-          (v.phone || '').includes(q) ||
-          (v.voter_id || '').toLowerCase().includes(q) ||
-          (boothMap.get(v.booth)?.name || '').toLowerCase().includes(q)
-        )
-      })
-      .map(mapVoter)
-  }, [voters, search, boothMap, mapVoter])
+  const filtered = useMemo(() => voters.map(mapVoter), [voters, mapVoter])
 
   const usedSubCastes = useMemo(
     () => [...new Set(voters.map(v => v.sub_caste).filter(Boolean))].sort() as string[],
@@ -492,7 +492,7 @@ export default function VoterEntry() {
                 religion: 'Hindu / Muslim / Christian / Other',
                 address: 'Full address',
               },
-              onSuccess: () => { api.fetchVoters().then(d => d && setVoters(d)) },
+              onSuccess: () => { setPage(1); loadVoters(1, search) },
             }}
             onClose={() => setShowImport(false)}
           />
@@ -516,6 +516,27 @@ export default function VoterEntry() {
             onDelete={handleDelete}
             filterConfig={voterFilterConfig}
           />
+          {/* Pagination */}
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-3 px-1">
+              <span className="text-[11px] text-muted">
+                Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString('en-IN')}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={page === 1}
+                  onClick={() => { const p = page - 1; setPage(p); loadVoters(p, search) }}
+                  className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
+                >← Prev</button>
+                <span className="text-[11px] text-muted py-1">Page {page} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
+                <button
+                  disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
+                  onClick={() => { const p = page + 1; setPage(p); loadVoters(p, search) }}
+                  className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
+                >Next →</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -573,7 +594,7 @@ export default function VoterEntry() {
             <input ref={r.aadhaar} className={inputCls} placeholder="12-digit Aadhaar number" maxLength={12} />
           </FormGroup>
           <FormGroup label="Address">
-            <input ref={r.address} className={inputCls} placeholder="Door no., Street name" />
+            <textarea ref={r.address} className={textareaCls} rows={2} placeholder="Door no., Street name" />
           </FormGroup>
         </FormRow>
 

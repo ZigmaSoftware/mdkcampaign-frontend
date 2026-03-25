@@ -166,7 +166,7 @@ interface UseEntryAPIReturn {
   loading: boolean
   error: string | null
   // Voters
-  fetchVoters: (boothId?: number, search?: string) => Promise<VoterRecord[] | null>
+  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number) => Promise<{ results: VoterRecord[]; count: number } | null>
   fetchVoter: (voterId: number) => Promise<VoterRecord | null>
   createVoter: (voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
@@ -218,18 +218,19 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOTERS ====================
 
   const fetchVoters = useCallback(
-    async (boothId?: number, search?: string): Promise<VoterRecord[] | null> => {
+    async (boothId?: number, search?: string, page = 1, pageSize = 200): Promise<{ results: VoterRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
         const { data } = await apiClient.get<ApiResponse<VoterRecord>>('/voters/voters/', {
           params: {
             ...(boothId ? { booth: boothId } : {}),
-            ...(search   ? { search }        : {}),
-            limit: 500,
+            ...(search  ? { search }         : {}),
+            limit:  pageSize,
+            offset: (page - 1) * pageSize,
           },
         })
-        return data.results || []
+        return { results: data.results || [], count: data.count || 0 }
       } catch (err) {
         handleError(err, 'fetch voters')
         return null

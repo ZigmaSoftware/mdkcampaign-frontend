@@ -182,7 +182,7 @@ useEffect(() => {
         {[
           { icon: 'ph-users',          label: 'Total Votes',   value: totalVotes.toLocaleString('en-IN'), color: '#FF9933' },
           { icon: 'ph-trophy',         label: 'Leading Party', value: leadingQ1?.name ?? '—',            color: '#138808' },
-          { icon: 'ph-calendar',       label: 'Poll Date',     value: currentDateLabel(),                color: '#6b7280' },
+
         ].map(({ icon, label, value, color }) => (
           <div key={label} className="rounded-card px-5 py-4 bg-white border border-border shadow-card">
             <div className="flex items-center gap-2 mb-2">
@@ -235,104 +235,7 @@ useEffect(() => {
       </div>
 
       {/* Votes Table */}
-      <div className="rounded-card bg-white border border-border shadow-card overflow-hidden">
-        <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #f0f0f0' }}>
-          <h3 className="text-[12px] font-extrabold text-navy uppercase tracking-[1px] flex items-center gap-2">
-            <i className="ph ph-list-bullets text-saffron" /> All Votes
-          </h3>
-          <span className="text-[10px] font-bold text-muted">{filtered.length} of {votes.length}</span>
-        </div>
-
-        {/* Filters */}
-        <div className="px-5 py-3 flex flex-wrap gap-3 items-center" style={{ borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
-          <i className="ph ph-funnel text-[13px] text-muted" />
-          <input
-            type="text"
-            placeholder="Search username..."
-            value={filterName}
-            onChange={e => { setFilterName(e.target.value); setPage(1) }}
-            className="border border-border rounded px-2 py-1 text-[11px] bg-white focus:outline-none focus:border-saffron"
-            style={{ width: 150 }}
-          />
-          <select
-            value={filterParty}
-            onChange={e => { setFilterParty(e.target.value); setPage(1) }}
-            className="border border-border rounded px-2 py-1 text-[11px] bg-white focus:outline-none focus:border-saffron"
-          >
-            <option value="">All Parties</option>
-            {q1Options.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
-          </select>
-          {(filterParty || filterName) && (
-            <button onClick={() => { setFilterParty(''); setFilterName(''); setPage(1) }}
-              className="text-[10px] font-bold text-red-500 hover:text-red-700 flex items-center gap-1">
-              <i className="ph ph-x" /> Clear
-            </button>
-          )}
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="px-5 py-10 text-center text-muted text-[13px]">
-            <i className="ph ph-chart-bar text-[32px] block mb-2 opacity-30" />
-            {votes.length === 0 ? 'No votes yet.' : 'No results match your filters.'}
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full data-table text-[12px]">
-                <thead>
-                  <tr>
-                    <th>#</th><th>Username</th><th>IP</th>
-                    <th>Party / Alliance</th><th>Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginated.map((v, i) => {
-                    const globalIdx = filtered.length - ((page - 1) * PAGE_SIZE) - i
-                    return (
-                      <tr key={v.id}>
-                        <td className="text-muted">{globalIdx}</td>
-                        <td className="font-semibold text-navy">{v.username}</td>
-                        <td className="text-muted text-[10px]">{v.voter_ip}</td>
-                        <td>
-                          <div className="flex items-center gap-1.5">
-                            <PartyChip partyKey={v.q1_key} name={v.q1_option} />
-                            <span className="font-semibold text-navy">{v.q1_option}</span>
-                          </div>
-                        </td>
-                        <td className="text-muted text-[10px]">
-                          {new Date(v.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {/* Pagination */}
-            <div className="px-5 py-3 flex items-center justify-between" style={{ borderTop: '1px solid #f0f0f0' }}>
-              <span className="text-[11px] text-muted">Page {page} of {totalPages} · {filtered.length} records</span>
-              <div className="flex items-center gap-1">
-                {[1, 'prev', ...Array.from({length: totalPages}, (_, i) => i+1).filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1), 'next', totalPages]
-                  .filter((v, i, a) => a.indexOf(v) === i)
-                  .map((p, i) =>
-                    p === 'prev' ? (
-                      <button key="prev" onClick={() => setPage(pg => Math.max(1, pg-1))} disabled={page===1}
-                        className="px-2 py-1 rounded text-[11px] font-bold border border-border disabled:opacity-30 hover:bg-gray-50">‹</button>
-                    ) : p === 'next' ? (
-                      <button key="next" onClick={() => setPage(pg => Math.min(totalPages, pg+1))} disabled={page===totalPages}
-                        className="px-2 py-1 rounded text-[11px] font-bold border border-border disabled:opacity-30 hover:bg-gray-50">›</button>
-                    ) : (
-                      <button key={p} onClick={() => setPage(p as number)}
-                        className={`px-2.5 py-1 rounded text-[11px] font-bold border ${page===p ? 'bg-saffron text-white border-saffron' : 'border-border hover:bg-gray-50'}`}>
-                        {p}
-                      </button>
-                    )
-                  )}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+    
     </div>
   )
 }

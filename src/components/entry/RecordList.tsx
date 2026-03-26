@@ -103,7 +103,7 @@ export default function RecordList({
           {paged.map((rec, i) => (
             <RecordItem
               key={rec.id}
-              index={(safePage - 1) * PAGE_SIZE + i + 1}
+              index={(safePage - 1) * itemsPerPage + i + 1}
               icon={icon}
               iconBg={iconBg}
               iconColor={iconColor}

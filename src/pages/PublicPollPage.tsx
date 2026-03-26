@@ -19,12 +19,24 @@ const Q1_STYLE: Record<string, { flag: string; flagBg: string; flagColor: string
 }
 
 interface Option { id: number; key: string; name: string; name_ta: string; sub_label: string; bar_color: string; question_no: number }
-interface Poll   { id: number; constituency_name: string; constituency_no: number; total_votes: number; options: Option[]; user_has_voted: boolean; user_q1_option: number | null }
+interface Poll   { id: number; constituency_name: string; constituency_no: number; total_votes: number; options: Option[]; user_has_voted: boolean; user_q1_option: number | null; short_url?: string }
 
 const F  = "'Barlow Condensed','Rajdhani',sans-serif"
 const TA = "'Noto Sans Tamil',sans-serif"
 
-const TICKER = 'BREAKING: மொடக்குறிச்சி தொகுதி 100 — மக்கள் கருத்துக் கணிப்பு 2026 || தமிழ்நாடு சட்டமன்றத் தேர்தல் — 23 ஏப்ரல் 2026 || ADMK + BJP · DMK + INC · TVK · NTK · NOTA || உங்கள் கருத்து பதிவு செய்யுங்கள் — CAST YOUR OPINION VOTE NOW   '
+
+/* ── Persistent device ID (one vote per device, survives page reload) ── */
+function getDeviceId(): string {
+  const KEY = '_mkl_did'
+  let id = localStorage.getItem(KEY)
+  if (!id) {
+    id = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+    localStorage.setItem(KEY, id)
+  }
+  return id
+}
 
 export default function PublicPollPage() {
   const [poll,       setPoll]       = useState<Poll | null>(null)
@@ -37,14 +49,17 @@ export default function PublicPollPage() {
   const [clock,      setClock]      = useState('')
   const [copyDone,   setCopyDone]   = useState(false)
 
-  /* ── Load poll on mount ── */
+  const deviceId = getDeviceId()
+
+  /* ── Load poll on mount — send device_id so backend knows if this device voted ── */
   useEffect(() => {
-    api.get<Poll>('/polls/active/').then(r => {
+    api.get<Poll>('/polls/active/', { params: { device_id: deviceId } }).then(r => {
       setPoll(r.data)
       setCount(r.data.total_votes)
       if (r.data.user_has_voted) {
         setVoted(true)
         setSelId(r.data.user_q1_option)
+        setAlreadyVoted(true)
       }
     }).catch(() => setErr(true))
 
@@ -58,7 +73,7 @@ export default function PublicPollPage() {
     return () => { clearInterval(ci); clearInterval(ti) }
   }, [])
 
-  /* ── Submit vote ── */
+  /* ── Submit vote — include device_id ── */
   const submit = useCallback(async () => {
     if (selId === null || !poll || busy || voted) return
     setBusy(true)
@@ -70,23 +85,36 @@ export default function PublicPollPage() {
       return
     }
     try {
-      await api.post(`/polls/${poll.id}/vote/`, { q1_option: selId })
+      await api.post(`/polls/${poll.id}/vote/`, { q1_option: selId, device_id: deviceId })
       setVoted(true)
       setCount(c => c + 1)
     } catch (e: any) {
-      if (e?.response?.data?.detail === 'already_voted') setAlreadyVoted(true)
+      if (e?.response?.data?.detail === 'already_voted') {
+        setAlreadyVoted(true)
+        setVoted(true)
+      }
     } finally {
       setBusy(false)
     }
-  }, [selId, poll, busy, voted])
+  }, [selId, poll, busy, voted, deviceId])
 
-  /* ── Share ── */
-  const shareUrl = `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
+  /* ── Share — prefer is.gd short URL from backend (no IP exposed) ── */
+  const shareUrl = poll?.short_url || `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
   const share = (p: 'wa'|'fb'|'copy') => {
     const text = `🏵 மக்கள் கருத்து கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n${shareUrl}\n\nவாக்களித்து நண்பர்களுக்கும் அனுப்புங்கள்! 🪷`
-    if (p === 'wa')   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
-    if (p === 'fb')   window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
-    if (p === 'copy') navigator.clipboard?.writeText(shareUrl).then(()=>{ setCopyDone(true); setTimeout(()=>setCopyDone(false),2000) })
+    if (p === 'wa') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+    if (p === 'fb') window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+    if (p === 'copy') {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(shareUrl).then(() => { setCopyDone(true); setTimeout(() => setCopyDone(false), 2000) })
+      } else {
+        const el = document.createElement('textarea')
+        el.value = shareUrl; el.style.position = 'fixed'; el.style.opacity = '0'
+        document.body.appendChild(el); el.select(); document.execCommand('copy')
+        document.body.removeChild(el)
+        setCopyDone(true); setTimeout(() => setCopyDone(false), 2000)
+      }
+    }
   }
 
   const q1Raw = poll?.options.filter(o => o.question_no === 1) ?? []

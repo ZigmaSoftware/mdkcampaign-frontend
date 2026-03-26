@@ -144,7 +144,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
   const q1Sorted = [...q1Options].sort((a, b) => (a.vote_count ?? 0) - (b.vote_count ?? 0))
   const q2Sorted = [...q2Options].sort((a, b) => (a.vote_count ?? 0) - (b.vote_count ?? 0))
 
-  const pollUrl = `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
+  const pollUrl = poll.short_url || `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
 
   const filtered = [...votes].filter(v => {
     if (filterParty && v.q1_key !== filterParty) return false
@@ -419,7 +419,7 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
 
   const q1Options = poll.options.filter(o => o.question_no === 1)
   const q2Options = poll.options.filter(o => o.question_no === 2)
-  const pollUrl = `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
+  const pollUrl = poll.short_url || `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
 
   const handleSubmit = async () => {
     if (!selectedQ1) { showToast('<i class="ph ph-warning"></i> Please select Q1 answer!', '#dc2626'); return }

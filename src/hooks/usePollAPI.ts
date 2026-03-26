@@ -28,6 +28,7 @@ export interface PollData {
   user_has_voted: boolean
   user_q1_option: number | null
   user_q2_option: number | null
+  short_url?: string
 }
 
 export interface VoteRecord {

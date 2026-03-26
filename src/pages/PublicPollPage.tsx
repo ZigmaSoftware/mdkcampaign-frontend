@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
+import bjpLogo      from '../assets/logo/bjp-seeklogo.png'
+import congressLogo from '../assets/logo/congress_logo.png'
+import ntkLogo      from '../assets/logo/ntk_logo.png'
+import tvkLogo      from '../assets/logo/tvk_logo.png'
+import notaLogo     from '../assets/logo/nota-logo.png'
 
 /* Plain axios — no auth interceptor (public page, no login needed) */
 const api = axios.create({
@@ -9,13 +14,13 @@ const api = axios.create({
 })
 
 /* ── Static display config (matched to backend option key) ── */
-const Q1_STYLE: Record<string, { flag: string; flagBg: string; flagColor: string; strip: string }> = {
-  bjp:   { flag: '🪷',        flagBg: '#FF9933', flagColor: '#fff',    strip: '#FF9933' },
-  dmk:   { flag: 'INC\nDMK', flagBg: '#dc0000', flagColor: '#fff',    strip: '#dc0000' },
-  ntk:   { flag: 'NTK',      flagBg: '#ff6400', flagColor: '#fff',    strip: '#ff6400' },
-  tvk:   { flag: 'TVK',      flagBg: '#ffc800', flagColor: '#0a0a14', strip: '#ffc800' },
-  other: { flag: 'OTH',      flagBg: '#888',    flagColor: '#fff',    strip: '#aaa'    },
-  nota:  { flag: '✗',        flagBg: '#555',    flagColor: '#fff',    strip: '#666'    },
+const Q1_STYLE: Record<string, { logo?: string; strip: string; border: string }> = {
+  bjp:   { logo: bjpLogo,      strip: '#FF9933', border: '#FF9933' },
+  dmk:   { logo: congressLogo, strip: '#dc0000', border: '#dc0000' },
+  ntk:   { logo: ntkLogo,      strip: '#ff6400', border: '#ff6400' },
+  tvk:   { logo: tvkLogo,      strip: '#ffc800', border: '#d4a800' },
+  other: {                     strip: '#aaa',    border: '#ccc'    },
+  nota:  { logo: notaLogo,     strip: '#666',    border: '#888'    },
 }
 
 interface Option { id: number; key: string; name: string; name_ta: string; sub_label: string; bar_color: string; question_no: number }
@@ -127,6 +132,15 @@ export default function PublicPollPage() {
     <div style={{ minHeight:'100vh', background:'#f5f5f5', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'0 0 32px', fontFamily:F, color:'#111' }}>
     
 
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;600;700;800&family=Barlow+Condensed:wght@600;700;800;900&family=Rajdhani:wght@600;700&display=swap');
+        .mk-blink { animation: mkBlink 1.5s ease-in-out infinite; }
+        @keyframes mkBlink { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+        .mk-opt   { cursor: pointer; transition: background 0.15s; user-select: none; }
+        .mk-opt:hover { background: #fff8f0 !important; }
+        .mk-btn   { cursor: pointer; transition: transform 0.15s; }
+        .mk-btn:active { transform: scale(.97); }
+      `}</style>
       <div style={{ width:'100%', maxWidth:520, boxShadow:'0 4px 32px rgba(0,0,0,.13)' }}>
 
       
@@ -136,8 +150,10 @@ export default function PublicPollPage() {
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <div className="mk-blink" style={{ width:12, height:12, borderRadius:'50%', background:'#FF9933', flexShrink:0 }} />
             <div>
-              <div style={{ fontSize:18, fontWeight:900, letterSpacing:2, color:'#e06500' }}>MAKKAL UNARVU</div>
-              <div style={{ fontFamily:TA, fontSize:9, color:'#888', letterSpacing:1, marginTop:1 }}>மக்கள் உணர்வு · OPINION POLL</div>
+              <div style={{ fontSize:23, fontWeight:900, letterSpacing:2, color:'#e06500' }}>மக்கள் பார்வை  
+       
+                </div>
+              <div style={{ fontFamily:TA, fontSize:15, fontWeight:900, color:'#888', letterSpacing:1, marginTop:1 }}>PEOPLE VIEW · OPINION POLL</div>
             </div>
           </div>
           <div style={{ textAlign:'right' }}>
@@ -166,106 +182,70 @@ export default function PublicPollPage() {
           </div>
         )}
 
-        {poll && (
+        {/* Q1 question + options */}
+        {poll && !voted && (
           <>
-            {/* Constituency info */}
-            <div style={{ background:'#fff', padding:'14px 16px', borderBottom:'1px solid #ffe0b2' }}>
-              <div style={{ fontSize:10, color:'#FF9933', fontWeight:700, letterSpacing:2, textTransform:'uppercase', marginBottom:4 }}>TAMIL NADU ASSEMBLY ELECTION 2026</div>
-              <div style={{ fontSize:26, fontWeight:900, color:'#1a1a1a', letterSpacing:1, lineHeight:1 }}>
-                {(poll.constituency_name || 'MODAKKURICHI').toUpperCase()}
-              </div>
-              <div style={{ fontFamily:TA, fontSize:14, color:'#666', marginTop:2 }}>
-                மொடக்குறிச்சி — தொகுதி எண் {poll.constituency_no || 100} — ஈரோடு மாவட்டம்
-              </div>
-              <div style={{ display:'flex', gap:20, marginTop:8, flexWrap:'wrap' }}>
-                {[
-                  { v:'2,42,185',                     l:'வாக்காளர்கள் / VOTERS' },
-                  { v:'274',                           l:'வாக்கு சாவடிகள் / BOOTHS' },
-                  { v:count.toLocaleString('en-IN'),   l:'வாக்குகள் / VOTES CAST' },
-                ].map(({v,l}) => (
-                  <div key={l}>
-                    <div style={{ fontSize:16, fontWeight:800, color:'#e06500' }}>{v}</div>
-                    <div style={{ fontFamily:TA, fontSize:9, color:'#999', letterSpacing:.5 }}>{l}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Q1 label */}
             <div style={{ background:'#fff8f0', padding:'14px 16px 8px', borderBottom:'1px solid #ffe0b2' }}>
-              
+              <div style={{ fontSize:10, color:'#FF9933', fontWeight:700, letterSpacing:2, marginBottom:6 }}>கேள்வி 1 · QUESTION 1</div>
               <div style={{ fontFamily:TA, fontSize:16, fontWeight:700, color:'#1a1a1a', lineHeight:1.4, marginBottom:4 }}>
                 இந்த தேர்தலில் நீங்கள் யாருக்கு வாக்களிப்பீர்கள்?
               </div>
-              <div style={{ fontFamily:TA, fontSize:11, color:'#888' }}>If elections were held today, which alliance/party would you vote for?</div>
+              <div style={{ fontFamily:TA, fontSize:11, color:'#888' }}>Which alliance/party would you vote for?</div>
             </div>
-
-            {/* Q1 options */}
-            <div className={voted ? 'mk-voted' : ''} style={{ background:'#fff' }}>
+            <div style={{ background:'#fff' }}>
               {q1.map(opt => {
-                const s = Q1_STYLE[opt.key] ?? { flag:opt.key.slice(0,3).toUpperCase(), flagBg: opt.bar_color||'#888', flagColor:'#fff', strip: opt.bar_color||'#888' }
-                const sel = selId === opt.id
+                const s = Q1_STYLE[opt.key] ?? Q1_STYLE.other
+                const isSel = selId === opt.id
                 return (
-                  <div
-                    key={opt.id}
-                    className="mk-opt"
-                    onClick={() => !voted && setSelId(opt.id)}
-                    style={{ padding:'10px 0', borderBottom:'1px solid #f5e6d0', background: sel && !voted ? '#fff8f0' : '#fff' }}
-                  >
+                  <div key={opt.id} className="mk-opt"
+                    onClick={() => setSelId(opt.id)}
+                    style={{ padding:'10px 0', borderBottom:'1px solid #f5e6d0', background: isSel ? '#fff8f0' : '#fff' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, padding:'0 16px' }}>
-                      <div style={{ width:4, flexShrink:0, alignSelf:'stretch', borderRadius:2, minHeight:44, background:s.strip }} />
-                      <div style={{ width:36, height:36, flexShrink:0, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', background:s.flagBg, color:s.flagColor, fontSize: opt.key==='bjp'?18:11, fontWeight:900, lineHeight:1.1, whiteSpace:'pre', textAlign:'center', fontFamily:F }}>
-                        {s.flag}
+                      <div style={{ width:4, flexShrink:0, alignSelf:'stretch', borderRadius:2, minHeight:44, background: s.strip }} />
+                      <div style={{ width:36, height:36, flexShrink:0, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}` }}>
+                        {s.logo
+                          ? <img src={s.logo} alt={opt.name} style={{ width:26, height:26, objectFit:'contain' }} />
+                          : <span style={{ fontSize:9, fontWeight:900, color:'#555' }}>{opt.key.slice(0,3).toUpperCase()}</span>
+                        }
                       </div>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:800, color:'#1a1a1a', letterSpacing:.5, lineHeight:1.1 }}>{opt.name}</div>
+                        <div style={{ fontSize:13, fontWeight:800, color:'#1a1a1a', letterSpacing:0.5, lineHeight:1.1 }}>{opt.name}</div>
                         <div style={{ fontFamily:TA, fontSize:10, color:'#888', marginTop:1 }}>{opt.name_ta}</div>
-
                       </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        {voted && sel && (
-                          <div style={{ fontFamily:TA, fontSize:8, fontWeight:700, padding:'2px 6px', borderRadius:2, background:'#FF9933', color:'#fff' }}>உங்கள் வாக்கு</div>
-                        )}
-                        <div style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, border:`2px solid ${sel?'#FF9933':'#ddd'}`, background:sel?'#FF9933':'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          {sel && <div style={{ width:8, height:8, background:'#fff', borderRadius:'50%' }} />}
-                        </div>
+                      <div style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, border:`2px solid ${isSel ? '#FF9933' : '#ddd'}`, background: isSel ? '#FF9933' : '#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {isSel && <div style={{ width:8, height:8, background:'#fff', borderRadius:'50%' }} />}
                       </div>
                     </div>
                   </div>
                 )
               })}
             </div>
-
-            {/* Already voted notice */}
-            {alreadyVoted && (
-              <div style={{ padding:'10px 16px', background:'#fff3cd', borderTop:'1px solid #ffc107', fontFamily:TA, fontSize:12, color:'#856404', textAlign:'center' }}>
-                இந்த சாதனத்திலிருந்து ஏற்கனவே வாக்களிக்கப்பட்டுள்ளது. / Already voted from this device.
+            <div style={{ padding:'14px 16px', background:'#fff', borderTop:'1px solid #ffe0b2' }}>
+              <button className="mk-btn" onClick={submit} disabled={selId === null || busy}
+                style={{ width:'100%', padding:14, border:'none', borderRadius:6, fontFamily:F, fontSize:16, fontWeight:900, letterSpacing:2, background: selId !== null ? 'linear-gradient(135deg,#FF9933,#e06500)' : '#e0e0e0', color: selId !== null ? '#fff' : '#aaa', cursor: selId !== null ? 'pointer' : 'default', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {selId !== null ? 'வாக்களிக்கவும் / SUBMIT VOTE →' : 'முதலில் ஒரு கட்சியை தேர்வு செய்யுங்கள்'}
+              </button>
+              <div style={{ textAlign:'center', marginTop:8, fontSize:11, color:'#aaa', fontFamily:'Rajdhani,sans-serif' }}>
+                மொத்தம் <b style={{ color:'#666' }}>{count.toLocaleString('en-IN')}</b> பேர் வாக்களித்துள்ளனர்
               </div>
-            )}
-
-            {/* Submit button */}
-            {!voted && (
-              <div style={{ padding:'14px 16px', background:'#fff', borderTop:'1px solid #ffe0b2' }}>
-                <button
-                  className="mk-btn"
-                  onClick={submit}
-                  disabled={selId === null || busy}
-                  style={{ width:'100%', padding:14, border:'none', borderRadius:6, fontFamily:F, fontSize:16, fontWeight:900, letterSpacing:2, background: selId !== null ? 'linear-gradient(135deg,#FF9933,#e06500)' : '#e0e0e0', color: selId !== null ? '#fff' : '#aaa', cursor: selId !== null ? 'pointer' : 'default', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
-                >
-                  {busy ? 'சமர்ப்பிக்கிறது…' : selId !== null ? 'வாக்களிக்கவும் / SUBMIT VOTE ✓' : 'ஒரு கட்சியை தேர்வு செய்யுங்கள்'}
-                </button>
-              </div>
-            )}
-
-            {/* Voted confirmation */}
-            {voted && (
-              <div style={{ textAlign:'center', padding:'16px', background:'#fff8f0', borderTop:'1px solid #ffe0b2' }}>
-                <div style={{ fontSize:30, marginBottom:6 }}>✅</div>
-                <div style={{ fontFamily:TA, fontSize:14, fontWeight:700, color:'#e06500', marginBottom:4 }}>உங்கள் வாக்கு பதிவாகிவிட்டது!</div>
-                <div style={{ fontFamily:TA, fontSize:12, color:'#666' }}>Your vote has been recorded. Share with friends!</div>
-              </div>
-            )}
+            </div>
           </>
+        )}
+
+        {/* Voted confirmation */}
+        {poll && voted && (
+          <div style={{ textAlign:'center', padding:'20px 16px', background:'#fff8f0', borderTop:'1px solid #ffe0b2' }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>✅</div>
+            <div style={{ fontFamily:TA, fontSize:15, fontWeight:700, color:'#e06500', marginBottom:4 }}>
+              {alreadyVoted ? 'ஏற்கனவே வாக்களித்துவிட்டீர்கள்!' : 'உங்கள் வாக்கு பதிவாகிவிட்டது!'}
+            </div>
+            <div style={{ fontFamily:TA, fontSize:12, color:'#666' }}>
+              {alreadyVoted ? 'You have already voted on this poll.' : 'Your vote has been recorded successfully.'}
+            </div>
+            <div style={{ marginTop:12, fontSize:11, color:'#aaa', fontFamily:'Rajdhani,sans-serif' }}>
+              மொத்தம் <b style={{ color:'#666' }}>{count.toLocaleString('en-IN')}</b> பேர் வாக்களித்துள்ளனர்
+            </div>
+          </div>
         )}
 
         {/* Share bar */}

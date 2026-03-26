@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import bjpLogo      from '../assets/logo/bjp-seeklogo.png'
+import congressLogo from '../assets/logo/congress_logo.png'
+import ntkLogo      from '../assets/logo/ntk_logo.png'
+import tvkLogo      from '../assets/logo/tvk_logo.png'
+import notaLogo     from '../assets/logo/nota-logo.png'
 import SectionHeader from '../components/ui/SectionHeader'
 import { usePollAPI } from '../hooks/usePollAPI'
 import type { PollData, PollOption, VoteRecord } from '../hooks/usePollAPI'
@@ -7,106 +12,51 @@ import { useAuthContext } from '../context/AuthContext'
 import { currentDateLabel } from '../utils/formatters'
 import { usePollClock } from '../hooks/usePollClock'
 
-/* ── Party SVG logos ── */
-const LotusIcon = () => (
-  <svg viewBox="0 0 40 40" width="26" height="26" fill="none">
-    <ellipse cx="20" cy="26" rx="5" ry="9" fill="#fff" opacity="0.95"/>
-    <ellipse cx="20" cy="26" rx="5" ry="9" fill="#fff" opacity="0.95" transform="rotate(36 20 20)"/>
-    <ellipse cx="20" cy="26" rx="5" ry="9" fill="#fff" opacity="0.95" transform="rotate(72 20 20)"/>
-    <ellipse cx="20" cy="26" rx="5" ry="9" fill="#fff" opacity="0.95" transform="rotate(108 20 20)"/>
-    <ellipse cx="20" cy="26" rx="5" ry="9" fill="#fff" opacity="0.95" transform="rotate(144 20 20)"/>
-    <ellipse cx="20" cy="26" rx="5" ry="9" fill="#fff" opacity="0.95" transform="rotate(180 20 20)"/>
-    <circle cx="20" cy="20" r="5" fill="#FF9933"/>
-  </svg>
-)
-
-const RisingSunIcon = () => (
-  <svg viewBox="0 0 40 40" width="26" height="26" fill="none">
-    {[0,30,60,90,120,150,180,210,240,270,300,330].map((angle) => (
-      <line key={angle}
-        x1="20" y1="20"
-        x2={20 + 18 * Math.cos((angle - 90) * Math.PI / 180)}
-        y2={20 + 18 * Math.sin((angle - 90) * Math.PI / 180)}
-        stroke="#FFD700" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
-    ))}
-    <circle cx="20" cy="20" r="7" fill="#FFD700"/>
-    <path d="M4 28 Q20 18 36 28" stroke="#FFD700" strokeWidth="2" fill="none" strokeLinecap="round"/>
-  </svg>
-)
-
-const RoosterIcon = () => (
-  <svg viewBox="0 0 40 40" width="24" height="24" fill="none">
-    <path d="M20 8 C14 8 11 13 11 18 C11 24 15 30 20 32 C25 30 29 24 29 18 C29 13 26 8 20 8Z" fill="#fff" opacity="0.9"/>
-    <path d="M20 8 C20 8 17 4 14 5 C16 7 17 8 20 8Z" fill="#ff4444"/>
-    <path d="M20 8 C20 8 18 3 21 2 C21 5 20.5 7 20 8Z" fill="#ff4444"/>
-    <circle cx="17" cy="16" r="2" fill="#ff6400"/>
-    <path d="M14 26 L10 34 L16 31 L20 34 L24 31 L30 34 L26 26Z" fill="#fff" opacity="0.85"/>
-  </svg>
-)
-
-const StarIcon = () => (
-  <svg viewBox="0 0 40 40" width="24" height="24" fill="none">
-    <polygon points="20,4 23.5,14 34,14 25.5,21 28.5,32 20,25.5 11.5,32 14.5,21 6,14 16.5,14"
-      fill="#FFD700" stroke="#e6b800" strokeWidth="0.5"/>
-    <text x="20" y="36" textAnchor="middle" fontSize="7" fontWeight="900" fill="#FFD700" fontFamily="sans-serif">TVK</text>
-  </svg>
-)
-
-const NotaIcon = () => (
-  <svg viewBox="0 0 40 40" width="24" height="24" fill="none">
-    <circle cx="20" cy="20" r="14" stroke="#fff" strokeWidth="2.5" opacity="0.8"/>
-    <line x1="10" y1="10" x2="30" y2="30" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity="0.9"/>
-  </svg>
-)
-
 const PARTY_CONFIG: Record<string, {
-  icon: React.ReactNode
-  bg: string
+  logo: string
   border: string
   label: string
 }> = {
-  bjp:   { icon: <LotusIcon />,     bg: 'linear-gradient(135deg,#FF9933,#e06500)', border: '#FF9933', label: 'BJP' },
-  dmk:   { icon: <RisingSunIcon />, bg: 'linear-gradient(135deg,#dc0000,#8b0000)', border: '#dc0000', label: 'DMK' },
-  inc:   { icon: <RisingSunIcon />, bg: 'linear-gradient(135deg,#dc0000,#8b0000)', border: '#dc0000', label: 'INC' },
-  tvk:   { icon: <StarIcon />,      bg: 'linear-gradient(135deg,#d4a800,#a07800)', border: '#d4a800', label: 'TVK' },
-  ntk:   { icon: <RoosterIcon />,   bg: 'linear-gradient(135deg,#ff6400,#c44a00)', border: '#ff6400', label: 'NTK' },
-  nota:  { icon: <NotaIcon />,      bg: 'linear-gradient(135deg,#444,#222)',       border: '#666',    label: 'NOTA' },
+  bjp:   { logo: bjpLogo,      border: '#FF9933', label: 'BJP'  },
+  dmk:   { logo: congressLogo, border: '#dc0000', label: 'DMK'  },
+  inc:   { logo: congressLogo, border: '#dc0000', label: 'INC'  },
+  tvk:   { logo: tvkLogo,      border: '#d4a800', label: 'TVK'  },
+  ntk:   { logo: ntkLogo,      border: '#ff6400', label: 'NTK'  },
+  nota:  { logo: notaLogo,     border: '#666',    label: 'NOTA' },
 }
 
 function PartyLogo({ partyKey, name, size = 44 }: { partyKey: string; name: string; size?: number }) {
   const cfg = PARTY_CONFIG[partyKey]
-  const bg = cfg?.bg ?? `linear-gradient(135deg,#555,#333)`
   const border = cfg?.border ?? '#666'
-  const icon = cfg?.icon ?? (
-    <span style={{ fontSize: 10, fontWeight: 900, color: '#fff', lineHeight: 1 }}>
-      {name.slice(0, 3).toUpperCase()}
-    </span>
-  )
   return (
     <div style={{
       width: size, height: size, borderRadius: 10, flexShrink: 0,
-      background: bg,
+      background: '#fff',
       border: `2px solid ${border}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       boxShadow: `0 2px 10px ${border}55`,
     }}>
-      {icon}
+      {cfg?.logo
+        ? <img src={cfg.logo} alt={name} style={{ width: size * 0.65, height: size * 0.65, objectFit: 'contain' }} />
+        : <span style={{ fontSize: 10, fontWeight: 900, color: '#555', lineHeight: 1 }}>{name.slice(0, 3).toUpperCase()}</span>
+      }
     </div>
   )
 }
 
 function PartyChip({ partyKey, name }: { partyKey: string; name: string }) {
   const cfg = PARTY_CONFIG[partyKey]
-  const bg = cfg?.bg ?? 'linear-gradient(135deg,#555,#333)'
   const border = cfg?.border ?? '#666'
-  const icon = cfg?.icon ?? <span style={{ fontSize: 9, fontWeight: 900, color: '#fff' }}>{name.slice(0,3).toUpperCase()}</span>
   return (
     <div style={{
       width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-      background: bg, border: `1.5px solid ${border}`,
+      background: '#fff', border: `1.5px solid ${border}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      {icon}
+      {cfg?.logo
+        ? <img src={cfg.logo} alt={name} style={{ width: 20, height: 20, objectFit: 'contain' }} />
+        : <span style={{ fontSize: 9, fontWeight: 900, color: '#555' }}>{name.slice(0,3).toUpperCase()}</span>
+      }
     </div>
   )
 }
@@ -129,22 +79,39 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
 
   const totalVotes = poll.total_votes
   const q1Options  = poll.options.filter(o => o.question_no === 1)
-  const q2Options  = poll.options.filter(o => o.question_no === 2)
 
   const q1Total = q1Options.reduce((s, o) => s + (o.vote_count ?? 0), 0)
-  const q2Total = q2Options.reduce((s, o) => s + (o.vote_count ?? 0), 0)
 
   const leadingQ1 = q1Options.reduce<PollOption | null>(
     (best, o) => (o.vote_count ?? 0) > (best?.vote_count ?? -1) ? o : best, null
   )
-  const leadingQ2 = q2Options.reduce<PollOption | null>(
-    (best, o) => (o.vote_count ?? 0) > (best?.vote_count ?? -1) ? o : best, null
-  )
 
-  const q1Sorted = [...q1Options].sort((a, b) => (a.vote_count ?? 0) - (b.vote_count ?? 0))
-  const q2Sorted = [...q2Options].sort((a, b) => (a.vote_count ?? 0) - (b.vote_count ?? 0))
+  const q1Sorted = [...q1Options].sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0))
 
-  const pollUrl = poll.short_url || `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
+const DEFAULT_URL = `${window.location.origin}/#poll`
+
+const [pollUrl, setPollUrl] = useState(DEFAULT_URL)
+
+useEffect(() => {
+  if (!poll.short_url) {
+    setPollUrl(DEFAULT_URL)
+    return
+  }
+
+  const img = new Image()
+
+  img.onload = () => {
+    if (poll.short_url) {
+      setPollUrl(poll.short_url)   // valid
+    }
+  }
+
+  img.onerror = () => {
+    setPollUrl(DEFAULT_URL)      // broken → fallback
+  }
+
+  img.src = poll.short_url
+}, [poll.short_url])
 
   const filtered = [...votes].filter(v => {
     if (filterParty && v.q1_key !== filterParty) return false
@@ -215,7 +182,6 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
         {[
           { icon: 'ph-users',          label: 'Total Votes',   value: totalVotes.toLocaleString('en-IN'), color: '#FF9933' },
           { icon: 'ph-trophy',         label: 'Leading Party', value: leadingQ1?.name ?? '—',            color: '#138808' },
-          { icon: 'ph-flag',           label: 'Top Issue',     value: leadingQ2?.name ?? '—',            color: '#3b82f6' },
           { icon: 'ph-calendar',       label: 'Poll Date',     value: currentDateLabel(),                color: '#6b7280' },
         ].map(({ icon, label, value, color }) => (
           <div key={label} className="rounded-card px-5 py-4 bg-white border border-border shadow-card">
@@ -265,40 +231,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
           </div>
         </div>
 
-        {/* Q2 Results */}
-        <div className="rounded-card bg-white border border-border shadow-card overflow-hidden">
-          <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #f0f0f0' }}>
-            <h3 className="text-[12px] font-extrabold text-navy uppercase tracking-[1px] flex items-center gap-2">
-              <i className="ph ph-flag text-saffron" /> Q2 — Who Will Win?
-            </h3>
-            <span className="text-[10px] font-bold text-muted">{q2Total} votes</span>
-          </div>
-          <div className="px-5 py-4 space-y-3">
-            {q2Sorted.map(opt => {
-              const count  = opt.vote_count ?? 0
-              const p      = pct(count, q2Total)
-              const isTop  = opt.id === leadingQ2?.id && q2Total > 0
-              return (
-                <div key={opt.id}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <PartyChip partyKey={opt.key} name={opt.name} />
-                      <span className="text-[12px] font-semibold text-navy">{opt.name}</span>
-                      {isTop && <span className="text-[8px] font-bold text-[#1565c0] bg-[#e3f2fd] px-2 py-[2px] rounded-full">Top</span>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-muted">{count}</span>
-                      <span className="text-[13px] font-extrabold text-navy min-w-[36px] text-right">{p}%</span>
-                    </div>
-                  </div>
-                  <div className="h-[8px] rounded-full overflow-hidden bg-[#f0f0f0]">
-                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${p}%`, background: '#FF9933' }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div> 
+      
       </div>
 
       {/* Votes Table */}
@@ -349,7 +282,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
                 <thead>
                   <tr>
                     <th>#</th><th>Username</th><th>IP</th>
-                    <th>Q1 — Party</th><th>Q2 — Win Prediction</th><th>Time</th>
+                    <th>Party / Alliance</th><th>Time</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -366,7 +299,6 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
                             <span className="font-semibold text-navy">{v.q1_option}</span>
                           </div>
                         </td>
-                        <td className="text-navy">{v.q2_option}</td>
                         <td className="text-muted text-[10px]">
                           {new Date(v.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         </td>
@@ -414,17 +346,17 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
   const clock = usePollClock()
 
   const [selectedQ1, setSelectedQ1] = useState<number | null>(poll.user_q1_option)
-  const [selectedQ2, setSelectedQ2] = useState<number | null>(poll.user_q2_option)
   const [hasVoted,   setHasVoted]   = useState(poll.user_has_voted)
 
-  const q1Options = poll.options.filter(o => o.question_no === 1)
-  const q2Options = poll.options.filter(o => o.question_no === 2)
+  const q1All     = poll.options.filter(o => o.question_no === 1)
+  const q1Options = q1All.filter(o => o.key !== 'nota')
+  const q1Nota    = q1All.find(o => o.key === 'nota') ?? null
+
   const pollUrl = poll.short_url || `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
 
   const handleSubmit = async () => {
-    if (!selectedQ1) { showToast('<i class="ph ph-warning"></i> Please select Q1 answer!', '#dc2626'); return }
-    if (!selectedQ2) { showToast('<i class="ph ph-warning"></i> Please select Q2 answer!', '#dc2626'); return }
-    const updated = await castVote(poll.id, selectedQ1, selectedQ2)
+    if (!selectedQ1) { showToast('<i class="ph ph-warning"></i> Please select your vote!', '#dc2626'); return }
+    const updated = await castVote(poll.id, selectedQ1)
     if (updated) {
       setHasVoted(true)
       onVoted(updated)
@@ -474,7 +406,7 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
 
         {/* Q1 */}
         <div className="px-5 py-4" style={{ background: '#0d0d0d', borderTop: '1px solid #222' }}>
-          <div className="text-[9px] text-saffron font-extrabold tracking-[1.5px] uppercase mb-2">கேள்வி 1 OF 2 · QUESTION 1</div>
+          <div className="text-[9px] text-saffron font-extrabold tracking-[1.5px] uppercase mb-2">கேள்வி · QUESTION</div>
           <div className="font-tamil text-[18px] font-extrabold text-white leading-[1.4] mb-[6px]">இந்த தேர்தலில் நீங்கள் யாருக்கு வாக்களிப்பீர்கள்?</div>
           <div className="text-[11px] text-[#888]">Which alliance/party would you vote for?</div>
         </div>
@@ -504,35 +436,33 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
               </div>
             )
           })}
-        </div>
-
-        {/* Q2 */}
-        <div className="px-5 py-5" style={{ background: '#0a0a0a', borderTop: '2px solid #222' }}>
-          <div className="text-[9px] text-saffron font-extrabold tracking-[1.5px] uppercase mb-2">கேள்வி 2 OF 2 · QUESTION 2</div>
-          <div className="font-tamil text-[17px] font-extrabold text-white mb-1">மொடக்குறிச்சியில் யார் வெற்றி பெறுவார்கள்?</div>
-          <div className="text-[10px] text-[#777] mb-4">Who do you think will win?</div>
-          <div className="grid grid-cols-2 gap-3">
-            {q2Options.map(c => {
-              const isSelected = selectedQ2 === c.id
-              return (
-                <div key={c.id}
-                  onClick={() => !hasVoted && setSelectedQ2(c.id)}
-                  className="rounded-[10px] p-[14px] flex items-center gap-3 transition-all duration-200"
-                  style={{
-                    background: isSelected ? '#1a0e00' : '#111',
-                    border: `1px solid ${isSelected ? '#FF9933' : '#2a2a2a'}`,
-                    cursor: hasVoted ? 'default' : 'pointer',
-                  }}
-                >
-                  <PartyLogo partyKey={c.key} name={c.name} size={40} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-extrabold text-white">{c.name}</div>
-                    {c.sub_label && <div className="text-[9px] text-[#888] mt-[2px]">{c.sub_label}</div>}
-                  </div>
+          {(() => {
+            const isSelected = q1Nota ? selectedQ1 === q1Nota.id : false
+            const canSelect  = !hasVoted && !!q1Nota
+            return (
+              <div
+                onClick={() => canSelect && setSelectedQ1(q1Nota!.id)}
+                className="flex items-center gap-[14px] px-5 py-[14px] transition-all duration-200"
+                style={{
+                  borderLeft: `3px solid ${isSelected ? '#666' : 'transparent'}`,
+                  background: isSelected ? '#141414' : '#0d0d0d',
+                  borderTop: '1px solid #2a2a2a',
+                  cursor: canSelect ? 'pointer' : 'default',
+                  opacity: q1Nota ? 1 : 0.4,
+                }}
+              >
+                <PartyLogo partyKey="nota" name="NOTA" size={48} />
+                <div className="flex-1">
+                  <div className="text-[16px] font-extrabold text-[#aaa]">NOTA</div>
+                  <div className="font-tamil text-[10px] text-[#666] mt-[2px]">மேற்கண்ட யாருமில்லை · None of the Above</div>
                 </div>
-              )
-            })}
-          </div>
+                <div className="w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
+                  style={{ borderColor: isSelected ? '#999' : '#444', background: isSelected ? '#666' : 'transparent' }}>
+                  {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Footer / Submit */}

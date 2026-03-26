@@ -177,7 +177,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="text-[9px] text-white/40 tracking-[1.5px]">ELECTION DAY 2026</div>
                 <div className="mt-[6px] text-[9px] text-saffron/80 font-bold tracking-[0.8px]">
-                  274 POLLING STATIONS · 7 AM
+                  290 POLLING STATIONS · 7 AM
                 </div>
               </div>
             </div>

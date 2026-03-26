@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useAuthContext } from '../context/AuthContext'
-import bjpLogo from '../assets/logo/logo.png'
+import bjpLogo from '../assets/logo/bjp-seeklogo.png'
 import {
   CANDIDATE_NAME, CONSTITUENCY_NO, CONSTITUENCY_NAME, DISTRICT
 } from '../constants/app.constants'
@@ -167,15 +167,7 @@ export default function LoginPage({ onGoToSignup }: LoginPageProps) {
             </form>
           </div>
 
-          {onGoToSignup && (
-            <p className="text-center text-[12px] text-muted mt-4">
-              New user?{' '}
-              <button type="button" onClick={onGoToSignup}
-                className="text-saffron font-bold hover:text-saffron-dark underline underline-offset-2 transition-colors">
-                Create an account
-              </button>
-            </p>
-          )}
+   
 
           {/* Footer note */}
           <p className="text-center text-[11px] text-muted mt-5">

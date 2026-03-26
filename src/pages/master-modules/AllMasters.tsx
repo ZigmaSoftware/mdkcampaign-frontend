@@ -1,8 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import BulkImportModal from '../../components/entry/BulkImportModal'
-import apiClient from '../../utils/api'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Candidate, Party } from '../../hooks/useMasterAPI'
+import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party } from '../../hooks/useMasterAPI'
 import type { MasterRecord } from '../../types/master.types'
 import MasterListCard from '../../components/masters/MasterListCard'
 import FormRow from '../../components/entry/FormRow'
@@ -471,7 +470,7 @@ export function AreaMaster() {
       <FormSection title="Block Master" icon="ph ph-map-pin-area">
         <FormRow cols={1}>
           <FormGroup label="Constituency" required>
-            <select ref={conRef} className={selectCls}>
+            <select ref={conRef} className={selectCls} disabled={!!editing}>
               <option value="">Select constituency</option>
               {constituencies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -516,14 +515,12 @@ export function BoothMaster() {
   const agentRef = useRef<HTMLSelectElement>(null)
   const [booths, setBooths] = useState<Booth[]>([])
   const [wards, setWards]   = useState<Ward[]>([])
-  const [volunteers, setVolunteers] = useState<{ id: number; user_name: string; phone: string }[]>([])
   const [editing, setEditing] = useState<Booth | null>(null)
   const [showImport, setShowImport] = useState(false)
 
   useEffect(() => {
     api.fetchBooths().then(d => d && setBooths(d))
     api.fetchWards().then(d => d && setWards(d))
-    apiClient.get('/volunteers/volunteers/names/').then(r => setVolunteers(r.data || []))
   }, [])
 
   const clearFields = () => {
@@ -543,6 +540,7 @@ export function BoothMaster() {
     if (editing) {
       const updated = await api.updateBooth(editing.id, {
         number: num, name: bname || `Booth ${num}`, address: addr || undefined,
+        ...(wardId ? { ward: wardId } : {}),
         primary_volunteer: agentId,
       })
       if (updated) {

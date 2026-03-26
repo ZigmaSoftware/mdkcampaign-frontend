@@ -17,31 +17,28 @@ import { printModule } from '../../utils/printModule'
 const FORM_ID = 'booth-form'
 
 const SENTIMENT_MAP: Record<string, string> = {
-  'Strongly Favourable': 'positive',
   'Favourable': 'positive',
-  'Neutral': 'neutral',
+  'Neutral':    'neutral',
   'Challenging': 'negative',
-  'Opposition Stronghold': 'negative',
 }
 const SENTIMENT_REVERSE: Record<string, string> = {
-  positive: 'Strongly Favourable',
+  positive: 'Favourable',
   neutral:  'Neutral',
   negative: 'Challenging',
 }
 const STATUS_MAP: Record<string, string> = {
-  'Assigned & Ready':       'assigned',
-  'Assigned – Not Confirmed': 'pending',
-  'Vacant – Urgent':        'pending',
-  'Backup Needed':          'issue',
-  'Working':                'working',
-  'Completed':              'completed',
+  'Assigned & Ready': 'assigned',
+  'Pending':          'pending',
+  'Working':          'working',
+  'Completed':        'completed',
+  'Issue Flagged':    'issue',
 }
 const STATUS_REVERSE: Record<string, string> = {
   assigned:  'Assigned & Ready',
-  pending:   'Assigned – Not Confirmed',
+  pending:   'Pending',
   working:   'Working',
   completed: 'Completed',
-  issue:     'Backup Needed',
+  issue:     'Issue Flagged',
 }
 
 interface VolunteerOption { id: number; user_name: string; phone: string }
@@ -94,6 +91,7 @@ export default function BoothEntry() {
     num:       useRef<HTMLInputElement>(null),
     name:      useRef<HTMLInputElement>(null),
     ward:      useRef<HTMLSelectElement>(null),
+    blockId:   useRef<HTMLInputElement>(null),
     address:   useRef<HTMLInputElement>(null),
     voters:    useRef<HTMLInputElement>(null),
     male:      useRef<HTMLInputElement>(null),
@@ -108,6 +106,7 @@ export default function BoothEntry() {
     if (r.num.current)       r.num.current.value       = booth.number
     if (r.name.current)      r.name.current.value      = booth.name
     if (r.ward.current)      r.ward.current.value      = String(booth.ward)
+    if (r.blockId.current)   r.blockId.current.value   = booth.block_id || ''
     if (r.address.current)   r.address.current.value   = booth.address || ''
     if (r.voters.current)    r.voters.current.value    = String(booth.total_voters || '')
     if (r.male.current)      r.male.current.value      = String(booth.male_voters || '')
@@ -138,6 +137,7 @@ export default function BoothEntry() {
       total_voters: r.voters.current?.value ? parseInt(r.voters.current.value) : 0,
       male_voters:  r.male.current?.value   ? parseInt(r.male.current.value)   : undefined,
       female_voters: r.female.current?.value ? parseInt(r.female.current.value) : undefined,
+      block_id: r.blockId.current?.value   || undefined,
       address:  r.address.current?.value  || undefined,
       village:  selectedWard?.name        || undefined,
       notes:    r.notes.current?.value    || undefined,
@@ -310,6 +310,11 @@ export default function BoothEntry() {
           </FormGroup>
         </FormRow>
         <FormRow cols={3}>
+          <FormGroup label="Block ID">
+            <input ref={r.blockId} className={inputCls} placeholder="e.g. BLK-01" />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={3}>
           <FormGroup label="Address">
             <input ref={r.address} className={inputCls} placeholder="Full address" />
           </FormGroup>
@@ -380,18 +385,18 @@ export default function BoothEntry() {
             <select ref={r.status} className={selectCls}>
               <option value="">Select</option>
               <option>Assigned &amp; Ready</option>
-              <option>Assigned – Not Confirmed</option>
+              <option>Pending</option>
               <option>Working</option>
               <option>Completed</option>
-              <option>Backup Needed</option>
+              <option>Issue Flagged</option>
             </select>
           </FormGroup>
           <FormGroup label="Booth Sentiment">
             <select ref={r.sentiment} className={selectCls}>
               <option value="">Select</option>
-              <option>Strongly Favourable</option><option>Favourable</option>
-              <option>Neutral</option><option>Challenging</option>
-              <option>Opposition Stronghold</option>
+              <option>Favourable</option>
+              <option>Neutral</option>
+              <option>Challenging</option>
             </select>
           </FormGroup>
         </FormRow>

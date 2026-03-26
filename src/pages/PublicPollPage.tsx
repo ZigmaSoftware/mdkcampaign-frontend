@@ -225,9 +225,9 @@ export default function PublicPollPage() {
                 style={{ width:'100%', padding:14, border:'none', borderRadius:6, fontFamily:F, fontSize:16, fontWeight:900, letterSpacing:2, background: selId !== null ? 'linear-gradient(135deg,#FF9933,#e06500)' : '#e0e0e0', color: selId !== null ? '#fff' : '#aaa', cursor: selId !== null ? 'pointer' : 'default', display:'flex', alignItems:'center', justifyContent:'center' }}>
                 {selId !== null ? 'வாக்களிக்கவும் / SUBMIT VOTE →' : 'முதலில் ஒரு கட்சியை தேர்வு செய்யுங்கள்'}
               </button>
-              <div style={{ textAlign:'center', marginTop:8, fontSize:11, color:'#aaa', fontFamily:'Rajdhani,sans-serif' }}>
+              {/* <div style={{ textAlign:'center', marginTop:8, fontSize:11, color:'#aaa', fontFamily:'Rajdhani,sans-serif' }}>
                 மொத்தம் <b style={{ color:'#666' }}>{count.toLocaleString('en-IN')}</b> பேர் வாக்களித்துள்ளனர்
-              </div>
+              </div> */}
             </div>
           </>
         )}
@@ -242,29 +242,50 @@ export default function PublicPollPage() {
             <div style={{ fontFamily:TA, fontSize:12, color:'#666' }}>
               {alreadyVoted ? 'You have already voted on this poll.' : 'Your vote has been recorded successfully.'}
             </div>
-            <div style={{ marginTop:12, fontSize:11, color:'#aaa', fontFamily:'Rajdhani,sans-serif' }}>
+            {/* <div style={{ marginTop:12, fontSize:11, color:'#aaa', fontFamily:'Rajdhani,sans-serif' }}>
               மொத்தம் <b style={{ color:'#666' }}>{count.toLocaleString('en-IN')}</b> பேர் வாக்களித்துள்ளனர்
-            </div>
+            </div> */}
           </div>
         )}
 
         {/* Share bar */}
         <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #ffe0b2' }}>
           <div style={{ fontSize:10, color:'#aaa', fontWeight:700, letterSpacing:1.5, textAlign:'center', marginBottom:6, fontFamily:F }}>SHARE THIS POLL</div>
-          <div style={{ textAlign:'center', marginBottom:8 }}>
+          {/* <div style={{ textAlign:'center', marginBottom:8 }}>
             <a href={shareUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:'#FF9933', fontFamily:'monospace', wordBreak:'break-all', textDecoration:'underline' }}>{shareUrl}</a>
-          </div>
-          <div style={{ display:'flex', gap:8 }}>
-            {[
-              { label:'💬 WhatsApp', bg:'#25D366', fn: ()=>share('wa') },
-              { label:'👍 Facebook', bg:'#1877F2', fn: ()=>share('fb') },
-              { label: copyDone ? '✅ Copied!' : '🔗 Link', bg:'#888', fn: ()=>share('copy') },
-            ].map(({label,bg,fn}) => (
-              <button key={label} className="mk-btn" onClick={fn} style={{ flex:1, padding:'10px 8px', borderRadius:5, border:'none', fontFamily:F, fontSize:12, fontWeight:700, cursor:'pointer', background:bg, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          </div> */}
+         <div style={{ display:'flex', gap:8 }}>
+  {[
+    { label:'💬 WhatsApp', bg:'#25D366' },
+    { label:'👍 Facebook', bg:'#1877F2' },
+    { label: copyDone ? '✅ Copied!' : '🔗 Link', bg:'#888' },
+  ].map(({label,bg}) => (
+    <button
+      key={label}
+      className="mk-btn"
+      style={{
+        flex:1,
+        padding:'10px 8px',
+        borderRadius:5,
+        border:'none',
+        fontFamily:F,
+        fontSize:12,
+        fontWeight:700,
+        cursor:'not-allowed',
+        background:bg,
+        color:'#fff',
+        display:'flex',
+        alignItems:'center',
+        justifyContent:'center',
+        gap:6,
+        opacity:0.6
+      }}
+      disabled
+    >
+      {label}
+    </button>
+  ))}
+</div>
         </div>
 
         {/* Disclaimer */}

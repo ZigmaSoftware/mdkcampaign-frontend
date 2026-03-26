@@ -233,20 +233,60 @@ export default function PublicPollPage() {
         )}
 
         {/* Voted confirmation */}
-        {poll && voted && (
-          <div style={{ textAlign:'center', padding:'20px 16px', background:'#fff8f0', borderTop:'1px solid #ffe0b2' }}>
-            <div style={{ fontSize:32, marginBottom:8 }}>✅</div>
-            <div style={{ fontFamily:TA, fontSize:15, fontWeight:700, color:'#e06500', marginBottom:4 }}>
-              {alreadyVoted ? 'ஏற்கனவே வாக்களித்துவிட்டீர்கள்!' : 'உங்கள் வாக்கு பதிவாகிவிட்டது!'}
+        {poll && voted && (() => {
+          const votedOpt = q1.find(o => o.id === selId)
+          const s = votedOpt ? (Q1_STYLE[votedOpt.key] ?? Q1_STYLE.other) : null
+          return (
+            <div style={{ background:'#fff', borderTop:'3px solid #FF9933' }}>
+              {/* Thank you banner */}
+              <div style={{ background:'linear-gradient(135deg,#fff8f0,#fff3e0)', padding:'28px 20px 20px', textAlign:'center', borderBottom:'1px solid #ffe0b2' }}>
+                <div style={{ fontSize:44, marginBottom:6, lineHeight:1 }}>🎉</div>
+                <div style={{ fontSize:26, fontWeight:900, letterSpacing:2, color:'#e06500', marginBottom:4 }}>
+                  {alreadyVoted ? 'ALREADY VOTED' : 'THANK YOU!'}
+                </div>
+                <div style={{ fontFamily:TA, fontSize:17, fontWeight:800, color:'#c45000', marginBottom:6 }}>
+                  {alreadyVoted ? 'ஏற்கனவே வாக்களித்துவிட்டீர்கள்!' : 'வாக்களித்தமைக்கு நன்றி!'}
+                </div>
+                <div style={{ fontFamily:TA, fontSize:12, color:'#888', lineHeight:1.6 }}>
+                  {alreadyVoted
+                    ? 'You have already cast your vote on this poll.'
+                    : 'Your vote has been recorded successfully.\nஉங்கள் வாக்கு பதிவாகிவிட்டது!'}
+                </div>
+              </div>
+
+              {/* Voted for card */}
+              {votedOpt && s && (
+                <div style={{ padding:'14px 16px', borderBottom:'1px solid #f5e6d0' }}>
+                  <div style={{ fontSize:9, fontWeight:700, letterSpacing:2, color:'#aaa', marginBottom:8, textAlign:'center' }}>YOU VOTED FOR · நீங்கள் வாக்களித்தது</div>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, background:'#fff8f0', border:`1.5px solid ${s.border}`, borderRadius:8, padding:'10px 14px' }}>
+                    <div style={{ width:4, alignSelf:'stretch', borderRadius:2, minHeight:40, background:s.strip, flexShrink:0 }} />
+                    <div style={{ width:40, height:40, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}`, flexShrink:0 }}>
+                      {s.logo
+                        ? <img src={s.logo} alt={votedOpt.name} style={{ width:28, height:28, objectFit:'contain' }} />
+                        : <span style={{ fontSize:9, fontWeight:900, color:'#555' }}>{votedOpt.key.slice(0,3).toUpperCase()}</span>
+                      }
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:15, fontWeight:900, color:'#1a1a1a', letterSpacing:0.5 }}>{votedOpt.name}</div>
+                      <div style={{ fontFamily:TA, fontSize:11, color:'#888', marginTop:2 }}>{votedOpt.name_ta}</div>
+                    </div>
+                    <div style={{ fontSize:22 }}>✅</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Share nudge */}
+              {!alreadyVoted && (
+                <div style={{ padding:'12px 16px 16px', textAlign:'center' }}>
+                  <div style={{ fontFamily:TA, fontSize:12, color:'#e06500', fontWeight:700, marginBottom:4 }}>
+                    நண்பர்களுக்கும் அனுப்புங்கள்! 🪷
+                  </div>
+                  <div style={{ fontSize:11, color:'#aaa' }}>Share this poll and let others have their say</div>
+                </div>
+              )}
             </div>
-            <div style={{ fontFamily:TA, fontSize:12, color:'#666' }}>
-              {alreadyVoted ? 'You have already voted on this poll.' : 'Your vote has been recorded successfully.'}
-            </div>
-            {/* <div style={{ marginTop:12, fontSize:11, color:'#aaa', fontFamily:'Rajdhani,sans-serif' }}>
-              மொத்தம் <b style={{ color:'#666' }}>{count.toLocaleString('en-IN')}</b> பேர் வாக்களித்துள்ளனர்
-            </div> */}
-          </div>
-        )}
+          )
+        })()}
 
         {/* Share bar */}
         <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #ffe0b2' }}>

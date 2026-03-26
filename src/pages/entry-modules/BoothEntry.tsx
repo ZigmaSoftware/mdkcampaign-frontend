@@ -91,7 +91,6 @@ export default function BoothEntry() {
     num:       useRef<HTMLInputElement>(null),
     name:      useRef<HTMLInputElement>(null),
     ward:      useRef<HTMLSelectElement>(null),
-    blockId:   useRef<HTMLInputElement>(null),
     address:   useRef<HTMLInputElement>(null),
     voters:    useRef<HTMLInputElement>(null),
     male:      useRef<HTMLInputElement>(null),
@@ -106,7 +105,6 @@ export default function BoothEntry() {
     if (r.num.current)       r.num.current.value       = booth.number
     if (r.name.current)      r.name.current.value      = booth.name
     if (r.ward.current)      r.ward.current.value      = String(booth.ward)
-    if (r.blockId.current)   r.blockId.current.value   = booth.block_id || ''
     if (r.address.current)   r.address.current.value   = booth.address || ''
     if (r.voters.current)    r.voters.current.value    = String(booth.total_voters || '')
     if (r.male.current)      r.male.current.value      = String(booth.male_voters || '')
@@ -137,7 +135,6 @@ export default function BoothEntry() {
       total_voters: r.voters.current?.value ? parseInt(r.voters.current.value) : 0,
       male_voters:  r.male.current?.value   ? parseInt(r.male.current.value)   : undefined,
       female_voters: r.female.current?.value ? parseInt(r.female.current.value) : undefined,
-      block_id: r.blockId.current?.value   || undefined,
       address:  r.address.current?.value  || undefined,
       village:  selectedWard?.name        || undefined,
       notes:    r.notes.current?.value    || undefined,
@@ -307,11 +304,6 @@ export default function BoothEntry() {
               <option value="">Select Ward</option>
               {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
-          </FormGroup>
-        </FormRow>
-        <FormRow cols={3}>
-          <FormGroup label="Block ID">
-            <input ref={r.blockId} className={inputCls} placeholder="e.g. BLK-01" />
           </FormGroup>
         </FormRow>
         <FormRow cols={3}>

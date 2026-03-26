@@ -25,7 +25,6 @@ interface Ward {
 interface Booth {
   id: number; number: string; name: string; code: string; ward: number
   ward_name?: string; constituency_name?: string
-  block_id?: string
   total_voters: number; male_voters?: number; female_voters?: number
   status?: string; sentiment?: string; address?: string
   village?: string; notes?: string

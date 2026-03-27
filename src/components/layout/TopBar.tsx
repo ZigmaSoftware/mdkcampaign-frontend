@@ -1,6 +1,6 @@
 import React from 'react'
 import { useLiveClock } from '../../hooks/useLiveClock'
-import { CANDIDATE_NAME, CONSTITUENCY_NO, CONSTITUENCY_NAME, DISTRICT } from '../../constants/app.constants'
+import { CANDIDATE_NAME, CONSTITUENCY_NO, CONSTITUENCY_NAME, DISTRICT, PARTY } from '../../constants/app.constants'
 
 export default function TopBar() {
   const clock = useLiveClock()
@@ -22,7 +22,7 @@ export default function TopBar() {
           <h1
             className="font-inter text-[13px] font-bold tracking-[1.5px] text-white leading-tight uppercase"
           >
-            BJP Campaign System
+            {PARTY} Campaign System
           </h1>
           <p className="font-tamil text-[9px] text-[#9bb0e0] mt-[1px] hidden sm:block">
             பா.ஜ.க. தேர்தல் மேலாண்மை அமைப்பு

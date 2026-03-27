@@ -326,14 +326,15 @@ export default function PublicPollPage() {
             <a href={shareUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:'#FF9933', fontFamily:'monospace', wordBreak:'break-all', textDecoration:'underline' }}>{shareUrl}</a>
           </div> */}
          <div style={{ display:'flex', gap:8 }}>
-  {[
-    { label:'💬 WhatsApp', bg:'#25D366' },
-    { label:'👍 Facebook', bg:'#1877F2' },
-    { label: copyDone ? '✅ Copied!' : '🔗 Link', bg:'#888' },
-  ].map(({label,bg}) => (
+  {([
+    { label:'💬 WhatsApp', bg:'#25D366', p:'wa'   },
+    { label:'👍 Facebook', bg:'#1877F2', p:'fb'   },
+    { label: copyDone ? '✅ Copied!' : '🔗 Link', bg:'#888', p:'copy' },
+  ] as { label:string; bg:string; p:'wa'|'fb'|'copy' }[]).map(({label,bg,p}) => (
     <button
       key={label}
       className="mk-btn"
+      onClick={() => share(p)}
       style={{
         flex:1,
         padding:'10px 8px',
@@ -342,16 +343,14 @@ export default function PublicPollPage() {
         fontFamily:F,
         fontSize:12,
         fontWeight:700,
-        cursor:'not-allowed',
+        cursor:'pointer',
         background:bg,
         color:'#fff',
         display:'flex',
         alignItems:'center',
         justifyContent:'center',
         gap:6,
-        opacity:0.6
       }}
-      disabled
     >
       {label}
     </button>

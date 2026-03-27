@@ -406,7 +406,7 @@ export default function VoterEntry() {
     return {
       id:       String(v.id),
       keyField: v.name,
-      sub:      `${booth ? `Booth ${booth.number}` : '—'} · ${v.phone || ''} · ${SENTIMENT_REVERSE[v.sentiment || ''] || v.sentiment || ''}${party ? ` · ${party.abbreviation || party.name}` : ''}`.replace(/ · $/, ''),
+      sub:      [booth ? `Booth ${booth.number}` : '—', v.age ? `Age ${v.age}` : '', v.address? `Address ${v.address}` : ''].filter(Boolean).join(' · '),
       data: {
         father_name:       v.father_name        || '',
         voter_id:          v.voter_id            || '',
@@ -414,7 +414,7 @@ export default function VoterEntry() {
         phone:             v.phone               || '',
         phone2:            v.phone2              || '',
         email:             v.email               || '',
-        gender:            GENDER_REVERSE[v.gender || ''] || v.gender || '',
+        gender:            v.gender || '',
         age:               v.age                != null ? String(v.age) : '',
         date_of_birth:     v.date_of_birth       || '',
         address:           v.address             || '',
@@ -424,9 +424,9 @@ export default function VoterEntry() {
         education:         v.education_level     || '',
         occupation:        v.occupation          || '',
         current_location:  v.current_location    || '',
-        sentiment:         SENTIMENT_REVERSE[v.sentiment || ''] || v.sentiment || '',
+        sentiment:         v.sentiment || '',
         preferred_party:   party ? (party.abbreviation || party.name) : '',
-        booth:             booth ? `Booth ${booth.number}` : '',
+        booth:             v.booth ? String(v.booth) : '',
         scheme_name:       v.scheme_name         || '',
         issue_name:        v.issue_name          || '',
         feedback_score:    v.feedback_score     != null ? String(v.feedback_score) : '',
@@ -470,7 +470,7 @@ export default function VoterEntry() {
       { value: 'Other',     label: 'Other' },
     ]},
     { key: 'education', label: 'Education', options: EDU_CHOICES.map(e => ({ value: e.value, label: e.label })) },
-    { key: 'location', label: 'Location', options: [
+    { key: 'current_location', label: 'Location', options: [
       { value: 'home',           label: 'Home' },
       { value: 'out_of_station', label: 'Out of Station' },
     ]},

@@ -88,30 +88,7 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
 
   const q1Sorted = [...q1Options].sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0))
 
-const DEFAULT_URL = `${window.location.origin}/#poll`
-
-const [pollUrl, setPollUrl] = useState(DEFAULT_URL)
-
-useEffect(() => {
-  if (!poll.short_url) {
-    setPollUrl(DEFAULT_URL)
-    return
-  }
-
-  const img = new Image()
-
-  img.onload = () => {
-    if (poll.short_url) {
-      setPollUrl(poll.short_url)   // valid
-    }
-  }
-
-  img.onerror = () => {
-    setPollUrl(DEFAULT_URL)      // broken → fallback
-  }
-
-  img.src = poll.short_url
-}, [poll.short_url])
+const pollUrl = `${window.location.origin}/#poll`
 
   const filtered = [...votes].filter(v => {
     if (filterParty && v.q1_key !== filterParty) return false
@@ -255,7 +232,7 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
   const q1Options = q1All.filter(o => o.key !== 'nota')
   const q1Nota    = q1All.find(o => o.key === 'nota') ?? null
 
-  const pollUrl = poll.short_url || `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
+  const pollUrl = `${window.location.origin}/#poll`
 
   const handleSubmit = async () => {
     if (!selectedQ1) { showToast('<i class="ph ph-warning"></i> Please select your vote!', '#dc2626'); return }

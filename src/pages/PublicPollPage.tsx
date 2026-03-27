@@ -24,7 +24,7 @@ const Q1_STYLE: Record<string, { logo?: string; strip: string; border: string }>
 }
 
 interface Option { id: number; key: string; name: string; name_ta: string; sub_label: string; bar_color: string; question_no: number }
-interface Poll   { id: number; constituency_name: string; constituency_no: number; total_votes: number; options: Option[]; user_has_voted: boolean; user_q1_option: number | null; short_url?: string }
+interface Poll   { id: number; constituency_name: string; constituency_no: number; total_votes: number; options: Option[]; user_has_voted: boolean; user_q1_option: number | null }
 
 const F  = "'Barlow Condensed','Rajdhani',sans-serif"
 const TA = "'Noto Sans Tamil',sans-serif"
@@ -104,7 +104,7 @@ export default function PublicPollPage() {
   }, [selId, poll, busy, voted, deviceId])
 
   /* ── Share — prefer is.gd short URL from backend (no IP exposed) ── */
-  const shareUrl = poll?.short_url || `${(import.meta.env.VITE_PUBLIC_URL as string) || window.location.origin}/#poll`
+  const shareUrl = `${window.location.origin}/#poll`
   const share = (p: 'wa'|'fb'|'copy') => {
     const text = `🏵 மக்கள் கருத்து கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n${shareUrl}\n\nவாக்களித்து நண்பர்களுக்கும் அனுப்புங்கள்! 🪷`
     if (p === 'wa') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')

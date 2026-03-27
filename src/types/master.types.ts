@@ -4,6 +4,7 @@ export interface MasterRecord {
   id: string
   key: string
   meta?: string
+  extra?: Record<string, string>
   backendId?: number
 }
 

@@ -25,6 +25,9 @@ export type EntryModuleId =
   | 'volunteer-activity'
   | 'voter-survey'
   | 'attendance'
+  | 'assign-telecalling'
+  | 'telecalling-assigned'
+  | 'feedback-review'
 
 export type MasterModuleId =
   | 'district'

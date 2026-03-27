@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import Badge from '../ui/Badge'
 import MasterRow from './MasterRow'
+import ViewRecordModal from '../entry/ViewRecordModal'
 import type { MasterRecord } from '../../types/master.types'
 
 function exportMasterCsv(records: MasterRecord[], title: string) {
@@ -33,8 +34,9 @@ export default function MasterListCard({
   onDelete,
   onImport,
 }: MasterListCardProps) {
-  const [page,   setPage]   = useState(1)
-  const [search, setSearch] = useState('')
+  const [page,       setPage]       = useState(1)
+  const [search,     setSearch]     = useState('')
+  const [viewingRec, setViewingRec] = useState<MasterRecord | null>(null)
 
   const visible    = search.trim()
     ? records.filter(r => r.key.toLowerCase().includes(search.toLowerCase()) || (r.meta || '').toLowerCase().includes(search.toLowerCase()))
@@ -99,6 +101,7 @@ export default function MasterListCard({
                 id={rec.id}
                 label={rec.key}
                 meta={rec.meta}
+                onView={id => setViewingRec(records.find(r => r.id === id) ?? null)}
                 onEdit={onEdit}
                 onDelete={onDelete}
               />
@@ -154,6 +157,28 @@ export default function MasterListCard({
           </>
         )}
       </div>
+
+      {/* ── View modal ─────────────────────────────────── */}
+      {viewingRec && (
+        <ViewRecordModal
+          title={viewingRec.key}
+          subtitle={viewingRec.meta}
+          fields={
+            viewingRec.extra
+              ? [
+                  { label: 'Name', value: viewingRec.key },
+                  ...Object.entries(viewingRec.extra)
+                    .filter(([, v]) => v && v.trim() !== '')
+                    .map(([k, v]) => ({ label: k, value: v })),
+                ]
+              : [
+                  { label: 'Name', value: viewingRec.key },
+                  ...(viewingRec.meta ? [{ label: 'Details', value: viewingRec.meta }] : []),
+                ]
+          }
+          onClose={() => setViewingRec(null)}
+        />
+      )}
     </div>
   )
 }

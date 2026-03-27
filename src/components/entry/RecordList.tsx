@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import RecordItem from './RecordItem'
+import type { RecordTag } from './RecordItem'
+import ViewRecordModal, { entryDataToFields } from './ViewRecordModal'
 import type { EntryRecord } from '../../types/entry.types'
 
 const DEFAULT_PAGE_SIZE = 10
@@ -20,6 +22,8 @@ interface RecordListProps {
   itemsPerPage?:  number
   serverTotal?:   number
   startIndex?:    number
+  disableView?:   boolean
+  getTag?:        (rec: EntryRecord) => RecordTag | undefined
 }
 
 export default function RecordList({
@@ -35,9 +39,12 @@ export default function RecordList({
   itemsPerPage = DEFAULT_PAGE_SIZE,
   serverTotal,
   startIndex = 0,
+  disableView = false,
+  getTag,
 }: RecordListProps) {
-  const [page,    setPage]    = useState(1)
-  const [filters, setFilters] = useState<Record<string, string>>({})
+  const [page,       setPage]       = useState(1)
+  const [filters,    setFilters]    = useState<Record<string, string>>({})
+  const [viewingRec, setViewingRec] = useState<EntryRecord | null>(null)
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }))
@@ -112,6 +119,8 @@ export default function RecordList({
               title={rec.keyField}
               sub={rec.sub}
               isEditing={rec.id === editingId}
+              tag={getTag?.(rec)}
+              onView={disableView ? undefined : () => setViewingRec(rec)}
               onEdit={() => onEdit(rec.id)}
               onDelete={() => onDelete(rec.id)}
             />
@@ -180,6 +189,16 @@ export default function RecordList({
             </div>
           )}
         </>
+      )}
+
+      {/* ── View modal ─────────────────────────────────── */}
+      {viewingRec && (
+        <ViewRecordModal
+          title={viewingRec.keyField}
+          subtitle={viewingRec.sub}
+          fields={entryDataToFields(viewingRec.data)}
+          onClose={() => setViewingRec(null)}
+        />
       )}
     </div>
   )

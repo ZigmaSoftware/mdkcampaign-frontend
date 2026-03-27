@@ -13,6 +13,9 @@ import VolunteerActivityEntry from './entry-modules/VolunteerActivityEntry'
 import VoterSurveyEntry from './entry-modules/VoterSurveyEntry'
 import UserEntryPage from './entry-modules/UserEntry'
 import AttendanceEntry from './entry-modules/AttendanceEntry'
+import AssignTelecalling from './entry-modules/AssignTelecalling'
+import TelecallingAssigned from './entry-modules/TelecallingAssigned'
+import FeedbackReview from './entry-modules/FeedbackReview'
 import {
   CampaignEntry,
   WarRoomEntry,
@@ -49,7 +52,10 @@ export default function EntryPage({ activeTab, onTabChange }: EntryPageProps) {
       case 'field-activity':     return <FieldActivityEntry />
       case 'volunteer-activity': return <VolunteerActivityEntry />
       case 'voter-survey':       return <VoterSurveyEntry />
-      case 'attendance':         return <AttendanceEntry />
+      case 'attendance':          return <AttendanceEntry />
+      case 'assign-telecalling':   return <AssignTelecalling />
+      case 'telecalling-assigned': return <TelecallingAssigned />
+      case 'feedback-review':      return <FeedbackReview />
       default:                   return <VoterEntry />
     }
   }
@@ -59,7 +65,7 @@ export default function EntryPage({ activeTab, onTabChange }: EntryPageProps) {
       <SectionHeader
         title="Data Entry Modules"
         icon="ph ph-pencil-simple"
-        subtitle="18 modules · Enter, update and manage all campaign data"
+        subtitle="20 modules · Enter, update and manage all campaign data"
       />
       {/* Tab bar */}
       <EntryTabBar active={activeTab} onChange={onTabChange} />

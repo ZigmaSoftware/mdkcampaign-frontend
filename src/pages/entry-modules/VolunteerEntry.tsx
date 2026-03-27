@@ -200,9 +200,20 @@ export default function VolunteerEntry() {
         STATUS_REVERSE[v.status || ''] || v.status || 'Active',
       ].filter(Boolean).join(' · '),
       data: {
-        status:         v.status         || '',
-        role:           v.role           || '',
+        phone:          v.phone          || '',
+        phone2:         v.phone2         || '',
+        block:          v.block          || '',
+        booth:          boothInfo ? `Booth ${boothInfo.number}` : '',
+        ward:           wardInfo  ? wardInfo.name : '',
+        age:            v.age     != null ? String(v.age) : '',
+        gender:         v.gender         || '',
+        joined_date:    v.joined_date    || '',
+        source:         v.source         || '',
+        skills:         v.skills         || '',
         volunteer_type: v.volunteer_type || '',
+        role:           v.role           || '',
+        status:         v.status         || '',
+        notes:          v.notes          || '',
       },
       createdAt: v.created_at || '',
       backendId: v.id,
@@ -293,6 +304,7 @@ export default function VolunteerEntry() {
                 { value: 'Data Entry Operator',   label: 'Data Entry' },
                 { value: 'Driver / Vehicle Support', label: 'Driver' },
                 { value: 'Event Coordinator',     label: 'Event Coordinator' },
+                { value: 'Telecalling',           label: 'Telecalling' },
                 { value: 'General Volunteer',     label: 'General' },
               ]},
             ]}
@@ -361,6 +373,7 @@ export default function VolunteerEntry() {
               <option>Data Entry Operator</option>
               <option>Driver / Vehicle Support</option>
               <option>Event Coordinator</option>
+              <option>Telecalling</option>
               <option>General Volunteer</option>
             </select>
           </FormGroup>

@@ -1,15 +1,23 @@
 import React from 'react'
 
+export interface RecordTag {
+  label: string
+  bg:    string
+  color: string
+}
+
 interface RecordItemProps {
-  index:      number
-  icon:       string
-  iconBg:     string
-  iconColor:  string
-  title:      string
-  sub:        string
-  isEditing?: boolean
-  onEdit:     () => void
-  onDelete:   () => void
+  index:       number
+  icon:        string
+  iconBg:      string
+  iconColor:   string
+  title:       string
+  sub:         string
+  isEditing?:  boolean
+  tag?:        RecordTag
+  onView?:     () => void
+  onEdit:      () => void
+  onDelete:    () => void
 }
 
 export default function RecordItem({
@@ -20,6 +28,8 @@ export default function RecordItem({
   title,
   sub,
   isEditing,
+  tag,
+  onView,
   onEdit,
   onDelete,
 }: RecordItemProps) {
@@ -42,9 +52,17 @@ export default function RecordItem({
       <div className="flex-1 min-w-0">
         <div className="text-[12px] font-bold text-textMain flex items-center gap-1 flex-wrap">
           {title}
+          {tag && (
+            <span
+              className="inline-flex items-center text-[9px] font-bold px-[6px] py-[2px] rounded-[10px] tracking-[0.4px] ml-[6px]"
+              style={{ background: tag.bg, color: tag.color }}
+            >
+              {tag.label}
+            </span>
+          )}
           {isEditing && (
             <span
-              className="inline-flex items-center gap-1 ml-[10px] bg-saffron text-navy
+              className="inline-flex items-center gap-1 ml-[6px] bg-saffron text-navy
                          text-[9px] font-bold px-2 py-[2px] rounded-[10px] tracking-[0.5px]"
             >
               <i className="ph ph-pencil-simple text-[9px]" />
@@ -57,6 +75,19 @@ export default function RecordItem({
 
       {/* action buttons */}
       <div className="flex gap-[6px] ml-auto flex-shrink-0">
+        {onView && (
+          <button
+            onClick={onView}
+            title="View"
+            className="
+              w-[30px] h-[30px] rounded-md flex items-center justify-center
+              bg-[#e8f4fd] text-[#0e6aad] border-none cursor-pointer text-[14px]
+              transition-all duration-150 hover:bg-[#0e6aad] hover:text-white
+            "
+          >
+            <i className="ph ph-eye" />
+          </button>
+        )}
         <button
           onClick={onEdit}
           title="Edit"

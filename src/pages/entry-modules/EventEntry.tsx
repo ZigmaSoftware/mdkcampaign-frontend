@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { TaskRecord } from '../../hooks/useEntryAPI'
+import type { RecordTag } from '../../components/entry/RecordItem'
 import { useUserAPI } from '../../hooks/usePollAPI'
 import type { UserRecord } from '../../hooks/usePollAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
@@ -184,14 +185,26 @@ export default function EventEntry() {
   }
 
   const mapTask = (t: TaskRecord): EntryRecord => ({
-    id:        String(t.id),
-    keyField:  t.title,
-    sub:       [
+    id:       String(t.id),
+    keyField: t.title,
+    sub: [
       CATEGORY_LABEL[t.category] || t.category,
       t.expected_datetime ? t.expected_datetime.slice(0, 10) : '—',
-      STATUS_LABEL[t.status] || t.status,
-    ].join(' · '),
-    data:      { category: t.category, status: t.status },
+      t.delivery_incharge_name ? `Incharge: ${t.delivery_incharge_name}` : '',
+      t.coordinator_name       ? `Coord: ${t.coordinator_name}`          : '',
+    ].filter(Boolean).join(' · '),
+    data: {
+      category:               t.category,
+      status:                 t.status,
+      expected_datetime:      t.expected_datetime        || '',
+      venue:                  t.venue                    || '',
+      qty:                    t.qty != null ? String(t.qty) : '',
+      delivery_incharge:      t.delivery_incharge_name   || '',
+      coordinator:            t.coordinator_name         || '',
+      details:                t.details                  || '',
+      completed_datetime:     t.completed_datetime       || '',
+      notes:                  t.notes                    || '',
+    },
     createdAt: t.created_at || '',
     backendId: t.id,
   })
@@ -209,6 +222,21 @@ export default function EventEntry() {
     .map<EntryRecord>(mapTask)
 
   const allTaskRecords = tasks.map<EntryRecord>(mapTask)
+
+  const getTaskTag = (rec: EntryRecord): RecordTag | undefined => {
+    const { status, expected_datetime } = rec.data
+    if (status === 'completed') return { label: 'Completed', bg: '#dcfce7', color: '#138808' }
+    if (status === 'cancelled') return { label: 'Cancelled', bg: '#f3f4f6', color: '#6b7280' }
+    if (expected_datetime) {
+      const now = new Date()
+      const exp = new Date(expected_datetime)
+      if (exp < now) return { label: 'Overdue', bg: '#fee2e2', color: '#dc2626' }
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+      if (exp <= todayEnd) return { label: 'Due Today', bg: '#fff3e0', color: '#e07010' }
+    }
+    if (status === 'in_progress') return { label: 'In Progress', bg: '#dbeafe', color: '#1d4ed8' }
+    return { label: 'Pending', bg: '#f1f5f9', color: '#64748b' }
+  }
 
   return (
     <div className="page-enter">
@@ -237,6 +265,7 @@ export default function EventEntry() {
             iconColor="#7c3aed"
             onEdit={handleEdit}
             onDelete={handleDelete}
+            getTag={getTaskTag}
             filterConfig={[
               { key: 'category', label: 'Category', options: CATEGORY_OPTIONS },
               { key: 'status',   label: 'Status',   options: STATUS_OPTIONS   },

@@ -53,8 +53,11 @@ const TAB_GROUPS: TabGroup[] = [
     label: 'Activity Logs',
     icon:  'ph ph-clipboard-text',
     tabs: [
-      { id: 'voter-survey',       label: 'Feedback',      icon: 'ph ph-notepad'            },
-      { id: 'attendance',         label: 'Attendance',  icon: 'ph ph-clock'              },
+      { id: 'voter-survey',       label: 'Feedback',          icon: 'ph ph-notepad'          },
+      { id: 'attendance',         label: 'Attendance',        icon: 'ph ph-clock'            },
+      { id: 'assign-telecalling',   label: 'Assign Telecalling',   icon: 'ph ph-phone-outgoing'  },
+      { id: 'telecalling-assigned', label: 'Telecalling Assigned', icon: 'ph ph-clipboard-text'  },
+      { id: 'feedback-review',      label: 'Feedback Review',      icon: 'ph ph-git-branch'       },
     ],
   },
 ]

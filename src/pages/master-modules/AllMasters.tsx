@@ -30,11 +30,13 @@ function FormSection({ title, icon, badge, children }: {
 function toRecs<T extends { id: number; name: string }>(
   items: T[],
   metaFn?: (item: T) => string,
+  extraFn?: (item: T) => Record<string, string>,
 ): MasterRecord[] {
   return items.map(item => ({
-    id: String(item.id),
-    key: item.name,
-    meta: metaFn?.(item) ?? '',
+    id:       String(item.id),
+    key:      item.name,
+    meta:     metaFn?.(item) ?? '',
+    extra:    extraFn?.(item),
     backendId: item.id,
   }))
 }
@@ -133,7 +135,10 @@ export function DistrictMaster() {
       <MasterListCard
         title="Districts"
         icon="ph ph-list"
-        records={toRecs(districts, d => d.state_name || '')}
+        records={toRecs(districts, d => d.state_name || '', d => ({
+          'Code':  d.code,
+          'State': d.state_name || '',
+        }))}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
@@ -247,7 +252,12 @@ export function ConstituencyMaster() {
       <MasterListCard
         title="Constituencies"
         icon="ph ph-list"
-        records={toRecs(constituencies, c => `${c.district_name || ''} · ${c.election_type || 'assembly'}`)}
+        records={toRecs(constituencies, c => `${c.district_name || ''} · ${c.election_type || 'assembly'}`, c => ({
+          'Code':          c.code,
+          'District':      c.district_name || '',
+          'Election Type': c.election_type || 'assembly',
+          'Total Booths':  c.total_booths != null ? String(c.total_booths) : '',
+        }))}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onImport={() => setShowImport(true)}
@@ -378,7 +388,11 @@ export function WardMaster() {
       <MasterListCard
         title="Wards"
         icon="ph ph-list"
-        records={toRecs(wards, w => w.constituency_name || '')}
+        records={toRecs(wards, w => w.constituency_name || '', w => ({
+          'Code':          w.code,
+          'Constituency':  w.constituency_name || '',
+          'Description':   w.description || '',
+        }))}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onImport={() => setShowImport(true)}
@@ -496,7 +510,11 @@ export function AreaMaster() {
       <MasterListCard
         title="Blocks"
         icon="ph ph-list"
-        records={toRecs(areas, a => a.description || a.constituency_name || '')}
+        records={toRecs(areas, a => a.description || a.constituency_name || '', a => ({
+          'Code':         a.code,
+          'Constituency': a.constituency_name || '',
+          'Description':  a.description || '',
+        }))}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
@@ -615,7 +633,20 @@ export function BoothMaster() {
       <MasterListCard
         title="Booths"
         icon="ph ph-list"
-        records={toRecs(booths, b => `${b.ward_name || ''} · ${b.total_voters} voters · ${b.status || ''}`.replace(/^ · /, ''))}
+        records={toRecs(booths, b => `${b.ward_name || ''} · ${b.total_voters} voters · ${b.status || ''}`.replace(/^ · /, ''), b => ({
+          'Booth Number':   b.number,
+          'Booth Name':     b.name,
+          'Ward':           b.ward_name || '',
+          'Constituency':   b.constituency_name || '',
+          'Address':        b.address || '',
+          'Total Voters':   String(b.total_voters),
+          'Male Voters':    b.male_voters != null ? String(b.male_voters) : '',
+          'Female Voters':  b.female_voters != null ? String(b.female_voters) : '',
+          'Status':         b.status || '',
+          'Sentiment':      b.sentiment || '',
+          'Primary Agent':  b.agent_name || '',
+          'Notes':          b.notes || '',
+        }))}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onImport={() => setShowImport(true)}
@@ -759,7 +790,11 @@ export function VillageMaster() {
       <MasterListCard
         title="Villages / Wards"
         icon="ph ph-list"
-        records={toRecs(villages, v => v.constituency_name || '')}
+        records={toRecs(villages, v => v.constituency_name || '', v => ({
+          'Code':         v.code,
+          'Constituency': v.constituency_name || '',
+          'Description':  v.description || '',
+        }))}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
@@ -914,7 +949,14 @@ export function SchemeMaster() {
       <MasterListCard
         title="Schemes"
         icon="ph ph-list"
-        records={toRecs(schemes, s => s.scheme_type || '')}
+        records={toRecs(schemes, s => s.scheme_type || '', s => ({
+          'Type':         s.scheme_type || '',
+          'Constituency': s.constituency_name || '',
+          'Description':  s.description || '',
+          'Ministry':     s.responsible_ministry || '',
+          'Launch Date':  s.launch_date || '',
+          'End Date':     s.end_date || '',
+        }))}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onImport={() => setShowImport(true)}
@@ -1051,6 +1093,14 @@ export function AchievementMaster() {
           const wardName  = wards.find(w => w.id === a.ward)?.name   || a.ward_name  || ''
           const boothName = booths.find(b => b.id === a.booth)?.name || a.booth_name || ''
           return [wardName && `Ward: ${wardName}`, boothName && `Booth: ${boothName}`].filter(Boolean).join(' · ')
+        }, a => {
+          const wardName  = wards.find(w => w.id === a.ward)?.name   || a.ward_name  || ''
+          const boothName = booths.find(b => b.id === a.booth)?.name || a.booth_name || ''
+          return {
+            'Ward':        wardName,
+            'Booth':       boothName,
+            'Description': a.description || '',
+          }
         })}
         onEdit={handleEdit}
         onDelete={handleDelete}

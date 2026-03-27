@@ -4,11 +4,12 @@ interface MasterRowProps {
   id:        string
   label:     string
   meta?:     string
+  onView:    (id: string) => void
   onEdit:    (id: string, currentKey: string) => void
   onDelete:  (id: string) => void
 }
 
-export default function MasterRow({ id, label, meta, onEdit, onDelete }: MasterRowProps) {
+export default function MasterRow({ id, label, meta, onView, onEdit, onDelete }: MasterRowProps) {
   return (
     <div className="master-row">
       <div className="flex-1 min-w-0">
@@ -18,6 +19,17 @@ export default function MasterRow({ id, label, meta, onEdit, onDelete }: MasterR
         )}
       </div>
       <div className="flex gap-[6px] flex-shrink-0">
+        <button
+          onClick={() => onView(id)}
+          title="View"
+          className="
+            w-[28px] h-[28px] rounded-md flex items-center justify-center
+            bg-[#e8f4fd] text-[#0e6aad] border-none cursor-pointer text-[13px]
+            hover:bg-[#0e6aad] hover:text-white transition-all duration-150
+          "
+        >
+          <i className="ph ph-eye" />
+        </button>
         <button
           onClick={() => onEdit(id, label)}
           title="Edit"

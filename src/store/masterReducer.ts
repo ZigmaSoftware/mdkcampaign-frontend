@@ -38,6 +38,7 @@ const initialMasterStore: MasterStore = {
   achievement: seed('achievement', []),
   candidate: seed('candidate', []),
   party: seed('party', []),
+  'task-category': seed('task-category', []),
 }
 
 export function masterReducer(state: MasterStore, action: MasterAction): MasterStore {

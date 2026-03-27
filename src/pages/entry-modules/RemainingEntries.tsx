@@ -81,7 +81,7 @@ export function CampaignEntry() {
     team:    useRef<HTMLSelectElement>(null),
     reach:   useRef<HTMLInputElement>(null),
     material:useRef<HTMLInputElement>(null),
-    fav:     useRef<HTMLInputElement>(null),
+    guest:   useRef<HTMLInputElement>(null),
     outcome: useRef<HTMLSelectElement>(null),
     issues:  useRef<HTMLInputElement>(null),
     followup:useRef<HTMLInputElement>(null),
@@ -192,7 +192,7 @@ export function CampaignEntry() {
         <FormRow cols={4}>
           <FormGroup label="Houses / People Reached"><input ref={r.reach} type="number" className={inputCls} placeholder="Count" /></FormGroup>
           <FormGroup label="Materials Used"><input ref={r.material} className={inputCls} placeholder="e.g. 500 pamphlets" /></FormGroup>
-          <FormGroup label="Favourable Response"><input ref={r.fav} type="number" className={inputCls} placeholder="Count" /></FormGroup>
+          <FormGroup label="Special Guest Name"><input ref={r.guest} type="text" className={inputCls} placeholder="Enter guest name" /></FormGroup>
           <FormGroup label="Outcome"><select ref={r.outcome} className={selectCls}><option>Successful</option><option>Partial</option><option>Follow-up Needed</option><option>Not Available</option></select></FormGroup>
         </FormRow>
         <FormRow cols={2}>

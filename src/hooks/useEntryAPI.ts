@@ -139,6 +139,7 @@ interface CampaignEventRecord {
   actual_attendees?: number
   organized_by?: number
   organized_by_name?: string
+  special_guest_name?: string
   attendees?: EventAttendeeRecord[]
   created_at?: string
 }

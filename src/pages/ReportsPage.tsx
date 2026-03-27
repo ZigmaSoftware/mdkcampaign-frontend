@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import SectionHeader from '../components/ui/SectionHeader'
 import Badge from '../components/ui/Badge'
 import { useAnalyticsAPI } from '../hooks/useAnalyticsAPI'
-import type { WardStat } from '../hooks/useAnalyticsAPI'
+import type { WardStat, BoothStat } from '../hooks/useAnalyticsAPI'
 import { useToast } from '../context/ToastContext'
 
 const PAGE_SIZE = 10
@@ -129,16 +129,23 @@ export default function ReportsPage() {
   const api = useAnalyticsAPI()
   const { showToast } = useToast()
 
-  const [villageData, setVillages] = useState<WardStat[]>([])
-  const [search,    setSearch]     = useState('')
-  const [loading,   setLoad]       = useState(true)
-  const [fixing,    setFixing]     = useState(false)
+  const [villageData, setVillages]   = useState<WardStat[]>([])
+  const [boothData,   setBooths]     = useState<BoothStat[]>([])
+  const [search,      setSearch]     = useState('')
+  const [boothSearch, setBoothSearch] = useState('')
+  const [loading,     setLoad]       = useState(true)
+  const [boothLoading, setBoothLoad] = useState(true)
+  const [fixing,      setFixing]     = useState(false)
 
   const reload = () => {
     setLoad(true)
+    setBoothLoad(true)
     api.fetchWardStats()
       .then(w => setVillages(w))
       .finally(() => setLoad(false))
+    api.fetchBoothStats()
+      .then(b => setBooths(b))
+      .finally(() => setBoothLoad(false))
   }
 
   useEffect(() => { reload() }, [])
@@ -160,14 +167,35 @@ export default function ReportsPage() {
   const villageTotalVoters = villageData.reduce((s, w) => s + (w.total_voters || 0), 0)
   const showFixButton = !loading && villageData.length > 0 && villageTotalVoters === 0
 
-  /* ── filtered set ───────────────────────────────────────────────── */
+  /* ── filtered sets ──────────────────────────────────────────────── */
   const filteredVillages = villageData.filter(w =>
     !search.trim() ||
     w.name.toLowerCase().includes(search.toLowerCase()) ||
     (w.constituency_name || '').toLowerCase().includes(search.toLowerCase())
   )
 
-  /* ── CSV export ─────────────────────────────────────────────────── */
+  const filteredBooths = boothData.filter(b =>
+    !boothSearch.trim() ||
+    (b.name || '').toLowerCase().includes(boothSearch.toLowerCase()) ||
+    (b.number || '').toLowerCase().includes(boothSearch.toLowerCase()) ||
+    (b.ward_name || '').toLowerCase().includes(boothSearch.toLowerCase())
+  )
+
+  /* ── CSV exports ─────────────────────────────────────────────────── */
+  const exportBooths = () => {
+    if (!boothData.length) return
+    const rows = [
+      ['#', 'Booth No', 'Booth Name', 'Ward', 'Total Voters', 'Contacted', 'Coverage %'],
+      ...boothData.map((b, i) => [
+        String(i + 1), b.number || '', b.name || '', b.ward_name || '',
+        String(b.total_voters), String(b.voters_contacted), String(b.coverage_percentage),
+      ]),
+    ]
+    downloadCsv(rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n'),
+      `BJP_BoothWise_${new Date().toISOString().slice(0, 10)}.csv`)
+    showToast('<i class="ph ph-file-csv"></i> Booth report exported!', '#138808')
+  }
+
   const exportVillages = () => {
     if (!villageData.length) return
     const rows = [['#', 'Village', 'Constituency', 'Booths', 'Total Voters', 'Contacted', 'Coverage %'],
@@ -227,7 +255,52 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {/* Table card */}
+      {/* Booth-wise table card */}
+      <div className="bg-surface rounded-card shadow-card overflow-hidden mb-5">
+        <div className="bg-navy px-[18px] py-[11px] flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 text-white text-[11px] font-bold tracking-[0.6px] uppercase">
+            <i className="ph ph-map-pin mr-1" /> Booth-wise
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge
+              label={`${filteredBooths.length}${filteredBooths.length !== boothData.length ? `/${boothData.length}` : ''} Booths`}
+              variant="s"
+            />
+            <button
+              onClick={exportBooths}
+              className="inline-flex items-center gap-1 px-[10px] py-[3px] text-[9px] font-bold
+                         tracking-[0.6px] uppercase rounded border border-kampgreen/60
+                         bg-kampgreen-light text-kampgreen-dark hover:bg-kampgreen hover:text-white transition-all"
+            >
+              <i className="ph ph-file-csv" /> Export
+            </button>
+          </div>
+        </div>
+        <div className="px-[18px] py-[14px]">
+          <div className="relative mb-3">
+            <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-[13px] pointer-events-none" />
+            <input
+              type="text" value={boothSearch}
+              onChange={e => setBoothSearch(e.target.value)}
+              placeholder="Search booth number, name or ward…"
+              className="form-input pl-8 py-[5px] text-[11px] w-full max-w-[360px]"
+            />
+            {boothSearch && (
+              <button onClick={() => setBoothSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-[12px] hover:text-kampr">
+                <i className="ph ph-x" />
+              </button>
+            )}
+          </div>
+          {boothLoading ? (
+            <p className="text-muted text-[11px] text-center py-10 italic">Loading data…</p>
+          ) : (
+            <BoothTable rows={filteredBooths} />
+          )}
+        </div>
+      </div>
+
+      {/* Village-wise table card */}
       <div className="bg-surface rounded-card shadow-card overflow-hidden">
         <div className="bg-navy px-[18px] py-[11px] flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 text-white text-[11px] font-bold tracking-[0.6px] uppercase">
@@ -280,6 +353,83 @@ export default function ReportsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+/* ── Booth table ─────────────────────────────────────────────────── */
+type BoothSortKey = 'number' | 'name' | 'ward_name' | 'total_voters' | 'voters_contacted' | 'coverage_percentage'
+
+function BoothTable({ rows }: { rows: BoothStat[] }) {
+  const [page, setPage]       = useState(1)
+  const [sortKey, setSortKey] = useState<BoothSortKey>('number')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  useEffect(() => { setPage(1) }, [rows])
+
+  const handleSort = (k: string) => {
+    if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(k as BoothSortKey); setSortDir('asc') }
+    setPage(1)
+  }
+
+  const sorted = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const av = a[sortKey] ?? 0
+      const bv = b[sortKey] ?? 0
+      const cmp = typeof av === 'string' ? av.localeCompare(bv as string) : (av as number) - (bv as number)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [rows, sortKey, sortDir])
+
+  if (!sorted.length) return (
+    <p className="text-muted text-[11px] text-center py-8 italic">No booth data found.</p>
+  )
+
+  const paged        = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const grandTotal   = rows.reduce((s, b) => s + (b.total_voters    || 0), 0)
+  const grandContact = rows.reduce((s, b) => s + (b.voters_contacted || 0), 0)
+  const thProps      = { sortKey, sortDir, onSort: handleSort }
+
+  return (
+    <>
+      <div className="overflow-x-auto">
+        <table className="data-table w-full text-[11px]">
+          <thead>
+            <tr>
+              <th className="w-8">#</th>
+              <Th label="Booth No"     colKey="number"              {...thProps} />
+              <Th label="Booth Name"   colKey="name"                {...thProps} />
+              <Th label="Ward"         colKey="ward_name"           {...thProps} />
+              <Th label="Total Voters" colKey="total_voters"        {...thProps} className="text-right" />
+              <Th label="Contacted"    colKey="voters_contacted"    {...thProps} className="text-right" />
+              <Th label="Coverage"     colKey="coverage_percentage" {...thProps} />
+            </tr>
+          </thead>
+          <tbody>
+            {paged.map((b, i) => (
+              <tr key={b.id}>
+                <td className="text-muted">{(page - 1) * PAGE_SIZE + i + 1}</td>
+                <td className="font-bold text-navy">{b.number || '—'}</td>
+                <td>{b.name || '—'}</td>
+                <td className="text-muted">{b.ward_name || '—'}</td>
+                <td className="text-right">{(b.total_voters || 0).toLocaleString()}</td>
+                <td className="text-right">{(b.voters_contacted || 0).toLocaleString()}</td>
+                <td className="min-w-[130px]"><PctBar pct={b.coverage_percentage || 0} /></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="font-bold bg-navy-light">
+              <td colSpan={4} className="text-right text-[10px] uppercase tracking-wider text-muted">Grand Total</td>
+              <td className="text-right text-navy">{grandTotal.toLocaleString()}</td>
+              <td className="text-right text-navy">{grandContact.toLocaleString()}</td>
+              <td />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <Pagination page={page} total={sorted.length} onChange={setPage} />
+    </>
   )
 }
 

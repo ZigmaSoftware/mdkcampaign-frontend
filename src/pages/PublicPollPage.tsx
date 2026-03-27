@@ -132,25 +132,56 @@ export default function PublicPollPage() {
     <div style={{ minHeight:'100vh', background:'#f5f5f5', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'0 0 32px', fontFamily:F, color:'#111' }}>
     
 
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;600;700;800&family=Barlow+Condensed:wght@600;700;800;900&family=Rajdhani:wght@600;700&display=swap');
-        .mk-blink { animation: mkBlink 1.5s ease-in-out infinite; }
-        @keyframes mkBlink { 0%,100%{opacity:1;} 50%{opacity:.3;} }
-        .mk-opt   { cursor: pointer; transition: background 0.15s; user-select: none; }
-        .mk-opt:hover { background: #fff8f0 !important; }
-        .mk-btn   { cursor: pointer; transition: transform 0.15s; }
-        .mk-btn:active { transform: scale(.97); }
-      `}</style>
+<style>{`
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;600;700;800&family=Barlow+Condensed:wght@600;700;800;900&family=Rajdhani:wght@600;700&display=swap');
+
+  .mk-blink { animation: mkBlink 1.5s ease-in-out infinite; }
+
+  @keyframes mkBlink {
+    0%,100% { opacity:1; }
+    50%     { opacity:.3; }
+  }
+
+  .mk-opt {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+
+  /* Blue hover */
+  .mk-opt:hover {
+    background: #eef5ff !important;
+  }
+
+  /* Selected state (add this class dynamically if needed) */
+  .mk-opt.active {
+    background: #e3edff !important;
+  }
+
+  /* Button */
+  .mk-btn {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .mk-btn:active {
+    transform: scale(.97);
+  }
+
+  /* Optional: blue glow on hover */
+  .mk-btn:hover {
+    box-shadow: 0 4px 12px rgba(13,110,253,0.25);
+  }
+`}</style>
       <div style={{ width:'100%', maxWidth:520, boxShadow:'0 4px 32px rgba(0,0,0,.13)' }}>
 
       
-
         {/* Channel bar */}
-        <div style={{ background:'linear-gradient(90deg,#fff7ee,#fff3e0,#fff7ee)', borderBottom:'3px solid #FF9933', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ background:'linear-gradient(90deg, #eef5ff, #e3edff, #eef5ff)', borderBottom:'3px solid #0d6efd', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div className="mk-blink" style={{ width:12, height:12, borderRadius:'50%', background:'#FF9933', flexShrink:0 }} />
+            <div className="mk-blink" style={{ width:12, height:12, borderRadius:'50%', background:'#0d6efd', flexShrink:0 }} />
             <div>
-              <div style={{ fontSize:23, fontWeight:900, letterSpacing:2, color:'#e06500' }}>மக்கள் பார்வை  
+              <div style={{ fontSize:23, fontWeight:900, letterSpacing:2, color:'#0d6efd' }}>மக்கள் பார்வை  
        
                 </div>
               <div style={{ fontFamily:TA, fontSize:15, fontWeight:900, color:'#888', letterSpacing:1, marginTop:1 }}>PEOPLE VIEW · OPINION POLL</div>
@@ -163,10 +194,10 @@ export default function PublicPollPage() {
         </div>
 
         {/* Headline strip */}
-        <div style={{ background:'linear-gradient(90deg,#FF9933,#e06500)', padding:'8px 16px', display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ background:'#cc0000', color:'#fff', fontSize:10, fontWeight:900, letterSpacing:2, padding:'3px 8px', borderRadius:2, flexShrink:0, fontFamily:TA }}>கருத்து கணிப்பு</div>
+        <div style={{ background:'linear-gradient(90deg, #0d6efd, #084298)', padding:'8px 16px', display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ background:'#a7a7a7f3', color:'#fff', fontSize:10, fontWeight:900, letterSpacing:2, padding:'3px 8px', borderRadius:2, flexShrink:0, fontFamily:TA }}>கருத்து கணிப்பு</div>
           <div style={{ fontFamily:TA, fontSize:13, fontWeight:700, color:'#fff', lineHeight:1.3 }}>
-            மொடக்குறிச்சி தொகுதியில் யார் வெல்வார்கள்? — <span style={{ color:'#fff3e0' }}>Who will win Constituency 100?</span>
+            மொடக்குறிச்சி தொகுதியில் யார் வெல்வார்கள்? — <span style={{ color:'#e3edff' }}>Who will win Constituency 100?</span>
           </div>
         </div>
 
@@ -185,8 +216,8 @@ export default function PublicPollPage() {
         {/* Q1 question + options */}
         {poll && !voted && (
           <>
-            <div style={{ background:'#fff8f0', padding:'14px 16px 8px', borderBottom:'1px solid #ffe0b2' }}>
-              <div style={{ fontSize:10, color:'#FF9933', fontWeight:700, letterSpacing:2, marginBottom:6 }}>கேள்வி 1 · QUESTION 1</div>
+            <div style={{ background:'#eef5ff', padding:'14px 16px 8px', borderBottom:'1px solid #cfe2ff' }}>
+              <div style={{ fontSize:10, color:'#0d6efd', fontWeight:700, letterSpacing:2, marginBottom:6 }}>கேள்வி 1 · QUESTION 1</div>
               <div style={{ fontFamily:TA, fontSize:16, fontWeight:700, color:'#1a1a1a', lineHeight:1.4, marginBottom:4 }}>
                 இந்த தேர்தலில் நீங்கள் யாருக்கு வாக்களிப்பீர்கள்?
               </div>
@@ -199,7 +230,7 @@ export default function PublicPollPage() {
                 return (
                   <div key={opt.id} className="mk-opt"
                     onClick={() => setSelId(opt.id)}
-                    style={{ padding:'10px 0', borderBottom:'1px solid #f5e6d0', background: isSel ? '#fff8f0' : '#fff' }}>
+                    style={{ padding:'10px 0', borderBottom:'1px solid #f5e6d0', background: isSel ? '#eef5ff' : '#fff' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, padding:'0 16px' }}>
                       <div style={{ width:4, flexShrink:0, alignSelf:'stretch', borderRadius:2, minHeight:44, background: s.strip }} />
                       <div style={{ width:36, height:36, flexShrink:0, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}` }}>
@@ -220,7 +251,7 @@ export default function PublicPollPage() {
                 )
               })}
             </div>
-            <div style={{ padding:'14px 16px', background:'#fff', borderTop:'1px solid #ffe0b2' }}>
+            <div style={{ padding:'14px 16px', background:'#fff', borderTop:'1px solid #cfe2ff' }}>
               <button className="mk-btn" onClick={submit} disabled={selId === null || busy}
                 style={{ width:'100%', padding:14, border:'none', borderRadius:6, fontFamily:F, fontSize:16, fontWeight:900, letterSpacing:2, background: selId !== null ? 'linear-gradient(135deg,#FF9933,#e06500)' : '#e0e0e0', color: selId !== null ? '#fff' : '#aaa', cursor: selId !== null ? 'pointer' : 'default', display:'flex', alignItems:'center', justifyContent:'center' }}>
                 {selId !== null ? 'வாக்களிக்கவும் / SUBMIT VOTE →' : 'முதலில் ஒரு கட்சியை தேர்வு செய்யுங்கள்'}
@@ -239,7 +270,7 @@ export default function PublicPollPage() {
           return (
             <div style={{ background:'#fff', borderTop:'3px solid #FF9933' }}>
               {/* Thank you banner */}
-              <div style={{ background:'linear-gradient(135deg,#fff8f0,#fff3e0)', padding:'28px 20px 20px', textAlign:'center', borderBottom:'1px solid #ffe0b2' }}>
+              <div style={{ background:'linear-gradient(135deg,#eef5ff,#e3edff)', padding:'28px 20px 20px', textAlign:'center', borderBottom:'1px solid #cfe2ff' }}>
                 <div style={{ fontSize:44, marginBottom:6, lineHeight:1 }}>🎉</div>
                 <div style={{ fontSize:26, fontWeight:900, letterSpacing:2, color:'#e06500', marginBottom:4 }}>
                   {alreadyVoted ? 'ALREADY VOTED' : 'THANK YOU!'}
@@ -258,7 +289,7 @@ export default function PublicPollPage() {
               {votedOpt && s && (
                 <div style={{ padding:'14px 16px', borderBottom:'1px solid #f5e6d0' }}>
                   <div style={{ fontSize:9, fontWeight:700, letterSpacing:2, color:'#aaa', marginBottom:8, textAlign:'center' }}>YOU VOTED FOR · நீங்கள் வாக்களித்தது</div>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, background:'#fff8f0', border:`1.5px solid ${s.border}`, borderRadius:8, padding:'10px 14px' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, background:'#eef5ff', border:`1.5px solid ${s.border}`, borderRadius:8, padding:'10px 14px' }}>
                     <div style={{ width:4, alignSelf:'stretch', borderRadius:2, minHeight:40, background:s.strip, flexShrink:0 }} />
                     <div style={{ width:40, height:40, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}`, flexShrink:0 }}>
                       {s.logo
@@ -289,7 +320,7 @@ export default function PublicPollPage() {
         })()}
 
         {/* Share bar */}
-        <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #ffe0b2' }}>
+        <div style={{ padding:'12px 16px', background:'#fff', borderTop:'1px solid #cfe2ff' }}>
           <div style={{ fontSize:10, color:'#aaa', fontWeight:700, letterSpacing:1.5, textAlign:'center', marginBottom:6, fontFamily:F }}>SHARE THIS POLL</div>
           {/* <div style={{ textAlign:'center', marginBottom:8 }}>
             <a href={shareUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:'#FF9933', fontFamily:'monospace', wordBreak:'break-all', textDecoration:'underline' }}>{shareUrl}</a>

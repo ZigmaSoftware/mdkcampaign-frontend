@@ -62,6 +62,10 @@ interface Achievement {
   id: number; name: string; description?: string; ward?: number; ward_name?: string; booth?: number; booth_name?: string
 }
 
+interface TaskCategory {
+  id: number; name: string; description?: string; color?: string; icon?: string; priority?: number
+}
+
 export function useMasterAPI() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -201,6 +205,16 @@ export function useMasterAPI() {
   const deleteAchievement  = useCallback((id: number) =>
     deleteOne(`/masters/achievements/${id}/`), [deleteOne])
 
+  // ── Task Categories ───────────────────────────────────────────
+  const fetchTaskCategories = useCallback(() =>
+    getList<TaskCategory>('/masters/task-categories/'), [getList])
+  const createTaskCategory  = useCallback((d: Partial<TaskCategory>) =>
+    createOne<TaskCategory>('/masters/task-categories/', d), [createOne])
+  const updateTaskCategory  = useCallback((id: number, d: Partial<TaskCategory>) =>
+    updateOne<TaskCategory>(`/masters/task-categories/${id}/`, d), [updateOne])
+  const deleteTaskCategory  = useCallback((id: number) =>
+    deleteOne(`/masters/task-categories/${id}/`), [deleteOne])
+
   // ── Bulk upload (shared) ──────────────────────────────────────
   const bulkUpload = useCallback(async (
     endpoint: string,
@@ -239,11 +253,12 @@ export function useMasterAPI() {
     fetchCandidates, createCandidate, updateCandidate, deleteCandidate,
     fetchSchemes, createScheme, updateScheme, deleteScheme,
     fetchAchievements, createAchievement, updateAchievement, deleteAchievement,
+    fetchTaskCategories, createTaskCategory, updateTaskCategory, deleteTaskCategory,
     fetchVolunteerNames,
     bulkUpload,
   }
 }
 
 export type Village = Ward
-export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, VolunteerName }
+export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, TaskCategory, VolunteerName }
 export type UseMasterAPIReturn = ReturnType<typeof useMasterAPI>

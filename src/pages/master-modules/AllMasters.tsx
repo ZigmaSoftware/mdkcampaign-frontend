@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party } from '../../hooks/useMasterAPI'
+import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory } from '../../hooks/useMasterAPI'
 import type { MasterRecord } from '../../types/master.types'
 import MasterListCard from '../../components/masters/MasterListCard'
 import FormRow from '../../components/entry/FormRow'
@@ -1266,6 +1266,139 @@ export function PartyMaster() {
           <FormGroup label="Party Color (Secondary)"><input ref={r.color2} className={inputCls} defaultValue="#0D2455 (Navy)" /></FormGroup>
         </FormRow>
         <FormActions onSave={handleSave} onClear={() => {}} saveLabel="Save Party Details" />
+      </FormSection>
+    </div>
+  )
+}
+
+/* ── TASK CATEGORY MASTER ─────────────────────────────────────────── */
+export function TaskCategoryMaster() {
+  const api = useMasterAPI()
+  const { showToast } = useToast()
+  const nameRef  = useRef<HTMLInputElement>(null)
+  const descRef  = useRef<HTMLTextAreaElement>(null)
+  const colorRef = useRef<HTMLInputElement>(null)
+  const iconRef  = useRef<HTMLInputElement>(null)
+  const prioRef  = useRef<HTMLInputElement>(null)
+  const [categories, setCategories] = useState<TaskCategory[]>([])
+  const [editing, setEditing]       = useState<TaskCategory | null>(null)
+
+  useEffect(() => {
+    api.fetchTaskCategories().then(d => d && setCategories(d))
+  }, [])
+
+  const clearFields = () => {
+    ;[nameRef, colorRef, iconRef, prioRef].forEach(r => { if (r.current) r.current.value = '' })
+    if (descRef.current) descRef.current.value = ''
+    setEditing(null)
+  }
+
+  const handleSave = async () => {
+    const name = nameRef.current?.value.trim() ?? ''
+    if (!name) { showToast('<i class="ph ph-warning"></i> Category name is required!', '#dc2626'); return }
+    const payload: Partial<TaskCategory> = {
+      name,
+      description: descRef.current?.value.trim() || undefined,
+      color:    colorRef.current?.value.trim() || undefined,
+      icon:     iconRef.current?.value.trim()  || undefined,
+      priority: prioRef.current?.value ? parseInt(prioRef.current.value) : 0,
+    }
+    if (editing) {
+      const updated = await api.updateTaskCategory(editing.id, payload)
+      if (updated) {
+        setCategories(prev => prev.map(c => c.id === editing.id ? { ...c, ...updated } : c))
+        showToast('<i class="ph ph-check-circle"></i> Category updated!', '#138808')
+      }
+      clearFields()
+    } else {
+      const created = await api.createTaskCategory(payload)
+      if (created) {
+        setCategories(prev => [...prev, created])
+        showToast('<i class="ph ph-check-circle"></i> Category saved!', '#138808')
+      }
+      clearFields()
+    }
+  }
+
+  const handleEdit = (id: string) => {
+    const c = categories.find(c => String(c.id) === id)
+    if (!c) return
+    setEditing(c)
+    if (nameRef.current)  nameRef.current.value  = c.name
+    if (descRef.current)  descRef.current.value  = c.description || ''
+    if (colorRef.current) colorRef.current.value = c.color || ''
+    if (iconRef.current)  iconRef.current.value  = c.icon  || ''
+    if (prioRef.current)  prioRef.current.value  = String(c.priority ?? 0)
+  }
+
+  const handleDelete = (id: string) => {
+    const c = categories.find(c => String(c.id) === id)
+    if (!c || !window.confirm('Delete this category?')) return
+    api.deleteTaskCategory(c.id).then(ok => {
+      if (ok) {
+        setCategories(prev => prev.filter(x => x.id !== c.id))
+        showToast('<i class="ph ph-trash"></i> Category deleted.', '#dc2626')
+      }
+    })
+  }
+
+  const recs: MasterRecord[] = categories.map(c => ({
+    id:       String(c.id),
+    key:      c.name,
+    meta:     [c.description, c.color].filter(Boolean).join(' · '),
+    backendId: c.id,
+  }))
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 page-enter">
+      <FormSection
+        title={editing ? 'Edit Task Category' : 'Add Task Category'}
+        icon="ph ph-tag"
+        badge={editing ? (
+          <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+            + New
+          </button>
+        ) : undefined}
+      >
+        <FormRow cols={2}>
+          <FormGroup label="Category Name" required>
+            <input ref={nameRef} className={inputCls} placeholder="e.g. Logistics" />
+          </FormGroup>
+          <FormGroup label="Priority (lower = first)">
+            <input ref={prioRef} type="number" className={inputCls} placeholder="0" defaultValue="0" min="0" />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={2}>
+          <FormGroup label="Colour (hex)" >
+            <input ref={colorRef} className={inputCls} placeholder="#FF9933" maxLength={7} />
+          </FormGroup>
+          <FormGroup label="Icon (Phosphor class)">
+            <input ref={iconRef} className={inputCls} placeholder="ph-truck" />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={1}>
+          <FormGroup label="Description">
+            <textarea ref={descRef} className={textareaCls} placeholder="Short description of this category..." />
+          </FormGroup>
+        </FormRow>
+        <FormActions
+          onSave={handleSave}
+          onClear={clearFields}
+          saveLabel={editing ? 'Update Category' : 'Save Category'}
+          isEditing={!!editing}
+        />
+      </FormSection>
+
+      <FormSection title="Task Categories" icon="ph ph-list-bullets" badge={
+        <span className="text-[9px] font-bold text-white/70">{categories.length} categories</span>
+      }>
+        <MasterListCard
+          title="Task Categories"
+          icon="ph ph-tag"
+          records={recs}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
       </FormSection>
     </div>
   )

@@ -41,3 +41,4 @@ export type MasterModuleId =
   | 'achievement'
   | 'candidate'
   | 'party'
+  | 'task-category'

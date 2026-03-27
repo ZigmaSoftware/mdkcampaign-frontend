@@ -148,6 +148,9 @@ interface TaskRecord {
   id: number
   title: string
   category: string
+  task_category?: number | null
+  task_category_name?: string
+  task_category_color?: string
   details?: string
   expected_datetime: string
   venue?: string
@@ -184,7 +187,7 @@ interface UseEntryAPIReturn {
   createCampaignEvent: (eventData: Partial<CampaignEventRecord>) => Promise<CampaignEventRecord | null>
   updateCampaignEvent: (eventId: number, eventData: Partial<CampaignEventRecord>) => Promise<CampaignEventRecord | null>
   // Tasks
-  fetchTasks: () => Promise<TaskRecord[] | null>
+  fetchTasks: (filters?: { date_from?: string; date_to?: string; task_category?: number }) => Promise<TaskRecord[] | null>
   createTask: (data: Partial<TaskRecord>) => Promise<TaskRecord | null>
   updateTask: (id: number, data: Partial<TaskRecord>) => Promise<TaskRecord | null>
   deleteTask: (id: number) => Promise<boolean>
@@ -459,10 +462,14 @@ export function useEntryAPI(): UseEntryAPIReturn {
 
   // ==================== TASKS ====================
 
-  const fetchTasks = useCallback(async (): Promise<TaskRecord[] | null> => {
+  const fetchTasks = useCallback(async (
+    filters?: { date_from?: string; date_to?: string; task_category?: number }
+  ): Promise<TaskRecord[] | null> => {
     setLoading(true); setError(null)
     try {
-      const { data } = await apiClient.get<ApiResponse<TaskRecord>>('/campaigns/tasks/', { params: { limit: 1000 } })
+      const { data } = await apiClient.get<ApiResponse<TaskRecord>>('/campaigns/tasks/', {
+        params: { limit: 1000, ...filters },
+      })
       return data.results || []
     } catch (err) { handleError(err, 'fetch tasks'); return null }
     finally { setLoading(false) }

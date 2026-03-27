@@ -1,9 +1,11 @@
-import React, { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { TaskRecord } from '../../hooks/useEntryAPI'
 import type { RecordTag } from '../../components/entry/RecordItem'
 import { useUserAPI } from '../../hooks/usePollAPI'
 import type { UserRecord } from '../../hooks/usePollAPI'
+import { useMasterAPI } from '../../hooks/useMasterAPI'
+import type { TaskCategory } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
 import RecordList from '../../components/entry/RecordList'
@@ -18,19 +20,6 @@ import type { EntryRecord } from '../../types/entry.types'
 
 const FORM_ID = 'task-form'
 
-const CATEGORY_OPTIONS: { value: string; label: string }[] = [
-  { value: 'material_preparation', label: 'Material Preparation' },
-  { value: 'distribution',         label: 'Distribution' },
-  { value: 'event_coordination',   label: 'Event Coordination' },
-  { value: 'voter_outreach',       label: 'Voter Outreach' },
-  { value: 'social_media',         label: 'Social Media' },
-  { value: 'logistics',            label: 'Logistics' },
-  { value: 'communication',        label: 'Communication' },
-  { value: 'data_entry',           label: 'Data Entry' },
-  { value: 'finance',              label: 'Finance' },
-  { value: 'other',                label: 'Other' },
-]
-
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'pending',     label: 'Pending' },
   { value: 'in_progress', label: 'In Progress' },
@@ -38,37 +27,43 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'cancelled',   label: 'Cancelled' },
 ]
 
-const STATUS_LABEL: Record<string, string> = Object.fromEntries(
-  STATUS_OPTIONS.map(s => [s.value, s.label])
-)
-const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
-  CATEGORY_OPTIONS.map(c => [c.value, c.label])
-)
-
 function userName(u: UserRecord) {
   return u.full_name?.trim() || `${u.first_name} ${u.last_name}`.trim() || u.username
 }
 
 export default function EventEntry() {
-  const api     = useEntryAPI()
-  const userApi = useUserAPI()
+  const api       = useEntryAPI()
+  const userApi   = useUserAPI()
+  const masterApi = useMasterAPI()
   const { showToast } = useToast()
 
-  const [tasks,   setTasks]   = useState<TaskRecord[]>([])
-  const [users,   setUsers]   = useState<UserRecord[]>([])
-  const [editing, setEditing] = useState<TaskRecord | null>(null)
-  const [isFormOpen, setFormOpen] = useState(false)
-  const [search,  setSearch]  = useState('')
+  const [tasks,      setTasks]      = useState<TaskRecord[]>([])
+  const [users,      setUsers]      = useState<UserRecord[]>([])
+  const [categories, setCategories] = useState<TaskCategory[]>([])
+  const [editing,    setEditing]    = useState<TaskRecord | null>(null)
+  const [isFormOpen, setFormOpen]   = useState(false)
+  const [search,     setSearch]     = useState('')
+
+  // Date filter
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo,   setDateTo]   = useState('')
 
   // status state to conditionally show completed datetime
   const [statusVal, setStatusVal] = useState('pending')
   const pendingCompletedAt = useRef<string>('')
-
   const pendingFill = useRef<TaskRecord | null>(null)
 
+  const loadTasks = (from = dateFrom, to = dateTo) => {
+    const filters: Record<string, string> = {}
+    if (from) filters.date_from = from
+    if (to)   filters.date_to   = to
+    api.fetchTasks(filters).then(d => d && setTasks(d))
+  }
+
   useEffect(() => {
-    api.fetchTasks().then(d => d && setTasks(d))
+    loadTasks()
     userApi.fetchUsers().then(d => d && setUsers(d))
+    masterApi.fetchTaskCategories().then(d => d && setCategories(d))
   }, [])
 
   useEffect(() => {
@@ -87,7 +82,7 @@ export default function EventEntry() {
 
   const r = {
     title:     useRef<HTMLInputElement>(null),
-    category:  useRef<HTMLSelectElement>(null),
+    taskCat:   useRef<HTMLSelectElement>(null),
     details:   useRef<HTMLTextAreaElement>(null),
     expected:  useRef<HTMLInputElement>(null),
     venue:     useRef<HTMLInputElement>(null),
@@ -99,10 +94,9 @@ export default function EventEntry() {
   }
 
   const fill = (t: TaskRecord) => {
-    if (r.title.current)    r.title.current.value    = t.title
-    if (r.category.current) r.category.current.value = t.category || ''
-    if (r.details.current)  r.details.current.value  = t.details || ''
-    // datetime-local expects "YYYY-MM-DDTHH:MM"
+    if (r.title.current)   r.title.current.value   = t.title
+    if (r.taskCat.current) r.taskCat.current.value = t.task_category ? String(t.task_category) : ''
+    if (r.details.current) r.details.current.value = t.details || ''
     if (r.expected.current) r.expected.current.value = t.expected_datetime
       ? t.expected_datetime.slice(0, 16) : ''
     if (r.venue.current)    r.venue.current.value    = t.venue || ''
@@ -112,7 +106,7 @@ export default function EventEntry() {
     const sv = t.status || 'pending'
     pendingCompletedAt.current = t.completed_datetime ? t.completed_datetime.slice(0, 16) : ''
     setStatusVal(sv)
-    if (r.notes.current)    r.notes.current.value    = t.notes || ''
+    if (r.notes.current) r.notes.current.value = t.notes || ''
   }
 
   const clear = () => {
@@ -125,9 +119,10 @@ export default function EventEntry() {
     const title = r.title.current?.value.trim() ?? ''
     if (!title) { showToast('<i class="ph ph-warning"></i> Task title is required.', '#dc2626'); return }
 
+    const taskCatId = r.taskCat.current?.value ? Number(r.taskCat.current.value) : null
     const payload: Partial<TaskRecord> = {
       title,
-      category:          r.category.current?.value  || 'other',
+      task_category:     taskCatId,
       details:           r.details.current?.value   || '',
       expected_datetime: r.expected.current?.value  || new Date().toISOString(),
       venue:             r.venue.current?.value     || '',
@@ -137,7 +132,7 @@ export default function EventEntry() {
       status:            statusVal,
       completed_datetime: statusVal === 'completed' && r.completed.current?.value
         ? r.completed.current.value : null,
-      notes:             r.notes.current?.value     || '',
+      notes: r.notes.current?.value || '',
     }
 
     if (editing) {
@@ -145,21 +140,18 @@ export default function EventEntry() {
       if (updated) {
         setTasks(prev => prev.map(t => t.id === editing.id ? { ...t, ...updated } : t))
         showToast('<i class="ph ph-check-circle"></i> Task updated!', '#138808')
-        setEditing(null)
-        setFormOpen(false)
-        clear()
+        setEditing(null); setFormOpen(false); clear()
       } else {
-        showToast('<i class="ph ph-x-circle"></i> Failed to update task. Please check all required fields.', '#dc2626')
+        showToast('<i class="ph ph-x-circle"></i> Failed to update task.', '#dc2626')
       }
     } else {
       const created = await api.createTask(payload)
       if (created) {
         setTasks(prev => [...prev, created])
         showToast('<i class="ph ph-check-circle"></i> Task saved!', '#138808')
-        setFormOpen(false)
-        clear()
+        setFormOpen(false); clear()
       } else {
-        showToast('<i class="ph ph-x-circle"></i> Failed to save task. Please check all required fields.', '#dc2626')
+        showToast('<i class="ph ph-x-circle"></i> Failed to save task.', '#dc2626')
       }
     }
     clear()
@@ -184,26 +176,29 @@ export default function EventEntry() {
     }
   }
 
+  // Build category lookup map from dynamic categories
+  const categoryMap = Object.fromEntries(categories.map(c => [String(c.id), c.name]))
+
   const mapTask = (t: TaskRecord): EntryRecord => ({
     id:       String(t.id),
     keyField: t.title,
     sub: [
-      CATEGORY_LABEL[t.category] || t.category,
+      t.task_category_name || categoryMap[String(t.task_category)] || t.category || '',
       t.expected_datetime ? t.expected_datetime.slice(0, 10) : '—',
       t.delivery_incharge_name ? `Incharge: ${t.delivery_incharge_name}` : '',
       t.coordinator_name       ? `Coord: ${t.coordinator_name}`          : '',
     ].filter(Boolean).join(' · '),
     data: {
-      category:               t.category,
+      task_category:          String(t.task_category ?? ''),
       status:                 t.status,
-      expected_datetime:      t.expected_datetime        || '',
-      venue:                  t.venue                    || '',
+      expected_datetime:      t.expected_datetime    || '',
+      venue:                  t.venue                || '',
       qty:                    t.qty != null ? String(t.qty) : '',
-      delivery_incharge:      t.delivery_incharge_name   || '',
-      coordinator:            t.coordinator_name         || '',
-      details:                t.details                  || '',
-      completed_datetime:     t.completed_datetime       || '',
-      notes:                  t.notes                    || '',
+      delivery_incharge:      t.delivery_incharge_name || '',
+      coordinator:            t.coordinator_name       || '',
+      details:                t.details                || '',
+      completed_datetime:     t.completed_datetime     || '',
+      notes:                  t.notes                  || '',
     },
     createdAt: t.created_at || '',
     backendId: t.id,
@@ -213,15 +208,19 @@ export default function EventEntry() {
     .filter(t => {
       if (!search.trim()) return true
       const q = search.toLowerCase()
+      const catName = (t.task_category_name || categoryMap[String(t.task_category)] || '').toLowerCase()
       return (
         t.title.toLowerCase().includes(q) ||
         (t.venue || '').toLowerCase().includes(q) ||
-        CATEGORY_LABEL[t.category]?.toLowerCase().includes(q)
+        catName.includes(q)
       )
     })
     .map<EntryRecord>(mapTask)
 
   const allTaskRecords = tasks.map<EntryRecord>(mapTask)
+
+  // Dynamic filter options from API categories
+  const categoryFilterOptions = categories.map(c => ({ value: String(c.id), label: c.name }))
 
   const getTaskTag = (rec: EntryRecord): RecordTag | undefined => {
     const { status, expected_datetime } = rec.data
@@ -238,6 +237,12 @@ export default function EventEntry() {
     return { label: 'Pending', bg: '#f1f5f9', color: '#64748b' }
   }
 
+  const handleApplyDateFilter = () => loadTasks(dateFrom, dateTo)
+  const handleClearDateFilter = () => {
+    setDateFrom(''); setDateTo('')
+    api.fetchTasks({}).then(d => d && setTasks(d))
+  }
+
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
@@ -249,6 +254,48 @@ export default function EventEntry() {
           addLabel="Add Task"
         />
         <div className="px-[18px] py-[14px]">
+
+          {/* Date filter bar */}
+          <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-navy-light rounded-lg border border-border">
+            <span className="text-[10px] font-bold text-navy uppercase tracking-[0.6px] flex items-center gap-1">
+              <i className="ph ph-calendar-blank" /> Date Filter
+            </span>
+            <div className="flex items-center gap-1">
+              <label className="text-[10px] text-muted">From</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="form-input py-[4px] text-[11px] w-[130px]"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <label className="text-[10px] text-muted">To</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="form-input py-[4px] text-[11px] w-[130px]"
+              />
+            </div>
+            <button
+              onClick={handleApplyDateFilter}
+              className="px-[10px] py-[4px] text-[10px] font-bold uppercase tracking-[0.6px]
+                         bg-navy text-white rounded hover:bg-navy/80 transition-all"
+            >
+              <i className="ph ph-funnel mr-1" />Apply
+            </button>
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={handleClearDateFilter}
+                className="px-[10px] py-[4px] text-[10px] font-bold uppercase tracking-[0.6px]
+                           border border-border text-muted rounded hover:border-kampr hover:text-kampr transition-all"
+              >
+                <i className="ph ph-x mr-1" />Clear
+              </button>
+            )}
+          </div>
+
           <EntrySearchToolbar
             placeholder="Search tasks..."
             value={search}
@@ -267,8 +314,8 @@ export default function EventEntry() {
             onDelete={handleDelete}
             getTag={getTaskTag}
             filterConfig={[
-              { key: 'category', label: 'Category', options: CATEGORY_OPTIONS },
-              { key: 'status',   label: 'Status',   options: STATUS_OPTIONS   },
+              { key: 'task_category', label: 'Category', options: categoryFilterOptions },
+              { key: 'status',        label: 'Status',   options: STATUS_OPTIONS        },
             ]}
           />
         </div>
@@ -286,11 +333,15 @@ export default function EventEntry() {
           <FormGroup label="Task Title" required>
             <input ref={r.title} className={inputCls} placeholder="Task name" />
           </FormGroup>
-          <FormGroup label="Task Category" required>
-            <select ref={r.category} className={selectCls}>
-              <option value="">Select Category</option>
-              {CATEGORY_OPTIONS.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
+          <FormGroup label="Task Category">
+            <select ref={r.taskCat} className={selectCls}>
+              <option value="">— Select Category —</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.id}
+                  style={c.color ? { borderLeft: `3px solid ${c.color}` } : undefined}
+                >
+                  {c.name}
+                </option>
               ))}
             </select>
           </FormGroup>

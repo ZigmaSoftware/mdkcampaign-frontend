@@ -106,7 +106,7 @@ export default function PublicPollPage() {
   /* ── Share — prefer is.gd short URL from backend (no IP exposed) ── */
   const shareUrl = `${window.location.origin}/#poll`
   const share = (p: 'wa'|'fb'|'copy') => {
-    const text = `🏵 மக்கள் கருத்து கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n${shareUrl}\n\nவாக்களித்து நண்பர்களுக்கும் அனுப்புங்கள்! 🪷`
+    const text = `🏵 மக்கள் கருத்து கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n${shareUrl}\n\nவாக்களித்து நண்பர்களுக்கும் அனுப்புங்கள்!`
     if (p === 'wa') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
     if (p === 'fb') window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
     if (p === 'copy') {

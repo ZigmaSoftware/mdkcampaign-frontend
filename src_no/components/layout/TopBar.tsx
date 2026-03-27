@@ -19,7 +19,7 @@ export default function TopBar() {
         </span>
         <div>
           <h1 className="font-inter text-[13px] font-bold tracking-[1.5px] text-white leading-tight uppercase">
-            BJP Campaign System
+            Campaign System
           </h1>
           <p className="font-tamil text-[9px] text-[#9bb0e0] mt-[1px] hidden sm:block">
             பா.ஜ.க. தேர்தல் மேலாண்மை அமைப்பு

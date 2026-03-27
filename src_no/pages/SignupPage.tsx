@@ -70,7 +70,7 @@ export default function SignupPage({ onGoToLogin }: SignupPageProps) {
             </div>
 
             <h1 className="text-navy font-inter font-extrabold text-[20px] tracking-[1.5px] uppercase leading-tight">
-              BJP Campaign System
+              Campaign System
             </h1>
             <p className="font-tamil text-[11px] text-muted mt-[3px]">
               பா.ஜ.க. தேர்தல் மேலாண்மை அமைப்பு

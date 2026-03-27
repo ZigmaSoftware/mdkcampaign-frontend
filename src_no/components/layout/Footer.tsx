@@ -7,7 +7,7 @@ export default function Footer() {
       className="text-center text-[9px] text-muted py-4 px-6 border-t border-border mt-6
                  bg-white font-inter tracking-wide"
     >
-      BJP Campaign System · {CANDIDATE_NAME} · Constituency {CONSTITUENCY_NO} – {CONSTITUENCY_NAME}
+      Campaign System · {CANDIDATE_NAME} · Constituency {CONSTITUENCY_NO} – {CONSTITUENCY_NAME}
       &nbsp;· {DISTRICT} · TN Assembly Election {ELECTION_YEAR} ·{' '}
       <span className="font-bold text-kampr">CONFIDENTIAL</span>
     </footer>

@@ -163,6 +163,7 @@ function HistoryTable({ records }: { records: AttendanceRecord[] }) {
       <table className="w-full text-[12px] border-collapse">
         <thead>
           <tr className="bg-[#f8fafc] border-b border-border">
+                      <th className="text-left px-4 py-3 font-bold text-navy">Username</th>
             <th className="text-left px-4 py-3 font-bold text-navy">Date</th>
             <th className="text-left px-4 py-3 font-bold text-navy">Punch In</th>
             <th className="text-left px-4 py-3 font-bold text-navy">Punch Out</th>
@@ -175,6 +176,10 @@ function HistoryTable({ records }: { records: AttendanceRecord[] }) {
             const badge = statusColor(rec.status)
             return (
               <tr key={rec.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#fafbfc]'}>
+                <td className="px-4 py-[9px] border-b border-[#f0f0f0]">
+                          <div className="font-semibold text-navy">{rec.full_name || rec.username}</div>
+                          <div className="text-[10px] text-muted">@{rec.username}</div>
+                        </td>
                 <td className="px-4 py-[10px] font-medium text-navy border-b border-[#f0f0f0]">
                   {fmtDate(rec.attendance_date)}
                 </td>

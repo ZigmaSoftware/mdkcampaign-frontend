@@ -19,6 +19,7 @@ interface RecordListProps {
   filterConfig?:  FilterConfig[]
   itemsPerPage?:  number
   serverTotal?:   number
+  startIndex?:    number
 }
 
 export default function RecordList({
@@ -33,6 +34,7 @@ export default function RecordList({
   filterConfig,
   itemsPerPage = DEFAULT_PAGE_SIZE,
   serverTotal,
+  startIndex = 0,
 }: RecordListProps) {
   const [page,    setPage]    = useState(1)
   const [filters, setFilters] = useState<Record<string, string>>({})
@@ -103,7 +105,7 @@ export default function RecordList({
           {paged.map((rec, i) => (
             <RecordItem
               key={rec.id}
-              index={(safePage - 1) * itemsPerPage + i + 1}
+              index={startIndex + (safePage - 1) * itemsPerPage + i + 1}
               icon={icon}
               iconBg={iconBg}
               iconColor={iconColor}

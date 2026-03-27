@@ -116,7 +116,7 @@ export default function VoterEntry() {
   const [casteVal,   setCasteVal]  = useState('')
   const [page,       setPage]      = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const PAGE_SIZE = 200
+  const PAGE_SIZE = 10
 
   // Boolean flag state (can't use value refs for checkboxes)
   const [isContacted,      setIsContacted]      = useState(false)
@@ -526,6 +526,7 @@ export default function VoterEntry() {
             filterConfig={voterFilterConfig}
             itemsPerPage={PAGE_SIZE}
             serverTotal={totalCount}
+            startIndex={(page - 1) * PAGE_SIZE}
           />
           {/* Pagination */}
           {totalCount > PAGE_SIZE && (

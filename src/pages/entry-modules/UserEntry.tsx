@@ -82,6 +82,7 @@ export default function UserEntryPage() {
   const [isFormOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
   const pendingFill = useRef<UserRecord | null>(null)
 
@@ -177,9 +178,17 @@ export default function UserEntryPage() {
     setFormOpen(true)
   }
 
-  const handleDeactivate = async (id: number) => {
-    const ok = await deactivateUser(id)
-    if (ok) setUsers(prev => prev.filter(u => u.id !== id))
+  const handleDeactivateRequest = (u: UserRecord) => {
+    if (u.id === currentUser?.id) return
+    if (u.role === 'admin') return
+    setConfirmDeleteId(u.id)
+  }
+
+  const handleDeactivateConfirm = async () => {
+    if (confirmDeleteId === null) return
+    const ok = await deactivateUser(confirmDeleteId)
+    if (ok) setUsers(prev => prev.filter(u => u.id !== confirmDeleteId))
+    setConfirmDeleteId(null)
   }
 
   const handlePermToggle = async (perm: PagePermission) => {
@@ -301,7 +310,16 @@ export default function UserEntryPage() {
                             <button onClick={() => handleEdit(u.id)} className="p-[7px] rounded-lg hover:bg-[#f0f4ff] text-navy transition-colors">
                               <i className="ph ph-pencil text-[14px]" />
                             </button>
-                            <button onClick={() => handleDeactivate(u.id)} className="p-[7px] rounded-lg hover:bg-[#fff0f0] text-kampr transition-colors">
+                            <button
+                              onClick={() => handleDeactivateRequest(u)}
+                              disabled={u.id === currentUser?.id || u.role === 'admin'}
+                              title={
+                                u.id === currentUser?.id ? 'You cannot delete yourself'
+                                : u.role === 'admin' ? 'Admin users cannot be deleted'
+                                : 'Delete user'
+                              }
+                              className="p-[7px] rounded-lg hover:bg-[#fff0f0] text-kampr transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
                               <i className="ph ph-user-minus text-[14px]" />
                             </button>
                           </div>
@@ -408,6 +426,44 @@ export default function UserEntryPage() {
           </EntryFormPanel>
         </>
       )}
+
+      {/* ── Delete Confirmation Modal ── */}
+      {confirmDeleteId !== null && (() => {
+        const target = users.find(u => u.id === confirmDeleteId)
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.45)' }}>
+            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#fff0f0] flex items-center justify-center flex-shrink-0">
+                  <i className="ph ph-warning text-kampr text-[20px]" />
+                </div>
+                <div>
+                  <h3 className="text-[14px] font-bold text-navy">Delete User?</h3>
+                  <p className="text-[11px] text-muted">This action cannot be undone.</p>
+                </div>
+              </div>
+              <p className="text-[13px] text-navy mb-5">
+                Are you sure you want to delete <span className="font-semibold">{target?.full_name || target?.username}</span>?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="flex-1 py-2 rounded-lg border border-border text-[12px] font-semibold text-muted hover:border-navy hover:text-navy transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeactivateConfirm}
+                  className="flex-1 py-2 rounded-lg border-none text-[12px] font-bold text-white transition-all"
+                  style={{ background: '#dc2626' }}
+                >
+                  Yes, Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── PERMISSIONS TAB ── */}
       {activeTab === 'permissions' && (

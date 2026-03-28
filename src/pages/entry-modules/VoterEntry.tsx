@@ -114,6 +114,7 @@ export default function VoterEntry() {
   const [editKey,    setEditKey]   = useState(0)
   const [villageFilter, setVillageFilter] = useState('')
   const [casteVal,   setCasteVal]  = useState('')
+  const [boothFilter, setBoothFilter] = useState<number | undefined>(undefined)
   const [page,       setPage]      = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const PAGE_SIZE = 10
@@ -132,8 +133,8 @@ export default function VoterEntry() {
   const masterApiRef = useRef(masterApi)
   masterApiRef.current = masterApi
 
-  const loadVoters = useCallback((p: number, q: string) => {
-    apiRef.current.fetchVoters(undefined, q || undefined, p, PAGE_SIZE).then(d => {
+  const loadVoters = useCallback((p: number, q: string, boothId?: number) => {
+    apiRef.current.fetchVoters(boothId, q || undefined, p, PAGE_SIZE).then(d => {
       setVoters(d?.results ?? [])
       setTotalCount(d?.count ?? 0)
     })
@@ -152,9 +153,9 @@ export default function VoterEntry() {
   const isFirstSearchRender = useRef(true)
   useEffect(() => {
     if (isFirstSearchRender.current) { isFirstSearchRender.current = false; return }
-    const t = setTimeout(() => { setPage(1); loadVoters(1, search) }, 400)
+    const t = setTimeout(() => { setPage(1); loadVoters(1, search, boothFilter) }, 400)
     return () => clearTimeout(t)
-  }, [search, loadVoters])
+  }, [search, boothFilter, loadVoters])
 
   useEffect(() => {
     if (!pendingFill.current) return
@@ -462,7 +463,6 @@ export default function VoterEntry() {
     ]},
     { key: 'caste', label: 'Caste', options: CASTE_KEYS.map(c => ({ value: c, label: c })) },
     { key: 'sub_caste', label: 'Sub Caste', options: usedSubCastes.map(sc => ({ value: sc, label: sc })) },
-    { key: 'booth', label: 'Booth', options: booths.map(b => ({ value: String(b.id), label: `${b.number} — ${b.name}` })) },
     { key: 'religion', label: 'Religion', options: [
       { value: 'Hindu',     label: 'Hindu' },
       { value: 'Muslim',    label: 'Muslim' },
@@ -532,6 +532,34 @@ export default function VoterEntry() {
             onExport={() => exportRecordsToCsv(allVoterRecords, 'Voter_Details')}
             onPrint={() => printModule(allVoterRecords, 'Voter Details')}
           />
+          {/* Booth server-side filter */}
+          <div className="flex items-center gap-2 mb-2 mt-1">
+            <i className="ph ph-map-pin text-saffron text-[13px]" />
+            <select
+              value={boothFilter ?? ''}
+              onChange={e => {
+                const val = e.target.value ? Number(e.target.value) : undefined
+                setBoothFilter(val)
+                setPage(1)
+                loadVoters(1, search, val)
+              }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[180px] w-auto ${boothFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Booths</option>
+              {booths.map(b => (
+                <option key={b.id} value={b.id}>{b.number} — {b.name}</option>
+              ))}
+            </select>
+            {boothFilter && (
+              <button
+                onClick={() => { setBoothFilter(undefined); setPage(1); loadVoters(1, search, undefined) }}
+                className="text-[10px] font-bold text-kampr flex items-center gap-1"
+              >
+                <i className="ph ph-x-circle" /> Clear
+              </button>
+            )}
+          </div>
+
           <RecordList
             records={filtered}
             editingId={editing ? String(editing.id) : null}
@@ -555,13 +583,13 @@ export default function VoterEntry() {
               <div className="flex gap-2">
                 <button
                   disabled={page === 1}
-                  onClick={() => { const p = page - 1; setPage(p); loadVoters(p, search) }}
+                  onClick={() => { const p = page - 1; setPage(p); loadVoters(p, search, boothFilter) }}
                   className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
                 >← Prev</button>
                 <span className="text-[11px] text-muted py-1">Page {page} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
                 <button
                   disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
-                  onClick={() => { const p = page + 1; setPage(p); loadVoters(p, search) }}
+                  onClick={() => { const p = page + 1; setPage(p); loadVoters(p, search, boothFilter) }}
                   className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
                 >Next →</button>
               </div>

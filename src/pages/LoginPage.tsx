@@ -31,7 +31,7 @@ export default function LoginPage({ onGoToSignup }: LoginPageProps) {
   return (
     <div className="min-h-screen flex flex-col bg-[#f0f4f8]">
       {/* Tricolor bar */}
-      <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg,#FF9933 33.33%,#fff 33.33% 66.66%,#138808 66.66%)' }} />
+
 
       {/* Centered card */}
       <div className="flex-1 flex items-center justify-center px-4 py-10">
@@ -39,24 +39,12 @@ export default function LoginPage({ onGoToSignup }: LoginPageProps) {
 
           {/* Logo / branding */}
           <div className="text-center mb-7">
-            {/* BJP Logo */}
-            <div className="inline-flex items-center justify-center mb-4">
-              <img
-                src={bjpLogo}
-                alt="BJP Logo"
-                className="w-[80px] h-[80px] object-contain drop-shadow-lg"
-              />
-            </div>
+        
 
             <h1 className="text-navy font-inter font-extrabold text-[20px] tracking-[1.5px] uppercase leading-tight">
               Campaign System
             </h1>
-            <p className="font-tamil text-[11px] text-muted mt-[3px]">
-              பா.ஜ.க. தேர்தல் மேலாண்மை அமைப்பு
-            </p>
-            <p className="text-[10px] text-muted mt-2 tracking-wide">
-              {CANDIDATE_NAME} &nbsp;·&nbsp; Con.&nbsp;{CONSTITUENCY_NO} – {CONSTITUENCY_NAME} &nbsp;·&nbsp; {DISTRICT}
-            </p>
+          
           </div>
 
           {/* Card */}
@@ -176,8 +164,6 @@ export default function LoginPage({ onGoToSignup }: LoginPageProps) {
         </div>
       </div>
 
-      {/* Bottom tricolor */}
-      <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg,#FF9933 33.33%,#fff 33.33% 66.66%,#138808 66.66%)' }} />
     </div>
   )
 }

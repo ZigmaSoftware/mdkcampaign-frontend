@@ -1,53 +1,60 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import apiClient from '../../utils/api'
-import { getGroups, subscribe as storeSubscribe, removeVoterByName } from '../../utils/telecallingStore'
-import type { AssignmentGroup } from '../../utils/telecallingStore'
-import {
-  getDecisions, setDecision, subscribe as reviewSubscribe,
-  getDecisionByRecordId,
-} from '../../utils/feedbackReviewStore'
-import type { ReviewAction, ReviewDecision } from '../../utils/feedbackReviewStore'
 import { selectCls, inputCls } from '../../components/entry/FormGroup'
 import { useToast } from '../../context/ToastContext'
 
 /* ── Types ── */
 interface SurveyRecord {
-  id:                number
-  voter_name:        string
-  phone?:            string
-  booth_no?:         string
-  support_level?:    string
-  response_status?:  string
+  id:                  number
+  voter_name:          string
+  phone?:              string
+  booth_no?:           string
+  support_level?:      string
+  response_status?:    string
   aware_of_candidate?: string
-  likely_to_vote?:   string
-  remarks?:          string
-  surveyed_by?:      string
-  survey_date?:      string
+  likely_to_vote?:     string
+  remarks?:            string
+  surveyed_by?:        string
+  survey_date?:        string
+}
+
+interface Assignment {
+  id:               number
+  telecaller_name:  string
+  telecaller_phone: string
+  assigned_date:    string
+  voters: { voter_name: string }[]
+}
+
+interface FeedbackDecision {
+  id:              number
+  survey:          number
+  voter_name:      string
+  telecaller_name: string
+  action:          'followup_required' | 'followup_not_required'
+  date:            string
 }
 
 /* ── Colour helpers ── */
 const supportColor = (s?: string) => {
   if (!s) return 'bg-gray-100 text-gray-500'
-  if (s.includes('Strong Support'))  return 'bg-green-100 text-green-700'
-  if (s.includes('Leaning Support')) return 'bg-emerald-100 text-emerald-700'
-  if (s.includes('Neutral'))         return 'bg-yellow-100 text-yellow-700'
-  if (s.includes('Against'))         return 'bg-red-100 text-red-600'
+  if (s === 'positive') return 'bg-green-100 text-green-700'
+  if (s === 'negative') return 'bg-red-100 text-red-600'
+  if (s === 'neutral')  return 'bg-yellow-100 text-yellow-700'
   return 'bg-blue-100 text-blue-700'
 }
 
 const responseLabel = (s?: string) => {
-  if (s === 'interested')      return 'Interested'
-  if (s === 'not_reach')       return 'Not Reach'
-  if (s === 'not_attend_call') return 'Not Attend Call'
-  if (s === 'need_followups')  return 'Need Followup'
+  if (s === 'not_reach')     return 'Not Reach'
+  if (s === 'no_answer')     return 'No Answer'
+  if (s === 'need_followup') return 'Need Followup'
   return s || '—'
 }
 
 const responseColor = (s?: string) => {
-  if (s === 'interested')      return 'bg-green-100 text-green-700'
-  if (s === 'not_reach')       return 'bg-red-100 text-red-600'
-  if (s === 'not_attend_call') return 'bg-orange-100 text-orange-600'
-  if (s === 'need_followups')  return 'bg-purple-100 text-purple-700'
+  if (s === 'not_reach')     return 'bg-red-100 text-red-600'
+  if (s === 'no_answer')     return 'bg-orange-100 text-orange-600'
+  if (s === 'need_followup') return 'bg-purple-100 text-purple-700'
   return 'bg-gray-100 text-gray-500'
 }
 
@@ -70,40 +77,42 @@ function SectionLabel({ icon, label, count, color }: {
 export default function FeedbackReview() {
   const { showToast } = useToast()
 
-  /* ── Telecalling store ── */
-  const [groups, setGroups] = useState<AssignmentGroup[]>(getGroups())
-  useEffect(() => storeSubscribe(() => setGroups(getGroups())), [])
+  /* ── Data ── */
+  const [surveys,   setSurveys]   = useState<SurveyRecord[]>([])
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [decisions, setDecisions] = useState<FeedbackDecision[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState<number | null>(null)  // survey id being saved
 
-  /* Build voter→telecaller map from assignments */
+  const fetchAll = useCallback(() => {
+    setLoading(true)
+    Promise.allSettled([
+      apiClient.get('/activities/surveys/',       { params: { limit: 1000 } }),
+      apiClient.get('/telecalling/assignments/',  { params: { limit: 1000 } }),
+      apiClient.get('/telecalling/feedbacks/',    { params: { limit: 1000 } }),
+    ]).then(([s, a, f]) => {
+      if (s.status === 'fulfilled') setSurveys(s.value.data.results ?? [])
+      if (a.status === 'fulfilled') setAssignments(a.value.data.results ?? [])
+      if (f.status === 'fulfilled') setDecisions(f.value.data.results ?? [])
+    }).finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  /* ── Derived maps ── */
   const telecallerByVoterName = useMemo(() => {
-    const map = new Map<string, { name: string; phone?: string }>()
-    groups.forEach(g =>
-      g.voters.forEach(v =>
-        map.set(v.name.toLowerCase(), { name: g.telecaller.name, phone: g.telecaller.phone })
+    const map = new Map<string, { name: string; phone: string }>()
+    assignments.forEach(a =>
+      a.voters.forEach(v =>
+        map.set(v.voter_name.toLowerCase(), { name: a.telecaller_name, phone: a.telecaller_phone })
       )
     )
     return map
-  }, [groups])
-
-  /* ── Submitted feedback records ── */
-  const [surveys,  setSurveys]  = useState<SurveyRecord[]>([])
-  const [loading,  setLoading]  = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    apiClient.get('/activities/surveys/', { params: { limit: 1000 } })
-      .then(r => setSurveys(r.data.results ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
-
-  /* ── Review decisions ── */
-  const [decisions, setDecisions] = useState<ReviewDecision[]>(getDecisions())
-  useEffect(() => reviewSubscribe(() => setDecisions(getDecisions())), [])
+  }, [assignments])
 
   const decisionMap = useMemo(() => {
-    const m = new Map<number, ReviewDecision>()
-    decisions.forEach(d => m.set(d.record_id, d))
+    const m = new Map<number, FeedbackDecision>()
+    decisions.forEach(d => m.set(d.survey, d))
     return m
   }, [decisions])
 
@@ -112,14 +121,12 @@ export default function FeedbackReview() {
   const [filterTelecaller, setFilterTelecaller] = useState('')
   const [search,           setSearch]           = useState('')
 
-  /* Unique telecallers from assignments */
   const telecallerOptions = useMemo(() => {
-    const seen = new Map<string, string>()
-    groups.forEach(g => seen.set(g.telecaller.name, g.telecaller.name))
-    return [...seen.entries()].map(([, name]) => name)
-  }, [groups])
+    const seen = new Set<string>()
+    assignments.forEach(a => seen.add(a.telecaller_name))
+    return [...seen]
+  }, [assignments])
 
-  /* ── Filtered list ── */
   const filteredSurveys = useMemo(() => {
     let list = surveys
     if (search) {
@@ -139,54 +146,65 @@ export default function FeedbackReview() {
     if (filterTab !== 'all') {
       list = list.filter(s => {
         const dec = decisionMap.get(s.id)
-        if (filterTab === 'pending')                 return !dec
-        if (filterTab === 'followup_required')       return dec?.action === 'followup_required'
-        if (filterTab === 'followup_not_required')   return dec?.action === 'followup_not_required'
+        if (filterTab === 'pending')               return !dec
+        if (filterTab === 'followup_required')     return dec?.action === 'followup_required'
+        if (filterTab === 'followup_not_required') return dec?.action === 'followup_not_required'
         return true
       })
     }
     return list
   }, [surveys, search, filterTelecaller, filterTab, decisionMap, telecallerByVoterName])
 
-  /* Counts for tab badges */
   const counts = useMemo(() => ({
-    all:                  surveys.length,
-    pending:              surveys.filter(s => !decisionMap.has(s.id)).length,
-    followup_required:    surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required').length,
+    all:                   surveys.length,
+    pending:               surveys.filter(s => !decisionMap.has(s.id)).length,
+    followup_required:     surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required').length,
     followup_not_required: surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required').length,
   }), [surveys, decisionMap])
 
   /* ── Action handler ── */
-  const handleAction = (survey: SurveyRecord, action: ReviewAction) => {
-    const tc = telecallerByVoterName.get(survey.voter_name?.toLowerCase() ?? '')
-    const decision: ReviewDecision = {
-      record_id:       survey.id,
-      voter_name:      survey.voter_name,
-      telecaller_name: tc?.name ?? survey.surveyed_by ?? '—',
-      action,
-      date:            new Date().toISOString().slice(0, 10),
+  const handleAction = async (survey: SurveyRecord, action: 'followup_required' | 'followup_not_required') => {
+    const tc  = telecallerByVoterName.get(survey.voter_name?.toLowerCase() ?? '')
+    const existing = decisionMap.get(survey.id)
+    const today = new Date().toISOString().slice(0, 10)
+
+    setSaving(survey.id)
+    try {
+      if (existing) {
+        const res = await apiClient.patch(`/telecalling/feedbacks/${existing.id}/`, { action, date: today })
+        setDecisions(prev => prev.map(d => d.id === existing.id ? res.data : d))
+      } else {
+        const res = await apiClient.post('/telecalling/feedbacks/', {
+          survey:          survey.id,
+          voter_name:      survey.voter_name,
+          telecaller_name: tc?.name ?? survey.surveyed_by ?? '—',
+          action,
+          date:            today,
+        })
+        setDecisions(prev => [...prev, res.data])
+      }
+      showToast(
+        `${action === 'followup_required' ? 'Followup Required' : 'No Followup'} marked for ${survey.voter_name}`,
+        action === 'followup_required' ? 'warning' : 'success'
+      )
+    } catch {
+      showToast('Failed to save decision — please try again', 'error')
+    } finally {
+      setSaving(null)
     }
-    setDecision(decision)
-    if (action === 'followup_required') {
-      removeVoterByName(survey.voter_name)
-    }
-    showToast(
-      `<i class="ph ph-check-circle"></i> ${action === 'followup_required' ? 'Followup Required — voter reset to assign list' : 'No Followup'} marked for ${survey.voter_name}`,
-      action === 'followup_required' ? '#f59e0b' : '#138808'
-    )
   }
 
   /* ── Survey row ── */
   const SurveyRow = ({ survey }: { survey: SurveyRecord }) => {
-    const dec = decisionMap.get(survey.id)
-    const tc  = telecallerByVoterName.get(survey.voter_name?.toLowerCase() ?? '')
+    const dec  = decisionMap.get(survey.id)
+    const tc   = telecallerByVoterName.get(survey.voter_name?.toLowerCase() ?? '')
+    const busy = saving === survey.id
 
     return (
       <div className={`border-b border-border transition-colors
         ${dec?.action === 'followup_required'     ? 'bg-orange-50/40' :
           dec?.action === 'followup_not_required' ? 'bg-green-50/30'  : ''}`}>
 
-        {/* Main row */}
         <div className="flex items-start gap-3 px-5 py-3">
 
           {/* Status dot */}
@@ -197,7 +215,6 @@ export default function FeedbackReview() {
 
           {/* Voter + feedback info */}
           <div className="flex-1 min-w-0">
-            {/* Row 1: name + badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] font-semibold text-heading">{survey.voter_name}</span>
               {survey.booth_no && (
@@ -217,7 +234,6 @@ export default function FeedbackReview() {
               )}
             </div>
 
-            {/* Row 2: telecaller + survey date + extra info */}
             <div className="flex items-center gap-3 mt-0.5 flex-wrap text-[10px] text-muted">
               <span>
                 <i className="ph ph-headset mr-0.5" />
@@ -236,7 +252,6 @@ export default function FeedbackReview() {
               )}
             </div>
 
-            {/* Decision badge (if action already taken) */}
             {dec && (
               <div className={`inline-flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold
                 ${dec.action === 'followup_required'
@@ -252,23 +267,25 @@ export default function FeedbackReview() {
           {/* Action buttons */}
           <div className="flex flex-col gap-1.5 flex-shrink-0">
             <button
+              disabled={busy}
               onClick={() => handleAction(survey, 'followup_required')}
-              className={`flex items-center gap-1.5 px-3 py-[5px] rounded-lg text-[11px] font-semibold border transition-colors
+              className={`flex items-center gap-1.5 px-3 py-[5px] rounded-lg text-[11px] font-semibold border transition-colors disabled:opacity-50
                 ${dec?.action === 'followup_required'
                   ? 'bg-orange-400 text-white border-orange-400'
                   : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'}`}
             >
-              <i className="ph ph-arrow-clockwise text-[12px]" />
+              {busy ? <i className="ph ph-spinner-gap animate-spin text-[12px]" /> : <i className="ph ph-arrow-clockwise text-[12px]" />}
               Followup Required
             </button>
             <button
+              disabled={busy}
               onClick={() => handleAction(survey, 'followup_not_required')}
-              className={`flex items-center gap-1.5 px-3 py-[5px] rounded-lg text-[11px] font-semibold border transition-colors
+              className={`flex items-center gap-1.5 px-3 py-[5px] rounded-lg text-[11px] font-semibold border transition-colors disabled:opacity-50
                 ${dec?.action === 'followup_not_required'
                   ? 'bg-green-500 text-white border-green-500'
                   : 'bg-white text-green-700 border-green-300 hover:bg-green-50'}`}
             >
-              <i className="ph ph-check-circle text-[12px]" />
+              {busy ? <i className="ph ph-spinner-gap animate-spin text-[12px]" /> : <i className="ph ph-check-circle text-[12px]" />}
               Followup Not Required
             </button>
           </div>
@@ -277,10 +294,9 @@ export default function FeedbackReview() {
     )
   }
 
-  /* Split for section display */
-  const pending         = filteredSurveys.filter(s => !decisionMap.has(s.id))
-  const followupReq     = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required')
-  const followupNotReq  = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
+  const pending        = filteredSurveys.filter(s => !decisionMap.has(s.id))
+  const followupReq    = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required')
+  const followupNotReq = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
 
   /* ════════════════════════════════════════════════════════
      Render
@@ -314,10 +330,10 @@ export default function FeedbackReview() {
           {/* Status tabs */}
           <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
             {([
-              { key: 'all',                   label: 'All',                    count: counts.all                   },
-              { key: 'pending',               label: 'Pending Review',         count: counts.pending               },
-              { key: 'followup_required',     label: 'Followup Required',      count: counts.followup_required     },
-              { key: 'followup_not_required', label: 'Followup Not Required',  count: counts.followup_not_required },
+              { key: 'all',                   label: 'All',                   count: counts.all                   },
+              { key: 'pending',               label: 'Pending Review',        count: counts.pending               },
+              { key: 'followup_required',     label: 'Followup Required',     count: counts.followup_required     },
+              { key: 'followup_not_required', label: 'Followup Not Required', count: counts.followup_not_required },
             ] as const).map(tab => (
               <button key={tab.key}
                 onClick={() => setFilterTab(tab.key)}
@@ -391,41 +407,21 @@ export default function FeedbackReview() {
           </div>
         ) : (
           <>
-            {/* Pending Review */}
             {(filterTab === 'all' || filterTab === 'pending') && pending.length > 0 && (
               <>
-                <SectionLabel
-                  icon="ph ph-clock text-[13px] text-gray-500"
-                  label="Pending Review"
-                  count={pending.length}
-                  color="bg-gray-50 text-gray-600"
-                />
+                <SectionLabel icon="ph ph-clock text-[13px] text-gray-500" label="Pending Review" count={pending.length} color="bg-gray-50 text-gray-600" />
                 {pending.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
-
-            {/* Followup Required */}
             {(filterTab === 'all' || filterTab === 'followup_required') && followupReq.length > 0 && (
               <>
-                <SectionLabel
-                  icon="ph ph-arrow-clockwise text-[13px] text-orange-500"
-                  label="Followup Required"
-                  count={followupReq.length}
-                  color="bg-orange-50 text-orange-600"
-                />
+                <SectionLabel icon="ph ph-arrow-clockwise text-[13px] text-orange-500" label="Followup Required" count={followupReq.length} color="bg-orange-50 text-orange-600" />
                 {followupReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
-
-            {/* Followup Not Required */}
             {(filterTab === 'all' || filterTab === 'followup_not_required') && followupNotReq.length > 0 && (
               <>
-                <SectionLabel
-                  icon="ph ph-check-circle text-[13px] text-green-600"
-                  label="Followup Not Required"
-                  count={followupNotReq.length}
-                  color="bg-green-50 text-green-700"
-                />
+                <SectionLabel icon="ph ph-check-circle text-[13px] text-green-600" label="Followup Not Required" count={followupNotReq.length} color="bg-green-50 text-green-700" />
                 {followupNotReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}

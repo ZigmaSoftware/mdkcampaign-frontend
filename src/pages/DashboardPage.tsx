@@ -1,20 +1,17 @@
-import React from 'react'
+import { useState, useMemo } from 'react'
 import Countdown from '../components/ui/Countdown'
 import StatCard from '../components/ui/StatCard'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
-import ActivityFeedItem from '../components/ui/ActivityFeedItem'
-import TimelineItem from '../components/ui/TimelineItem'
 import bjpLogo from '../assets/logo/logo.png'
 import profile from '../assets//pictures/kirthika.JPG.jpeg'
 import {
   useDashboardData,
-  getActivityIcon,
-  buildActivityTitle,
-  buildActivityMeta,
   getEventTypeBadge,
   getEventStatusDisplay,
   formatEventDate,
+  getTaskStatusDisplay,
+  formatTaskDateTime,
 } from '../hooks/useDashboardData'
 
 /* ── Arram pillar card ────────────────────────────────────────────── */
@@ -35,13 +32,46 @@ function PillarCard({ icon, value, label, sub, bg, border, valColor }: PillarPro
 
 
 export default function DashboardPage() {
-  const { activities, events, analytics } = useDashboardData()
+  const { tasks, events, analytics } = useDashboardData()
 
-  /* ── Upcoming events (exclude cancelled/completed) ── */
+  /* ── Task filters ── */
+  const [taskStatusFilter,   setTaskStatusFilter]   = useState('')
+  const [taskCategoryFilter, setTaskCategoryFilter] = useState('')
+
+  /* ── Event filters ── */
   const today = new Date().toISOString().split('T')[0]
-  const upcomingEvents = events.filter(
-    e => e.status !== 'cancelled' && e.status !== 'completed' && e.scheduled_date >= today
-  )
+  const [eventTypeFilter,   setEventTypeFilter]   = useState('')
+  const [eventStatusFilter, setEventStatusFilter] = useState('')
+
+  /* ── Unique task categories from data ── */
+  const taskCategories = useMemo(() => {
+    const seen = new Set<string>()
+    const cats: { name: string; color?: string }[] = []
+    tasks.forEach(t => {
+      if (t.task_category_name && !seen.has(t.task_category_name)) {
+        seen.add(t.task_category_name)
+        cats.push({ name: t.task_category_name, color: t.task_category_color })
+      }
+    })
+    return cats
+  }, [tasks])
+
+  /* ── Filtered tasks (recent — sorted newest first) ── */
+  const filteredTasks = useMemo(() => {
+    return tasks
+      .filter(t => !taskStatusFilter   || t.status === taskStatusFilter)
+      .filter(t => !taskCategoryFilter || t.task_category_name === taskCategoryFilter)
+      .sort((a, b) => new Date(b.expected_datetime).getTime() - new Date(a.expected_datetime).getTime())
+      .slice(0, 20)
+  }, [tasks, taskStatusFilter, taskCategoryFilter])
+
+  /* ── Filtered events ── */
+  const filteredEvents = useMemo(() => {
+    return events
+      .filter(e => !eventTypeFilter   || e.event_type === eventTypeFilter)
+      .filter(e => !eventStatusFilter || e.status    === eventStatusFilter)
+      .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
+  }, [events, eventTypeFilter, eventStatusFilter])
 
   /* ── Stat values from API only ── */
   const totalVoters      = analytics?.total_voters       ?? 0
@@ -204,55 +234,139 @@ export default function DashboardPage() {
         {/* 2-col grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {/* Live Activity Feed */}
+          {/* Recent Activity — Task Management entries */}
           <Card
             title="Recent Activity"
-            icon="ph ph-lightning"
-            headerRight={
-              <Badge
-                label={<><span className="live-dot mr-1" />&nbsp;LIVE</>}
-                variant="s"
-              />
-            }
+            icon="ph ph-check-square"
+            headerRight={<Badge label={`${filteredTasks.length} Tasks`} variant="s" />}
           >
-            {activities.length > 0
-              ? activities.map((log, idx) => {
-                  const { icon, iconBg, iconColor } = getActivityIcon(log.category)
-                  return (
-                    <ActivityFeedItem
-                      key={log.id}
-                      icon={icon}
-                      iconBg={iconBg}
-                      iconColor={iconColor}
-                      title={buildActivityTitle(log)}
-                      meta={buildActivityMeta(log)}
-                      isLast={idx === activities.length - 1}
-                    />
+            {/* Filters */}
+            <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-border">
+              <select
+                value={taskStatusFilter}
+                onChange={e => setTaskStatusFilter(e.target.value)}
+                className={`form-input text-[10px] py-[3px] pr-6 w-auto ${taskStatusFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
+              >
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <select
+                value={taskCategoryFilter}
+                onChange={e => setTaskCategoryFilter(e.target.value)}
+                className={`form-input text-[10px] py-[3px] pr-6 w-auto ${taskCategoryFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
+              >
+                <option value="">All Categories</option>
+                {taskCategories.map(c => (
+                  <option key={c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+              {(taskStatusFilter || taskCategoryFilter) && (
+                <button
+                  onClick={() => { setTaskStatusFilter(''); setTaskCategoryFilter('') }}
+                  className="text-[10px] font-bold text-kampr flex items-center gap-1"
+                >
+                  <i className="ph ph-x-circle" /> Clear
+                </button>
+              )}
+            </div>
+            {/* Task list */}
+            <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1">
+              {filteredTasks.length > 0
+                ? filteredTasks.map(t => {
+                    const st = getTaskStatusDisplay(t.status)
+                    return (
+                      <div key={t.id} className="flex items-start gap-3 px-3 py-2 rounded-lg border border-border bg-white hover:shadow-sm transition-all">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ background: t.task_category_color ? t.task_category_color + '22' : '#f3f4f6' }}>
+                          <i className="ph ph-check-square text-[14px]"
+                            style={{ color: t.task_category_color || '#6b7280' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[12px] font-semibold text-navy truncate">{t.title}</p>
+                            {t.task_category_name && (
+                              <span className="text-[9px] font-bold px-2 py-[1px] rounded-full"
+                                style={{ background: t.task_category_color ? t.task_category_color + '22' : '#f3f4f6', color: t.task_category_color || '#6b7280' }}>
+                                {t.task_category_name}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted mt-[2px]">
+                            {formatTaskDateTime(t.expected_datetime)}
+                            {t.venue ? ` · ${t.venue}` : ''}
+                            {t.delivery_incharge_name ? ` · ${t.delivery_incharge_name}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-[9px] font-bold px-2 py-[2px] rounded-full flex-shrink-0"
+                          style={{ background: st.bg, color: st.color }}>
+                          {st.text}
+                        </span>
+                      </div>
+                    )
+                  })
+                : (
+                    <div className="flex flex-col items-center justify-center py-10 text-muted gap-2">
+                      <i className="ph ph-check-square text-[28px] opacity-30" />
+                      <p className="text-[12px]">No tasks found.</p>
+                    </div>
                   )
-                })
-              : (
-                  <div className="flex flex-col items-center justify-center py-10 text-muted gap-2">
-                    <i className="ph ph-lightning text-[28px]" />
-                    <p className="text-[12px]">No activity logged yet.</p>
-                  </div>
-                )
-            }
+              }
+            </div>
           </Card>
 
-          {/* Upcoming Events */}
+          {/* Upcoming Events — Campaign entries */}
           <Card
             title="Upcoming Events"
             icon="ph ph-calendar-check"
-            headerRight={<Badge label={`${upcomingEvents.length} Total`} variant="s" />}
+            headerRight={<Badge label={`${filteredEvents.length} Events`} variant="s" />}
           >
+            {/* Filters */}
+            <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-border">
+              <select
+                value={eventTypeFilter}
+                onChange={e => setEventTypeFilter(e.target.value)}
+                className={`form-input text-[10px] py-[3px] pr-6 w-auto ${eventTypeFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
+              >
+                <option value="">All Types</option>
+                <option value="rally">Rally</option>
+                <option value="meeting">Meeting</option>
+                <option value="training">Training</option>
+                <option value="door_door">Door-to-Door</option>
+                <option value="nagar_kirtan">Nagar Kirtan</option>
+                <option value="stage_show">Stage Show</option>
+              </select>
+              <select
+                value={eventStatusFilter}
+                onChange={e => setEventStatusFilter(e.target.value)}
+                className={`form-input text-[10px] py-[3px] pr-6 w-auto ${eventStatusFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
+              >
+                <option value="">All Status</option>
+                <option value="planned">Planned</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              {(eventTypeFilter || eventStatusFilter) && (
+                <button
+                  onClick={() => { setEventTypeFilter(''); setEventStatusFilter('') }}
+                  className="text-[10px] font-bold text-kampr flex items-center gap-1"
+                >
+                  <i className="ph ph-x-circle" /> Clear
+                </button>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="data-table w-full">
                 <thead>
                   <tr><th>Date</th><th>Event</th><th>Type</th><th>Status</th></tr>
                 </thead>
                 <tbody>
-                  {upcomingEvents.length > 0
-                    ? upcomingEvents.map(ev => {
+                
+                  {filteredEvents.length > 0
+                    ? filteredEvents.map(ev => {
                         const badge = getEventTypeBadge(ev.event_type)
                         const statusDisp = getEventStatusDisplay(ev.status)
                         return (
@@ -267,18 +381,18 @@ export default function DashboardPage() {
                     : (
                         <tr>
                           <td colSpan={4} className="text-center text-muted py-8 text-[12px]">
-                            No upcoming events.
+                            No events found.
                           </td>
                         </tr>
                       )
                   }
                   {/* Election Day – always shown */}
-                  <tr className="bg-kampgreen-light">
+                  {/* <tr className="bg-kampgreen-light">
                     <td><b className="text-kampgreen">Apr 23</b></td>
                     <td className="text-kampgreen font-bold">ELECTION DAY</td>
                     <td><Badge label="POLLING" variant="g" /></td>
                     <td className="text-kampgreen font-black text-[12px]">VOTE DAY</td>
-                  </tr>
+                  </tr> */}
                 </tbody>
               </table>
             </div>

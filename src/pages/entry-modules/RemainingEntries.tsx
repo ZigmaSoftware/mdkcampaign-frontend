@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useEntryModule } from '../../hooks/useEntryModule'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Ward, Booth } from '../../hooks/useMasterAPI'
+import type { Ward, Booth, Constituency } from '../../hooks/useMasterAPI'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
 import apiClient from '../../utils/api'
@@ -53,9 +53,10 @@ export function CampaignEntry() {
   const masterApi = useMasterAPI()
   const entryApi  = useEntryAPI()
 
-  const [wards,      setWards]      = useState<Ward[]>([])
-  const [booths,     setBooths]     = useState<Booth[]>([])
-  const [volunteers, setVolunteers] = useState<VolunteerRecord[]>([])
+  const [wards,          setWards]          = useState<Ward[]>([])
+  const [booths,         setBooths]         = useState<Booth[]>([])
+  const [volunteers,     setVolunteers]     = useState<VolunteerRecord[]>([])
+  const [constituencies, setConstituencies] = useState<Constituency[]>([])
   const [selWardId,  setSelWardId]  = useState<number | null>(null)
   const [selBoothId, setSelBoothId] = useState<number | null>(null)
 
@@ -63,6 +64,7 @@ export function CampaignEntry() {
     masterApi.fetchWards().then(d => d && setWards(d))
     masterApi.fetchBooths().then(d => d && setBooths(d))
     entryApi.fetchVolunteers().then(d => d && setVolunteers(d))
+    masterApi.fetchConstituencies().then(d => d && setConstituencies(d))
   }, [])
 
   const filteredVolunteers = volunteers.filter(v => {
@@ -115,13 +117,45 @@ export function CampaignEntry() {
     if (em.isFormOpen && pendingFill.current) { fill(pendingFill.current); pendingFill.current = null }
   }, [em.isFormOpen])
 
-  const handleSave = () => {
+  const ACTIVITY_EVENT_TYPE: Record<string, string> = {
+    'Door-to-door Visit':         'door_door',
+    'Market / Sandhai Outreach':  'door_door',
+    'Labour Site Visit':          'door_door',
+    'Pamphlet Distribution':      'door_door',
+    'Wall Painting / Poster':     'door_door',
+    'Banner / Hoarding Setup':    'door_door',
+    'Mic Van / Bus Campaign':     'rally',
+    'Auto Rickshaw Campaign':     'rally',
+    'House Meeting (Ghar Sabha)': 'meeting',
+    'Corner Meeting':             'meeting',
+    'WhatsApp / SMS Blast':       'training',
+    'Social Media Post':          'training',
+    'Phone Call Campaign':        'training',
+  }
+
+  const handleSave = async () => {
     const d = collect()
     if (!d.type) return
     const wardName  = wards.find(w => w.id === selWardId)?.name   || ''
     const boothName = booths.find(b => b.id === selBoothId)?.name || ''
-    const location  = [wardName, boothName].filter(Boolean).join(' / ')
-    em.saveRecord(d.type, `${d.date || '—'} · ${d.area || '—'} · ${location || '—'} · Reached: ${d.reach || '0'}`, d)
+    const location  = [d.area, wardName, boothName].filter(Boolean).join(' / ') || '—'
+    em.saveRecord(d.type, `${d.date || '—'} · ${d.area || '—'} · ${location} · Reached: ${d.reach || '0'}`, d)
+
+    // Also persist to backend so dashboard "Upcoming Events" can display it
+    const constituencyId = constituencies[0]?.id
+    await entryApi.createCampaignEvent({
+      title:              d.type,
+      event_type:         ACTIVITY_EVENT_TYPE[d.type] ?? 'meeting',
+      scheduled_date:     d.date || new Date().toISOString().slice(0, 10),
+      scheduled_time:     d.time || undefined,
+      location,
+      status:             'planned',
+      description:        d.notes || undefined,
+      expected_attendees: d.reach ? parseInt(d.reach) : undefined,
+      special_guest_name: d.guest || undefined,
+      ...(constituencyId ? { constituency: constituencyId } : {}),
+    })
+
     clear()
   }
 

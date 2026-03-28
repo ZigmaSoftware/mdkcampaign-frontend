@@ -6,8 +6,7 @@ import FormRow from '../../components/entry/FormRow'
 import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
 import { todayISO } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
-import { getGroups, subscribe } from '../../utils/telecallingStore'
-import type { AssignmentGroup, AssignedVoter } from '../../utils/telecallingStore'
+import apiClient from '../../utils/api'
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 
@@ -34,37 +33,43 @@ function ToggleGroup({ label, value, onChange }: {
   )
 }
 
-interface FlatVoter extends AssignedVoter {
+interface FlatVoter {
+  id:               number   // assignment voter row id
+  voter:            number | null
+  voter_name:       string
+  voter_id_no:      string
+  phone:            string
+  address:          string
+  booth_name:       string
+  age:              number | null
+  gender:           string
   telecaller_id:    number
   telecaller_name:  string
-  telecaller_phone?: string
+  telecaller_phone: string
   assigned_date:    string
 }
 
 /* ── Badge helpers ── */
 const supportColor = (s?: string) => {
   if (!s) return 'bg-border text-muted'
-  if (s.includes('Strong Support'))  return 'bg-green-100 text-green-700'
-  if (s.includes('Leaning Support')) return 'bg-emerald-100 text-emerald-700'
-  if (s.includes('Neutral'))         return 'bg-yellow-100 text-yellow-700'
-  if (s.includes('Against'))         return 'bg-red-100 text-red-600'
+  if (s === 'positive') return 'bg-green-100 text-green-700'
+  if (s === 'negative') return 'bg-red-100 text-red-600'
+  if (s === 'neutral')  return 'bg-yellow-100 text-yellow-700'
   return 'bg-blue-100 text-blue-700'
 }
 
 const responseColor = (s?: string) => {
   if (!s) return 'bg-border text-muted'
-  if (s === 'interested')      return 'bg-green-100 text-green-700'
-  if (s === 'not_reach')       return 'bg-red-100 text-red-600'
-  if (s === 'not_attend_call') return 'bg-orange-100 text-orange-600'
-  if (s === 'need_followups')  return 'bg-purple-100 text-purple-700'
+  if (s === 'not_reach')     return 'bg-red-100 text-red-600'
+  if (s === 'no_answer')     return 'bg-orange-100 text-orange-600'
+  if (s === 'need_followup') return 'bg-purple-100 text-purple-700'
   return 'bg-border text-muted'
 }
 
 const responseLabel = (s?: string) => {
-  if (s === 'interested')      return 'Interested'
-  if (s === 'not_reach')       return 'Not Reach'
-  if (s === 'not_attend_call') return 'Not Attend Call'
-  if (s === 'need_followups')  return 'Need Followup'
+  if (s === 'not_reach')     return 'Not Reach'
+  if (s === 'no_answer')     return 'No Answer'
+  if (s === 'need_followup') return 'Need Followup'
   return s || ''
 }
 
@@ -85,24 +90,40 @@ export default function VoterSurveyEntry() {
   const { fetchFieldSurveys, createFieldSurvey, updateFieldSurvey, deleteFieldSurvey } = useEntryAPI()
   const { showToast } = useToast()
 
-  /* ── Store ── */
-  const [groups, setGroups] = useState<AssignmentGroup[]>(getGroups())
-  useEffect(() => subscribe(() => setGroups(getGroups())), [])
-
-  const allVoters = useMemo<FlatVoter[]>(() =>
-    groups.flatMap(g => g.voters.map(v => ({
-      ...v,
-      telecaller_id:    g.telecaller.id,
-      telecaller_name:  g.telecaller.name,
-      telecaller_phone: g.telecaller.phone,
-      assigned_date:    g.date,
-    }))), [groups])
+  /* ── Assignments from API ── */
+  const [allVoters, setAllVoters] = useState<FlatVoter[]>([])
+  useEffect(() => {
+    apiClient.get('/telecalling/assignments/', { params: { limit: 1000 } })
+      .then(r => {
+        const assignments: any[] = r.data.results ?? []
+        setAllVoters(
+          assignments.flatMap(a =>
+            (a.voters ?? []).map((v: any) => ({
+              id:               v.id,
+              voter:            v.voter,
+              voter_name:       v.voter_name,
+              voter_id_no:      v.voter_id_no ?? '',
+              phone:            v.phone ?? '',
+              address:          v.address ?? '',
+              booth_name:       v.booth_name ?? '',
+              age:              v.age ?? null,
+              gender:           v.gender ?? '',
+              telecaller_id:    a.telecaller_id ?? 0,
+              telecaller_name:  a.telecaller_name,
+              telecaller_phone: a.telecaller_phone ?? '',
+              assigned_date:    a.assigned_date,
+            }))
+          )
+        )
+      })
+      .catch(() => {})
+  }, [])
 
   const telecallerOptions = useMemo(() => {
     const seen = new Map<number, string>()
-    groups.forEach(g => seen.set(g.telecaller.id, g.telecaller.name))
+    allVoters.forEach(v => seen.set(v.telecaller_id, v.telecaller_name))
     return [...seen.entries()].map(([id, name]) => ({ id, name }))
-  }, [groups])
+  }, [allVoters])
 
   /* ── Feedback records ── */
   const [records, setRecords]     = useState<FieldSurveyRecord[]>([])
@@ -135,7 +156,6 @@ export default function VoterSurveyEntry() {
     supportLevel:    useRef<HTMLSelectElement>(null),
     partyPref:       useRef<HTMLSelectElement>(null),
     responseStatus:  useRef<HTMLSelectElement>(null),
-    keyIssues:       useRef<HTMLTextAreaElement>(null),
     remarks:         useRef<HTMLTextAreaElement>(null),
   }
 
@@ -167,7 +187,6 @@ export default function VoterSurveyEntry() {
       if (r.supportLevel.current)   r.supportLevel.current.value   = d.support_level     ?? ''
       if (r.partyPref.current)      r.partyPref.current.value      = d.party_preference  ?? ''
       if (r.responseStatus.current) r.responseStatus.current.value = d.response_status   ?? ''
-      if (r.keyIssues.current)      r.keyIssues.current.value      = d.key_issues        ?? ''
       if (r.remarks.current)        r.remarks.current.value        = d.remarks           ?? ''
       setRegistered((d.is_registered as YNS) ?? '')
       setAwareOfCandidate((d.aware_of_candidate as YNS) ?? '')
@@ -176,9 +195,9 @@ export default function VoterSurveyEntry() {
     } else if (selectedVoterRef.current) {
       const v = selectedVoterRef.current
       if (r.surveyDate.current)     r.surveyDate.current.value = v.assigned_date || todayISO()
-      if (r.booth.current)          r.booth.current.value      = v.booth_name ?? String(v.booth)
+      if (r.booth.current)          r.booth.current.value      = v.booth_name
       if (r.telecaller.current)     r.telecaller.current.value = v.telecaller_name
-      if (r.voterName.current)      r.voterName.current.value  = v.name
+      if (r.voterName.current)      r.voterName.current.value  = v.voter_name
       if (r.age.current)            r.age.current.value        = v.age != null ? String(v.age) : ''
       if (r.gender.current)         r.gender.current.value     = toGenderDisplay(v.gender)
       if (r.phone.current)          r.phone.current.value      = v.phone ?? ''
@@ -186,7 +205,6 @@ export default function VoterSurveyEntry() {
       if (r.supportLevel.current)   r.supportLevel.current.value   = ''
       if (r.partyPref.current)      r.partyPref.current.value      = ''
       if (r.responseStatus.current) r.responseStatus.current.value = ''
-      if (r.keyIssues.current)      r.keyIssues.current.value      = ''
       if (r.remarks.current)        r.remarks.current.value        = ''
       setRegistered(''); setAwareOfCandidate(''); setLikelyToVote('')
       selectedVoterRef.current = null
@@ -206,7 +224,6 @@ export default function VoterSurveyEntry() {
     if (r.supportLevel.current)   r.supportLevel.current.value   = ''
     if (r.partyPref.current)      r.partyPref.current.value      = ''
     if (r.responseStatus.current) r.responseStatus.current.value = ''
-    if (r.keyIssues.current)      r.keyIssues.current.value      = ''
     if (r.remarks.current)        r.remarks.current.value        = ''
     resetToggles()
   }
@@ -226,7 +243,6 @@ export default function VoterSurveyEntry() {
       support_level:      str(r.supportLevel.current?.value),
       party_preference:   str(r.partyPref.current?.value),
       response_status:    str(r.responseStatus.current?.value),
-      key_issues:         str(r.keyIssues.current?.value),
       remarks:            str(r.remarks.current?.value),
       surveyed_by:        str(r.telecaller.current?.value),
       is_registered:      registered      || undefined,
@@ -271,7 +287,7 @@ export default function VoterSurveyEntry() {
 
   const handleVoterClick = (voter: FlatVoter) => {
     const existing = records.find(rec =>
-      rec.voter_name?.toLowerCase() === voter.name.toLowerCase() &&
+      rec.voter_name?.toLowerCase() === voter.voter_name.toLowerCase() &&
       (!voter.phone || rec.phone === voter.phone)
     )
     if (existing) {
@@ -313,16 +329,16 @@ export default function VoterSurveyEntry() {
     if (search) {
       const q = search.toLowerCase()
       list = list.filter(v =>
-        v.name.toLowerCase().includes(q) ||
-        (v.voter_id ?? '').toLowerCase().includes(q) ||
+        v.voter_name.toLowerCase().includes(q) ||
+        (v.voter_id_no ?? '').toLowerCase().includes(q) ||
         (v.phone ?? '').includes(q)
       )
     }
     return list
   }, [allVoters, filterTelecaller, search])
 
-  const pendingVoters = filteredVoters.filter(v => !recordByVoterName.has(v.name.toLowerCase()))
-  const doneVoters    = filteredVoters.filter(v =>  recordByVoterName.has(v.name.toLowerCase()))
+  const pendingVoters = filteredVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase()))
+  const doneVoters    = filteredVoters.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase()))
 
   const displayPending = filterStatus !== 'done'
   const displayDone    = filterStatus !== 'pending'
@@ -341,8 +357,8 @@ export default function VoterSurveyEntry() {
   const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
   const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const pagedPending = pagedList.filter(v => !recordByVoterName.has(v.name.toLowerCase()))
-  const pagedDone    = pagedList.filter(v =>  recordByVoterName.has(v.name.toLowerCase()))
+  const pagedPending = pagedList.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase()))
+  const pagedDone    = pagedList.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase()))
 
   const pageNums: (number | '...')[] = (() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -361,7 +377,7 @@ export default function VoterSurveyEntry() {
 
   /* ── Voter row ── */
   const VoterRow = ({ voter }: { voter: FlatVoter }) => {
-    const rec  = recordByVoterName.get(voter.name.toLowerCase())
+    const rec  = recordByVoterName.get(voter.voter_name.toLowerCase())
     const done = !!rec
 
     return (
@@ -375,15 +391,15 @@ export default function VoterSurveyEntry() {
             ${done ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}`}>
             {done
               ? <i className="ph ph-check-circle text-[18px]" />
-              : <span>{voter.name.charAt(0).toUpperCase()}</span>
+              : <span>{voter.voter_name.charAt(0).toUpperCase()}</span>
             }
           </div>
 
           {/* Voter info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[13px] font-semibold text-heading">{voter.name}</span>
-              <span className="text-[10px] text-muted font-mono">{voter.voter_id}</span>
+              <span className="text-[13px] font-semibold text-heading">{voter.voter_name}</span>
+              <span className="text-[10px] text-muted font-mono">{voter.voter_id_no}</span>
               {voter.phone && <span className="text-[10px] text-muted">· {voter.phone}</span>}
             </div>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -499,11 +515,11 @@ export default function VoterSurveyEntry() {
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-bold">
                     <i className="ph ph-clock text-[10px]" />
-                    {allVoters.filter(v => !recordByVoterName.has(v.name.toLowerCase())).length} Not Yet Action Taken
+                    {allVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase())).length} Not Yet Action Taken
                   </span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
                     <i className="ph ph-check-circle text-[10px]" />
-                    {allVoters.filter(v => recordByVoterName.has(v.name.toLowerCase())).length} Action Taken
+                    {allVoters.filter(v => recordByVoterName.has(v.voter_name.toLowerCase())).length} Action Taken
                   </span>
                 </div>
               ) : (
@@ -519,8 +535,8 @@ export default function VoterSurveyEntry() {
           <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
             {([
               { key: 'all',     label: 'All',                  count: allVoters.length },
-              { key: 'pending', label: 'Not Yet Action Taken',  count: allVoters.filter(v => !recordByVoterName.has(v.name.toLowerCase())).length },
-              { key: 'done',    label: 'Action Taken',          count: allVoters.filter(v =>  recordByVoterName.has(v.name.toLowerCase())).length },
+              { key: 'pending', label: 'Not Yet Action Taken',  count: allVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase())).length },
+              { key: 'done',    label: 'Action Taken',          count: allVoters.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase())).length },
             ] as const).map(tab => (
               <button key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
@@ -748,25 +764,21 @@ export default function VoterSurveyEntry() {
             <FormGroup label="Voter Support Level">
               <select ref={r.supportLevel} className={selectCls}>
                 <option value="">Select support level</option>
-                <option>Strong Support</option>
-                <option>Leaning Support</option>
-                <option>Neutral</option>
-                <option>Leaning Against</option>
-                <option>Strong Against</option>
-                <option>Undecided</option>
+                <option value="positive">Positive</option>
+                <option value="negative">Negative</option>
+                <option value="neutral">Neutral</option>
               </select>
             </FormGroup>
             <FormGroup label="Response Status">
               <select ref={r.responseStatus} className={selectCls}>
                 <option value="">Select status</option>
-                <option value="interested">Interested</option>
                 <option value="not_reach">Not Reach</option>
-                <option value="not_attend_call">Not Attend Call</option>
-                <option value="need_followups">Need Followup</option>
+                <option value="no_answer">No Answer</option>
+                <option value="need_followup">Need Followup</option>
               </select>
             </FormGroup>
           </FormRow>
-          <FormRow cols={2}>
+          <FormRow cols={1}>
             <FormGroup label="Party Preference">
               <select ref={r.partyPref} className={selectCls}>
                 <option value="">Select party</option>
@@ -774,10 +786,6 @@ export default function VoterSurveyEntry() {
                 <option>Congress</option><option>PMK</option><option>DMDK</option>
                 <option>Other</option><option>No Preference</option>
               </select>
-            </FormGroup>
-            <FormGroup label="Key Issues / Concerns">
-              <textarea ref={r.keyIssues} className={textareaCls} rows={3}
-                placeholder="Water, roads, electricity, employment..." />
             </FormGroup>
           </FormRow>
           <FormRow cols={1}>

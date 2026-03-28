@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { ToastProvider } from './context/ToastContext'
 import { EntryStoreProvider } from './context/EntryStoreContext'
 import { MasterStoreProvider } from './context/MasterStoreContext'
@@ -24,7 +24,7 @@ import type { PageId, EntryModuleId, MasterModuleId } from './types/nav.types'
 function AppShell() {
   const { user, isAuthenticated, logout } = useAuthContext()
 
-  const [activePage,       setActivePage]       = useState<PageId>('entry')
+  const [activePage,       setActivePage]       = useState<PageId>('dashboard')
   const [activeEntryTab,   setActiveEntryTab]   = useState<EntryModuleId>('voter')
   const [activeMasterTab,  setActiveMasterTab]  = useState<MasterModuleId>('area')
   const [showSignup,       setShowSignup]       = useState(false)

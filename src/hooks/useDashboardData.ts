@@ -27,6 +27,23 @@ export interface CampaignEventItem {
   actual_attendees?: number
 }
 
+export interface TaskItem {
+  id: number
+  title: string
+  category: string
+  task_category?: number | null
+  task_category_name?: string
+  task_category_color?: string
+  details?: string
+  expected_datetime: string
+  venue?: string
+  delivery_incharge_name?: string
+  coordinator_name?: string
+  status: string
+  notes?: string
+  created_at?: string
+}
+
 export interface DashboardAnalytics {
   total_voters?: number
   voters_contacted?: number
@@ -41,6 +58,7 @@ export interface DashboardAnalytics {
 interface UseDashboardDataReturn {
   activities: ActivityLogItem[]
   events: CampaignEventItem[]
+  tasks: TaskItem[]
   analytics: DashboardAnalytics | null
   loading: boolean
 }
@@ -48,20 +66,25 @@ interface UseDashboardDataReturn {
 export function useDashboardData(): UseDashboardDataReturn {
   const [activities, setActivities] = useState<ActivityLogItem[]>([])
   const [events, setEvents] = useState<CampaignEventItem[]>([])
+  const [tasks, setTasks] = useState<TaskItem[]>([])
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.allSettled([
       apiClient.get('/activities/logs/', { params: { limit: 8 } }),
-      apiClient.get('/campaigns/events/', { params: { limit: 30 } }),
+      apiClient.get('/campaigns/events/', { params: { limit: 100 } }),
+      apiClient.get('/campaigns/tasks/', { params: { limit: 100 } }),
       apiClient.get('/analytics/dashboard/'),
-    ]).then(([activitiesRes, eventsRes, analyticsRes]) => {
+    ]).then(([activitiesRes, eventsRes, tasksRes, analyticsRes]) => {
       if (activitiesRes.status === 'fulfilled') {
         setActivities(activitiesRes.value.data.results || [])
       }
       if (eventsRes.status === 'fulfilled') {
         setEvents(eventsRes.value.data.results || [])
+      }
+      if (tasksRes.status === 'fulfilled') {
+        setTasks(tasksRes.value.data.results || [])
       }
       if (analyticsRes.status === 'fulfilled') {
         setAnalytics(analyticsRes.value.data)
@@ -69,7 +92,7 @@ export function useDashboardData(): UseDashboardDataReturn {
     }).finally(() => setLoading(false))
   }, [])
 
-  return { activities, events, analytics, loading }
+  return { activities, events, tasks, analytics, loading }
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -140,4 +163,20 @@ export function getEventStatusDisplay(status: string): { text: string; className
 export function formatEventDate(dateStr: string): string {
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
+}
+
+export function getTaskStatusDisplay(status: string): { text: string; bg: string; color: string } {
+  switch (status) {
+    case 'pending':     return { text: 'Pending',     bg: '#fef3c7', color: '#d97706' }
+    case 'in_progress': return { text: 'In Progress', bg: '#dbeafe', color: '#0d2455' }
+    case 'completed':   return { text: 'Completed',   bg: '#dcfce7', color: '#138808' }
+    case 'cancelled':   return { text: 'Cancelled',   bg: '#fee2e2', color: '#dc2626' }
+    default:            return { text: status,        bg: '#f3f4f6', color: '#6b7280' }
+  }
+}
+
+export function formatTaskDateTime(dt: string): string {
+  const d = new Date(dt)
+  return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
 }

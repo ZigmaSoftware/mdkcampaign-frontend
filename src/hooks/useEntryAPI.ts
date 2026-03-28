@@ -54,6 +54,8 @@ interface VolunteerRecord {
   phone?: string
   phone2?: string
   booth: number | null
+  booths?: number[]
+  booth_names?: string[]
   ward: number | null
   status?: string
   role?: string

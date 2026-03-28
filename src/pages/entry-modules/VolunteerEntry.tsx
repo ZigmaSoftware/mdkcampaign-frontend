@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import apiClient from '../../utils/api'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
@@ -50,13 +50,14 @@ export default function VolunteerEntry() {
   const masterApi = useMasterAPI()
   const { showToast } = useToast()
 
-  const [volunteers, setVolunteers] = useState<VolunteerRecord[]>([])
-  const [booths, setBooths]         = useState<Booth[]>([])
-  const [wards, setWards]           = useState<Ward[]>([])
-  const [editing, setEditing]       = useState<VolunteerRecord | null>(null)
-  const [isFormOpen, setFormOpen]   = useState(false)
-  const [showImport, setShowImport] = useState(false)
-  const [search, setSearch]         = useState('')
+  const [volunteers, setVolunteers]         = useState<VolunteerRecord[]>([])
+  const [booths, setBooths]                 = useState<Booth[]>([])
+  const [wards, setWards]                   = useState<Ward[]>([])
+  const [editing, setEditing]               = useState<VolunteerRecord | null>(null)
+  const [isFormOpen, setFormOpen]           = useState(false)
+  const [showImport, setShowImport]         = useState(false)
+  const [search, setSearch]                 = useState('')
+  const [selectedBoothIds, setSelectedBoothIds] = useState<number[]>([])
   useEffect(() => {
     api.fetchVolunteers().then(d => d && setVolunteers(d))
     masterApi.fetchBooths().then(d => d && setBooths(d))
@@ -76,7 +77,6 @@ export default function VolunteerEntry() {
     block:   useRef<HTMLSelectElement>(null),
     phone:   useRef<HTMLInputElement>(null),
     phone2:  useRef<HTMLInputElement>(null),
-    booth:   useRef<HTMLSelectElement>(null),
     ward:    useRef<HTMLSelectElement>(null),
     role:    useRef<HTMLSelectElement>(null),
     status:  useRef<HTMLSelectElement>(null),
@@ -93,13 +93,15 @@ export default function VolunteerEntry() {
     Object.values(r).forEach(ref => { if (ref.current) ref.current.value = '' })
     if (r.joined.current) r.joined.current.value = todayISO()
     if (r.status.current) r.status.current.value = 'Active'
+    setSelectedBoothIds([])
   }
 
   const fillFromRecord = (v: VolunteerRecord) => {
     if (r.name.current)   r.name.current.value   = v.user_name || ''
     if (r.block.current)  r.block.current.value  = v.block  || ''
-    if (r.booth.current)  r.booth.current.value  = v.booth ? String(v.booth)  : ''
     if (r.ward.current)   r.ward.current.value   = v.ward  ? String(v.ward)   : ''
+    // Restore multi-selected booths (prefer M2M list, fall back to primary FK)
+    setSelectedBoothIds(v.booths?.length ? v.booths : v.booth ? [v.booth] : [])
     if (r.status.current) r.status.current.value = STATUS_REVERSE[v.status || ''] || 'Active'
     if (r.phone.current)  r.phone.current.value  = v.phone  || ''
     if (r.phone2.current) r.phone2.current.value = v.phone2 || ''
@@ -119,17 +121,18 @@ export default function VolunteerEntry() {
       showToast('<i class="ph ph-warning"></i> Phone must be 10 digits starting with 6–9.', '#dc2626')
       return
     }
-    const boothId   = r.booth.current?.value  ? parseInt(r.booth.current.value)  : null
     const wardId    = r.ward.current?.value   ? parseInt(r.ward.current.value)   : null
     const statusVal = STATUS_MAP[r.status.current?.value || 'Active'] || 'active'
     const ageVal    = r.age.current?.value    ? parseInt(r.age.current.value)    : null
+    const primaryBoothId = selectedBoothIds[0] ?? null
 
     const commonFields = {
       name:        r.name.current?.value    || '',
       phone:       phone,
       phone2:      r.phone2.current?.value  || '',
       block:       r.block.current?.value   || '',
-      booth:       boothId,
+      booth:       primaryBoothId,
+      booths:      selectedBoothIds,
       ward:        wardId,
       status:      statusVal,
       role:        r.role.current?.value    || '',
@@ -188,14 +191,17 @@ export default function VolunteerEntry() {
     v.name || v.user_name?.trim() || v.username || `Volunteer #${v.id}`
 
   const mapVolunteer = (v: VolunteerRecord): EntryRecord => {
-    const boothInfo = booths.find(b => b.id === v.booth)
     const wardInfo  = wards.find(w => w.id === v.ward)
     const name = getVolName(v)
+    // Use M2M booth_names if available, else fall back to primary FK booth
+    const boothLabels = v.booth_names?.length
+      ? v.booth_names.map(n => `Booth ${n}`)
+      : v.booth ? [`Booth ${booths.find(b => b.id === v.booth)?.number ?? v.booth}`] : []
     return {
       id: String(v.id),
       keyField: name,
       sub: [
-        boothInfo ? `Booth ${boothInfo.number}` : null,
+        boothLabels.length ? boothLabels.join(', ') : null,
         wardInfo  ? wardInfo.name : null,
         STATUS_REVERSE[v.status || ''] || v.status || 'Active',
       ].filter(Boolean).join(' · '),
@@ -203,7 +209,7 @@ export default function VolunteerEntry() {
         phone:          v.phone          || '',
         phone2:         v.phone2         || '',
         block:          v.block          || '',
-        booth:          boothInfo ? `Booth ${boothInfo.number}` : '',
+        booth:          boothLabels.join(', '),
         ward:           wardInfo  ? wardInfo.name : '',
         age:            v.age     != null ? String(v.age) : '',
         gender:         v.gender         || '',
@@ -248,14 +254,14 @@ export default function VolunteerEntry() {
               sampleColumns: ['name', 'phone', 'alt_phone', 'booth_code', 'ward_code', 'role', 'volunteer_type', 'status'],
               sampleRow: {
                 name: 'Rajesh Kumar', phone: '9876543210', alt_phone: '',
-                booth_code: 'B001', ward_code: 'W001',
+                booth_code: '1, 2, 3', ward_code: 'W001',
                 role: 'Booth Agent', volunteer_type: 'paid_volunteer', status: 'active',
               },
               columnNotes: {
                 name: 'Full name of volunteer (required)',
                 phone: '10-digit mobile',
                 alt_phone: 'Alternate mobile number',
-                booth_code: 'Booth code from master',
+                booth_code: 'Comma-separated booth codes e.g. "1, 2, 3" or "B001,B002"',
                 ward_code: 'Ward code from master',
                 role: 'Booth Agent / Street Captain / ...',
                 volunteer_type: 'paid_volunteer / social_media_volunteer / alliance_volunteer',
@@ -342,17 +348,11 @@ export default function VolunteerEntry() {
           </FormGroup>
         </FormRow>
 
-        <FormRow cols={4}>
+        <FormRow cols={3}>
           <FormGroup label="Block">
             <select ref={r.block} className={selectCls}>
               <option value="">Select Block</option>
               {blocks.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-            </select>
-          </FormGroup>
-          <FormGroup label="Booth">
-            <select ref={r.booth} className={selectCls}>
-              <option value="">Select Booth</option>
-              {booths.map(b => <option key={b.id} value={b.id}>{b.number} — {b.name}</option>)}
             </select>
           </FormGroup>
           <FormGroup label="Ward">
@@ -378,6 +378,38 @@ export default function VolunteerEntry() {
             </select>
           </FormGroup>
         </FormRow>
+
+        {/* Multi-select Booths */}
+        <div className="mb-3">
+          <div className="text-[11px] font-semibold text-navy mb-1">
+            Booths <span className="text-muted font-normal">(select one or more)</span>
+            {selectedBoothIds.length > 0 && (
+              <span className="ml-2 text-saffron font-bold">{selectedBoothIds.length} selected</span>
+            )}
+          </div>
+          <div className="border border-border rounded-lg p-2 max-h-[140px] overflow-y-auto bg-white grid grid-cols-2 sm:grid-cols-3 gap-1">
+            {booths.map(b => {
+              const checked = selectedBoothIds.includes(b.id)
+              return (
+                <label key={b.id}
+                  className={`flex items-center gap-2 px-2 py-[5px] rounded cursor-pointer text-[11px] transition-colors ${checked ? 'bg-[#fff3e0] font-semibold text-navy' : 'hover:bg-[#f8fafc]'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() =>
+                      setSelectedBoothIds(prev =>
+                        prev.includes(b.id) ? prev.filter(id => id !== b.id) : [...prev, b.id]
+                      )
+                    }
+                    className="accent-saffron w-[13px] h-[13px] flex-shrink-0"
+                  />
+                  <span className="truncate">{b.number} — {b.name}</span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
 
         <FormRow cols={4}>
           <FormGroup label="Age">

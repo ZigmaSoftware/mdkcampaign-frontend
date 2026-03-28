@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import apiClient from '../../utils/api'
 import { useToast } from '../../context/ToastContext'
 import { inputCls, selectCls } from '../../components/entry/FormGroup'
-import { addGroup, getGroups, subscribe } from '../../utils/telecallingStore'
 
 /* ─── Types ──────────────────────────────────────────────── */
 interface VoterRow {
@@ -29,9 +28,8 @@ interface BoothOption {
   name: string
 }
 
-
 /* ─── Constants ──────────────────────────────────────────── */
-const PAGE_SIZE = 20
+const PAGE_SIZE = 30
 const genderLabel = (g?: string) => g === 'm' ? 'Male' : g === 'f' ? 'Female' : g === 'o' ? 'Other' : '—'
 
 /* ─── Booth multi-select ─────────────────────────────────── */
@@ -136,32 +134,24 @@ export default function AssignTelecalling() {
   const [filterTelecaller, setFilterTelecaller] = useState('')
   const [filterDate,       setFilterDate]       = useState('')
   const [filterSearch,     setFilterSearch]     = useState('')
+  const [debouncedSearch,  setDebouncedSearch]  = useState('')
 
-  const [voters,    setVoters]    = useState<VoterRow[]>([])
-  const rawVotersRef              = useRef<VoterRow[]>([])  // unfiltered API results for current page
-  const [rawCount,  setRawCount]  = useState(0)   // API total before client-side filter
-  const [total,     setTotal]     = useState(0)
-  const [page,      setPage]      = useState(1)
-  const [loading,   setLoading]   = useState(false)
+  const [voters,   setVoters]   = useState<VoterRow[]>([])
+  const rawVotersRef             = useRef<VoterRow[]>([])
+  const [rawCount, setRawCount] = useState(0)
+  const [total,    setTotal]    = useState(0)
+  const [page,     setPage]     = useState(1)
+  const [loading,  setLoading]  = useState(false)
+  const [assigning, setAssigning] = useState(false)
 
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [assignTo, setAssignTo] = useState('')
 
-  /* Assigned voter IDs — kept in a ref so fetchVoters doesn't need it as a dep */
-  const assignedIdsRef = useRef<Set<number>>(
-    new Set(getGroups().flatMap(g => g.voters.map(v => v.id)))
-  )
-  const [assignedVoterIds, setAssignedVoterIds] = useState<Set<number>>(assignedIdsRef.current)
+  /* Already-assigned voter IDs — fetched from API on mount */
+  const assignedIdsRef = useRef<Set<number>>(new Set())
+  const [assignedVoterIds, setAssignedVoterIds] = useState<Set<number>>(new Set())
 
-  useEffect(() => subscribe(() => {
-    const next = new Set(getGroups().flatMap(g => g.voters.map(v => v.id)))
-    assignedIdsRef.current = next
-    setAssignedVoterIds(next)
-    /* Re-filter current page's voters immediately after assignment */
-    setVoters(rawVotersRef.current.filter(v => !next.has(v.id) && !!v.phone))
-  }), [])
-
-  /* ── Fetch masters ── */
+  /* ── Fetch masters + already-assigned IDs ── */
   useEffect(() => {
     apiClient.get('/masters/booths/', { params: { limit: 500 } })
       .then(r => setBooths(r.data.results ?? []))
@@ -177,23 +167,51 @@ export default function AssignTelecalling() {
         )
       })
       .catch(() => {})
+
+    /* Load already-assigned voter IDs from backend */
+    apiClient.get('/telecalling/assignments/', { params: { limit: 1000 } })
+      .then(r => {
+        const assignments = r.data.results ?? []
+        const ids = new Set<number>(
+          assignments.flatMap((a: any) =>
+            (a.voters ?? []).map((v: any) => v.voter).filter(Boolean)
+          )
+        )
+        assignedIdsRef.current = ids
+        setAssignedVoterIds(ids)
+      })
+      .catch(() => {})
   }, [])
 
-  /* ── Fetch voters (auto-advances page if all on current page are assigned) ── */
-  const doFetch = useCallback((targetPage: number, boothSet: Set<number>, date: string, search: string) => {
+  /* ── Debounce search ── */
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(filterSearch); setPage(1) }, 350)
+    return () => clearTimeout(t)
+  }, [filterSearch])
+
+  /* ── Fetch voters ── */
+  useEffect(() => {
+    if (filterBooths.size === 0) {
+      setVoters([])
+      rawVotersRef.current = []
+      setRawCount(0)
+      setTotal(0)
+      return
+    }
+
+    const controller = new AbortController()
     setLoading(true)
     setSelected(new Set())
 
     const params: Record<string, any> = {
       limit:  PAGE_SIZE,
-      offset: (targetPage - 1) * PAGE_SIZE,
+      offset: (page - 1) * PAGE_SIZE,
     }
-    if (boothSet.size === 1) params.booth = [...boothSet][0]
-    else if (boothSet.size > 1) params.booth = [...boothSet].join(',')
-    if (date)   params.created_date = date
-    if (search) params.search       = search
+    if (filterBooths.size === 1) params.booth = [...filterBooths][0]
+    else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')
+    if (debouncedSearch) params.search = debouncedSearch
 
-    apiClient.get('/voters/voters/', { params })
+    apiClient.get('/voters/voters/', { params, signal: controller.signal })
       .then(r => {
         const apiCount = r.data.count ?? 0
         const all: VoterRow[] = (r.data.results ?? []).map((v: any) => ({
@@ -202,35 +220,22 @@ export default function AssignTelecalling() {
           booth: v.booth, booth_name: v.booth_name ?? v.booth_number ?? '',
           age: v.age, gender: v.gender,
         }))
-
         rawVotersRef.current = all
-        const filtered = all.filter(v => !assignedIdsRef.current.has(v.id) && !!v.phone)
-        const tp = Math.max(1, Math.ceil(apiCount / PAGE_SIZE))
-
-        /* If this page is fully assigned and there are more pages, auto-skip ahead */
-        if (filtered.length === 0 && all.length > 0 && targetPage < tp) {
-          setPage(targetPage + 1)
-          doFetch(targetPage + 1, boothSet, date, search)
-          return
-        }
-
-        setPage(targetPage)
+        /* Filter out already-assigned voters; show all regardless of phone */
+        const filtered = all.filter(v => !assignedIdsRef.current.has(v.id))
         setRawCount(apiCount)
         setVoters(filtered)
         setTotal(apiCount)
       })
-      .catch(() => showToast('Failed to load voters', 'error'))
+      .catch(err => { if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast('Failed to load voters', 'error') })
       .finally(() => setLoading(false))
-  }, [])
 
-  /* Trigger fetch whenever page, booths, date, or search change */
-  useEffect(() => { doFetch(page, filterBooths, filterDate, filterSearch) }, [page, filterBooths, filterDate, filterSearch])
+    return () => controller.abort()
+  }, [page, filterBooths, debouncedSearch])
 
-  /* Already filtered at fetch time — no need to re-filter */
-  const visibleVoters = voters
-  const isAllSelected = visibleVoters.length > 0 && visibleVoters.every(v => selected.has(v.id))
-
-  const toggleAll = () => {
+  const visibleVoters  = voters
+  const isAllSelected  = visibleVoters.length > 0 && visibleVoters.every(v => selected.has(v.id))
+  const toggleAll      = () => {
     const next = new Set(selected)
     if (isAllSelected) visibleVoters.forEach(v => next.delete(v.id))
     else               visibleVoters.forEach(v => next.add(v.id))
@@ -243,7 +248,7 @@ export default function AssignTelecalling() {
   }
 
   /* ── Assign ── */
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (!assignTo)           { showToast('Select a telecalling person', 'error'); return }
     if (selected.size === 0) { showToast('Select at least one voter', 'error');   return }
 
@@ -251,20 +256,44 @@ export default function AssignTelecalling() {
     if (!telecaller) { showToast('Telecaller not found — please re-select', 'error'); return }
 
     const date        = filterDate || new Date().toISOString().slice(0, 10)
-    const voterIds    = Array.from(selected)
     const groupVoters = voters.filter(v => selected.has(v.id))
 
-    /* Push to shared store — also triggers assignedVoterIds sync via subscription */
-    addGroup({ id: `${assignTo}-${Date.now()}`, telecaller, voters: groupVoters, date })
-    setSelected(new Set())
-    showToast(`${voterIds.length} voter(s) assigned to ${telecaller.name}`, 'success')
+    const payload = {
+      telecaller_id:    telecaller.id,
+      telecaller_name:  telecaller.name,
+      telecaller_phone: telecaller.phone ?? '',
+      assigned_date:    date,
+      voters: groupVoters.map(v => ({
+        voter:       v.id,
+        voter_name:  v.name,
+        voter_id_no: v.voter_id,
+        phone:       v.phone ?? '',
+        address:     v.address ?? '',
+        booth_name:  v.booth_name ?? '',
+        age:         v.age ?? null,
+        gender:      v.gender ?? '',
+      })),
+    }
 
-    /* Try backend — silent fail if endpoint not ready */
-    apiClient.post('/telecalling/assignments/', {
-      telecaller_id: Number(assignTo),
-      voter_ids:     voterIds,
-      assigned_date: date,
-    }).catch(() => {})
+    setAssigning(true)
+    try {
+      await apiClient.post('/telecalling/assignments/', payload)
+
+      /* Update local assigned-IDs so these voters are hidden immediately */
+      const voterIds = groupVoters.map(v => v.id)
+      const next = new Set([...assignedIdsRef.current, ...voterIds])
+      assignedIdsRef.current = next
+      setAssignedVoterIds(next)
+
+      /* Remove them from the visible list */
+      setVoters(prev => prev.filter(v => !selected.has(v.id)))
+      setSelected(new Set())
+      showToast(`${groupVoters.length} voter(s) assigned to ${telecaller.name}`, 'success')
+    } catch {
+      showToast('Failed to save assignment — please try again', 'error')
+    } finally {
+      setAssigning(false)
+    }
   }
 
   /* ── Pagination ── */
@@ -283,12 +312,12 @@ export default function AssignTelecalling() {
     return pages
   })()
 
-  const applyBooths  = (next: Set<number>) => { setFilterBooths(next);  setPage(1) }
-  const applyDate    = (v: string)          => { setFilterDate(v);      setPage(1) }
-  const applySearch  = (v: string)          => { setFilterSearch(v);    setPage(1) }
-  const clearAll     = () => { setFilterBooths(new Set()); setFilterDate(''); setFilterTelecaller(''); setFilterSearch(''); setPage(1) }
-  const hasFilters   = filterBooths.size > 0 || !!filterDate || !!filterTelecaller || !!filterSearch
-  const assignName  = telecallers.find(t => String(t.id) === assignTo)?.name ?? ''
+  const applyBooths  = (next: Set<number>) => { setFilterBooths(next); setPage(1) }
+  const applyDate    = (v: string)          => { setFilterDate(v) }
+  const applySearch  = (v: string)          => { setFilterSearch(v) }
+  const clearAll     = () => { setFilterBooths(new Set()); setFilterDate(''); setFilterTelecaller(''); setFilterSearch(''); setDebouncedSearch(''); setPage(1) }
+  const hasFilters   = filterBooths.size > 0 || !!filterTelecaller || !!filterSearch
+  const assignName   = telecallers.find(t => String(t.id) === assignTo)?.name ?? ''
 
   /* ════════════════════════════════════════════════════════
      Render
@@ -350,17 +379,17 @@ export default function AssignTelecalling() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Date</label>
-            <input type="date" value={filterDate} onChange={e => applyDate(e.target.value)}
-              className={`${inputCls} w-[155px]`} />
-          </div>
-
-          <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Booth</label>
             <BoothMultiSelect booths={booths} selected={filterBooths} onChange={applyBooths} />
           </div>
 
           <div className="w-px self-stretch bg-border mx-1" />
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Assignment Date</label>
+            <input type="date" value={filterDate} onChange={e => applyDate(e.target.value)}
+              className={`${inputCls} w-[155px]`} />
+          </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-wide text-muted">
@@ -375,11 +404,12 @@ export default function AssignTelecalling() {
                   <option key={t.id} value={t.id}>{t.name}{t.phone ? ` · ${t.phone}` : ''}</option>
                 ))}
               </select>
-              <button onClick={handleAssign} disabled={selected.size === 0 || !assignTo}
+              <button onClick={handleAssign} disabled={selected.size === 0 || !assignTo || assigning}
                 className="px-4 py-[7px] bg-navy text-white text-[12px] font-semibold border-l border-white/20
                            disabled:opacity-40 hover:bg-navy/90 transition-colors whitespace-nowrap">
-                <i className="ph ph-check mr-1" />
-                Assign
+                {assigning
+                  ? <><i className="ph ph-spinner-gap animate-spin mr-1" />Saving…</>
+                  : <><i className="ph ph-check mr-1" />Assign</>}
               </button>
             </div>
           </div>
@@ -418,9 +448,11 @@ export default function AssignTelecalling() {
                 <tr><td colSpan={8} className="px-4 py-12 text-center">
                   <i className="ph ph-users-three text-[32px] text-border block mb-2" />
                   <p className="text-[12px] text-muted">
-                    {rawCount === 0
-                      ? (filterBooths.size > 0 ? 'No voters found for selected booth(s).' : 'No voters found.')
-                      : 'All voters have been assigned.'}
+                    {filterBooths.size === 0
+                      ? 'Select a booth to view voters.'
+                      : rawCount === 0
+                        ? 'No voters found for selected booth(s).'
+                        : 'All voters have been assigned.'}
                   </p>
                 </td></tr>
               ) : (
@@ -483,11 +515,10 @@ export default function AssignTelecalling() {
           <span className="text-[12px]">
             <strong className="text-saffron">{selected.size}</strong> voter(s) → <strong>{assignName}</strong>
           </span>
-          <button onClick={handleAssign}
+          <button onClick={handleAssign} disabled={assigning}
             className="bg-saffron text-navy px-4 py-1.5 rounded-lg text-[12px] font-bold
-                       hover:bg-saffron/90 transition-colors">
-            <i className="ph ph-check mr-1" />
-            Confirm
+                       hover:bg-saffron/90 transition-colors disabled:opacity-50">
+            {assigning ? <i className="ph ph-spinner-gap animate-spin" /> : <><i className="ph ph-check mr-1" />Confirm</>}
           </button>
           <button onClick={() => setSelected(new Set())} className="text-white/50 hover:text-white">
             <i className="ph ph-x text-[14px]" />

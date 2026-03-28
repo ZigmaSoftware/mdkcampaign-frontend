@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useEntryModule } from '../../hooks/useEntryModule'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Ward, Booth, Constituency } from '../../hooks/useMasterAPI'
+import type { Ward, Booth, Constituency, CampaignActivityType } from '../../hooks/useMasterAPI'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
 import apiClient from '../../utils/api'
@@ -59,12 +59,16 @@ export function CampaignEntry() {
   const [constituencies, setConstituencies] = useState<Constituency[]>([])
   const [selWardId,  setSelWardId]  = useState<number | null>(null)
   const [selBoothId, setSelBoothId] = useState<number | null>(null)
+  const [activityTypes, setActivityTypes] = useState<CampaignActivityType[]>([])
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo,   setFilterDateTo]   = useState('')
 
   useEffect(() => {
     masterApi.fetchWards().then(d => d && setWards(d))
     masterApi.fetchBooths().then(d => d && setBooths(d))
     entryApi.fetchVolunteers().then(d => d && setVolunteers(d))
     masterApi.fetchConstituencies().then(d => d && setConstituencies(d))
+    masterApi.fetchCampaignActivityTypes().then(d => d && setActivityTypes(d))
   }, [])
 
   const filteredVolunteers = volunteers.filter(v => {
@@ -117,22 +121,6 @@ export function CampaignEntry() {
     if (em.isFormOpen && pendingFill.current) { fill(pendingFill.current); pendingFill.current = null }
   }, [em.isFormOpen])
 
-  const ACTIVITY_EVENT_TYPE: Record<string, string> = {
-    'Door-to-door Visit':         'door_door',
-    'Market / Sandhai Outreach':  'door_door',
-    'Labour Site Visit':          'door_door',
-    'Pamphlet Distribution':      'door_door',
-    'Wall Painting / Poster':     'door_door',
-    'Banner / Hoarding Setup':    'door_door',
-    'Mic Van / Bus Campaign':     'rally',
-    'Auto Rickshaw Campaign':     'rally',
-    'House Meeting (Ghar Sabha)': 'meeting',
-    'Corner Meeting':             'meeting',
-    'WhatsApp / SMS Blast':       'training',
-    'Social Media Post':          'training',
-    'Phone Call Campaign':        'training',
-  }
-
   const handleSave = async () => {
     const d = collect()
     if (!d.type) return
@@ -143,9 +131,10 @@ export function CampaignEntry() {
 
     // Also persist to backend so dashboard "Upcoming Events" can display it
     const constituencyId = constituencies[0]?.id
+    const eventType = activityTypes.find(a => a.name === d.type)?.event_type ?? 'meeting'
     await entryApi.createCampaignEvent({
       title:              d.type,
-      event_type:         ACTIVITY_EVENT_TYPE[d.type] ?? 'meeting',
+      event_type:         eventType,
       scheduled_date:     d.date || new Date().toISOString().slice(0, 10),
       scheduled_time:     d.time || undefined,
       location,
@@ -164,13 +153,47 @@ export function CampaignEntry() {
     if (rec) { pendingFill.current = rec.data }
   }
 
+  const dateFiltered = em.filtered.filter(rec => {
+    const d = rec.data?.date || ''
+    if (filterDateFrom && d < filterDateFrom) return false
+    if (filterDateTo   && d > filterDateTo)   return false
+    return true
+  })
+
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
         <EntryListHeader title="Campaign Activities" icon="ph ph-megaphone" count={em.records.length} onAddNew={em.openForm} addLabel="Add Activity" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search activities..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Campaign_Activities')} onPrint={() => printModule(em.records,'Campaign Activities')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          {/* Date range filter */}
+          <div className="flex items-center gap-3 mb-3 flex-wrap">
+            <label className="text-xs font-semibold text-muted uppercase tracking-wide">Filter by Date:</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                className="border border-border rounded-lg px-3 py-1.5 text-sm text-navy focus:outline-none focus:border-saffron"
+                value={filterDateFrom}
+                onChange={e => setFilterDateFrom(e.target.value)}
+              />
+              <span className="text-muted text-sm">to</span>
+              <input
+                type="date"
+                className="border border-border rounded-lg px-3 py-1.5 text-sm text-navy focus:outline-none focus:border-saffron"
+                value={filterDateTo}
+                onChange={e => setFilterDateTo(e.target.value)}
+              />
+              {(filterDateFrom || filterDateTo) && (
+                <button
+                  onClick={() => { setFilterDateFrom(''); setFilterDateTo('') }}
+                  className="text-xs text-saffron hover:text-navy font-semibold px-2 py-1 rounded"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          <RecordList records={dateFiltered} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={handleEdit} onDelete={em.deleteRecord} />
         </div>
       </div>
       <EntryFormPanel id="campaign-form" title="Campaign Activity" icon="ph ph-megaphone" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -178,13 +201,9 @@ export function CampaignEntry() {
           <FormGroup label="Campaign Activity" required>
             <select ref={r.type} className={selectCls}>
               <option value="">Select</option>
-              <option>Door-to-door Visit</option><option>Market / Sandhai Outreach</option>
-              <option>Labour Site Visit</option><option>Mic Van / Bus Campaign</option>
-              <option>WhatsApp / SMS Blast</option><option>Social Media Post</option>
-              <option>Pamphlet Distribution</option><option>Wall Painting / Poster</option>
-              <option>Banner / Hoarding Setup</option><option>Auto Rickshaw Campaign</option>
-              <option>House Meeting (Ghar Sabha)</option><option>Corner Meeting</option>
-              <option>Phone Call Campaign</option>
+              {activityTypes.filter(a => a.is_active).map(a => (
+                <option key={a.id} value={a.name}>{a.name}</option>
+              ))}
             </select>
           </FormGroup>
           <FormGroup label="Date" required><input ref={r.date} type="date" className={inputCls} defaultValue={todayISO()} /></FormGroup>

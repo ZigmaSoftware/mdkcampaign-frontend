@@ -15,6 +15,7 @@ import {
   CandidateMaster,
   PartyMaster,
   TaskCategoryMaster,
+  CampaignActivityTypeMaster,
 } from './master-modules/AllMasters'
 
 interface MastersConfigPageProps {
@@ -35,7 +36,8 @@ export default function MastersConfigPage({ activeTab, onTabChange }: MastersCon
       case 'achievement':  return <AchievementMaster />
       case 'candidate':    return <CandidateMaster />
       case 'party':         return <PartyMaster />
-      case 'task-category': return <TaskCategoryMaster />
+      case 'task-category':    return <TaskCategoryMaster />
+      case 'campaign-activity': return <CampaignActivityTypeMaster />
       default:              return <DistrictMaster />
     }
   }

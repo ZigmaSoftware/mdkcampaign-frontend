@@ -66,6 +66,10 @@ interface TaskCategory {
   id: number; name: string; description?: string; color?: string; icon?: string; priority?: number
 }
 
+interface CampaignActivityType {
+  id: number; name: string; event_type: string; description?: string; order: number; is_active: boolean
+}
+
 export function useMasterAPI() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -215,6 +219,16 @@ export function useMasterAPI() {
   const deleteTaskCategory  = useCallback((id: number) =>
     deleteOne(`/masters/task-categories/${id}/`), [deleteOne])
 
+  // ── Campaign Activity Types ───────────────────────────────────
+  const fetchCampaignActivityTypes = useCallback(() =>
+    getList<CampaignActivityType>('/masters/campaign-activity-types/'), [getList])
+  const createCampaignActivityType = useCallback((d: Partial<CampaignActivityType>) =>
+    createOne<CampaignActivityType>('/masters/campaign-activity-types/', d), [createOne])
+  const updateCampaignActivityType = useCallback((id: number, d: Partial<CampaignActivityType>) =>
+    updateOne<CampaignActivityType>(`/masters/campaign-activity-types/${id}/`, d), [updateOne])
+  const deleteCampaignActivityType = useCallback((id: number) =>
+    deleteOne(`/masters/campaign-activity-types/${id}/`), [deleteOne])
+
   // ── Bulk upload (shared) ──────────────────────────────────────
   const bulkUpload = useCallback(async (
     endpoint: string,
@@ -254,11 +268,12 @@ export function useMasterAPI() {
     fetchSchemes, createScheme, updateScheme, deleteScheme,
     fetchAchievements, createAchievement, updateAchievement, deleteAchievement,
     fetchTaskCategories, createTaskCategory, updateTaskCategory, deleteTaskCategory,
+    fetchCampaignActivityTypes, createCampaignActivityType, updateCampaignActivityType, deleteCampaignActivityType,
     fetchVolunteerNames,
     bulkUpload,
   }
 }
 
 export type Village = Ward
-export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, TaskCategory, VolunteerName }
+export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, TaskCategory, CampaignActivityType, VolunteerName }
 export type UseMasterAPIReturn = ReturnType<typeof useMasterAPI>

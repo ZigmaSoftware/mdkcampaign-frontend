@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory } from '../../hooks/useMasterAPI'
+import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory, CampaignActivityType } from '../../hooks/useMasterAPI'
 import type { MasterRecord } from '../../types/master.types'
 import MasterListCard from '../../components/masters/MasterListCard'
 import FormRow from '../../components/entry/FormRow'
@@ -1395,6 +1395,140 @@ export function TaskCategoryMaster() {
         <MasterListCard
           title="Task Categories"
           icon="ph ph-tag"
+          records={recs}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </FormSection>
+    </div>
+  )
+}
+
+/* ── CAMPAIGN ACTIVITY TYPE MASTER ──────────────────────────────────── */
+export function CampaignActivityTypeMaster() {
+  const api = useMasterAPI()
+  const { showToast } = useToast()
+  const nameRef      = useRef<HTMLInputElement>(null)
+  const eventTypeRef = useRef<HTMLSelectElement>(null)
+  const descRef      = useRef<HTMLTextAreaElement>(null)
+  const orderRef     = useRef<HTMLInputElement>(null)
+  const [activityTypes, setActivityTypes] = useState<CampaignActivityType[]>([])
+  const [editing, setEditing]             = useState<CampaignActivityType | null>(null)
+
+  useEffect(() => {
+    api.fetchCampaignActivityTypes().then(d => d && setActivityTypes(d))
+  }, [])
+
+  const clearFields = () => {
+    if (nameRef.current)      nameRef.current.value      = ''
+    if (eventTypeRef.current) eventTypeRef.current.value = ''
+    if (descRef.current)      descRef.current.value      = ''
+    if (orderRef.current)     orderRef.current.value     = '0'
+    setEditing(null)
+  }
+
+  const handleSave = async () => {
+    const name = nameRef.current?.value.trim() ?? ''
+    if (!name) { showToast('<i class="ph ph-warning"></i> Activity name is required!', '#dc2626'); return }
+    const payload: Partial<CampaignActivityType> = {
+      name,
+      event_type:  eventTypeRef.current?.value || 'meeting',
+      description: descRef.current?.value.trim() || undefined,
+      order:       orderRef.current?.value ? parseInt(orderRef.current.value) : 0,
+      is_active:   true,
+    }
+    if (editing) {
+      const updated = await api.updateCampaignActivityType(editing.id, payload)
+      if (updated) {
+        setActivityTypes(prev => prev.map(a => a.id === editing.id ? { ...a, ...updated } : a))
+        showToast('<i class="ph ph-check-circle"></i> Activity type updated!', '#138808')
+      }
+      clearFields()
+    } else {
+      const created = await api.createCampaignActivityType(payload)
+      if (created) {
+        setActivityTypes(prev => [...prev, created].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)))
+        showToast('<i class="ph ph-check-circle"></i> Activity type saved!', '#138808')
+      }
+      clearFields()
+    }
+  }
+
+  const handleEdit = (id: string) => {
+    const a = activityTypes.find(a => String(a.id) === id)
+    if (!a) return
+    setEditing(a)
+    if (nameRef.current)      nameRef.current.value      = a.name
+    if (eventTypeRef.current) eventTypeRef.current.value = a.event_type
+    if (descRef.current)      descRef.current.value      = a.description || ''
+    if (orderRef.current)     orderRef.current.value     = String(a.order)
+  }
+
+  const handleDelete = (id: string) => {
+    const a = activityTypes.find(a => String(a.id) === id)
+    if (!a || !window.confirm('Delete this activity type?')) return
+    api.deleteCampaignActivityType(a.id).then(ok => {
+      if (ok) {
+        setActivityTypes(prev => prev.filter(x => x.id !== a.id))
+        showToast('<i class="ph ph-trash"></i> Activity type deleted.', '#dc2626')
+      }
+    })
+  }
+
+  const recs: MasterRecord[] = activityTypes.map(a => ({
+    id:        String(a.id),
+    key:       a.name,
+    meta:      a.event_type,
+    extra:     { description: a.description || '' },
+    backendId: a.id,
+  }))
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 page-enter">
+      <FormSection
+        title={editing ? 'Edit Activity Type' : 'Add Campaign Activity Type'}
+        icon="ph ph-megaphone"
+        badge={editing ? (
+          <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+            + New
+          </button>
+        ) : undefined}
+      >
+        <FormRow cols={2}>
+          <FormGroup label="Activity Name" required>
+            <input ref={nameRef} className={inputCls} placeholder="e.g. Door-to-door Visit" />
+          </FormGroup>
+          <FormGroup label="Event Type" required>
+            <select ref={eventTypeRef} className={selectCls}>
+              <option value="meeting">Meeting</option>
+              <option value="rally">Rally</option>
+              <option value="door_door">Door-to-Door</option>
+              <option value="training">Training / Digital</option>
+            </select>
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={2}>
+          <FormGroup label="Display Order">
+            <input ref={orderRef} type="number" className={inputCls} placeholder="0" defaultValue="0" min="0" />
+          </FormGroup>
+          <FormGroup label="Description">
+            <input ref={descRef as any} className={inputCls} placeholder="Optional description" />
+          </FormGroup>
+        </FormRow>
+        <FormActions
+          onSave={handleSave}
+          onClear={clearFields}
+          saveLabel={editing ? 'Update' : 'Save Activity Type'}
+          isEditing={!!editing}
+        />
+      </FormSection>
+
+      <FormSection title="Campaign Activity Types" icon="ph ph-list-bullets" badge={
+        <span className="text-[9px] font-bold text-white/70">{activityTypes.length} types</span>
+      }>
+        <MasterListCard
+          title="Campaign Activity Types"
+          icon="ph ph-megaphone"
           records={recs}
           onEdit={handleEdit}
           onDelete={handleDelete}

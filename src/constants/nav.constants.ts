@@ -42,5 +42,6 @@ export const MASTER_TABS: { id: MasterModuleId; label: string; icon: string }[] 
   { id: 'achievement',  label: 'Achievements', icon: 'ph ph-trophy'        },
   { id: 'candidate',    label: 'Candidate',    icon: 'ph ph-user-circle'   },
   { id: 'party',         label: 'Party',         icon: 'ph ph-flag'          },
-  { id: 'task-category', label: 'Task Category', icon: 'ph ph-tag'           },
+  { id: 'task-category',    label: 'Task Category',    icon: 'ph ph-tag'        },
+  { id: 'campaign-activity', label: 'Campaign Activity', icon: 'ph ph-megaphone' },
 ]

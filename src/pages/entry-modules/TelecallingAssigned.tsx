@@ -3,15 +3,18 @@ import apiClient from '../../utils/api'
 
 /* ─── Types ──────────────────────────────────────────────── */
 interface AssignmentVoter {
-  id:          number
-  voter:       number | null
-  voter_name:  string
-  voter_id_no: string
-  phone:       string
-  address:     string
-  booth_name:  string
-  age:         number | null
-  gender:      string
+  id:           number
+  voter:        number | null
+  voter_name:   string
+  voter_id_no:  string
+  phone:        string
+  phone2?:      string
+  alt_phoneno2?: string
+  alt_phoneno3?: string
+  address:      string
+  booth_name:   string
+  age:          number | null
+  gender:       string
 }
 
 interface Assignment {
@@ -24,18 +27,26 @@ interface Assignment {
   created_at:       string
 }
 
-/* ─── Print ──────────────────────────────────────────────── */
+/* ─── Print helpers ──────────────────────────────────────── */
 function esc(s: string | number | undefined) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function printAssignment(a: Assignment) {
-  const rows = a.voters.map((v, i) => `
+function openPrintWindow(a: Assignment, phoneMap: Record<number, string[]>) {
+  const rows = a.voters.map((v, i) => {
+    /* Use fresh phones from API; fall back to whatever was stored */
+    const fresh   = v.voter ? (phoneMap[v.voter] ?? []) : []
+    const stored  = [v.phone, v.phone2, v.alt_phoneno2, v.alt_phoneno3].filter(Boolean) as string[]
+    const phones  = fresh.length ? fresh : stored
+    const phonesHtml = phones.length
+      ? phones.map(p => `<div>${esc(p)}</div>`).join('')
+      : '—'
+    return `
     <tr>
       <td>${i + 1}</td>
       <td>${esc(v.voter_name)}</td>
       <td>${esc(v.voter_id_no) || '—'}</td>
-      <td>${esc(v.phone) || '—'}</td>
+      <td>${phonesHtml}</td>
       <td>${esc(v.booth_name) || '—'}</td>
       <td>${esc(v.address) || '—'}</td>
       <td class="remarks-col">
@@ -66,7 +77,8 @@ function printAssignment(a: Assignment) {
           </div>
         </div>
       </td>
-    </tr>`).join('')
+    </tr>`
+  }).join('')
 
   const w = window.open('', '_blank')
   if (!w) return
@@ -102,7 +114,7 @@ function printAssignment(a: Assignment) {
     <table>
       <thead>
         <tr>
-          <th>#</th><th>Name</th><th>Voter ID</th><th>Phone</th>
+          <th>#</th><th>Name</th><th>Voter ID</th><th>Phone Numbers</th>
           <th>Booth</th><th>Address</th><th>Remarks</th>
         </tr>
       </thead>
@@ -119,6 +131,7 @@ function printAssignment(a: Assignment) {
 export default function TelecallingAssigned() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading,     setLoading]     = useState(true)
+  const [printingId,  setPrintingId]  = useState<number | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -129,6 +142,32 @@ export default function TelecallingAssigned() {
   }, [])
 
   const totalVoters = assignments.reduce((s, a) => s + a.voters.length, 0)
+
+  /* Fetch fresh voter phone data, then open print window */
+  const handlePrint = async (a: Assignment) => {
+    setPrintingId(a.id)
+    const voterIds = a.voters.map(v => v.voter).filter(Boolean) as number[]
+
+    /* Fetch all voters in parallel */
+    const results = await Promise.all(
+      voterIds.map(id =>
+        apiClient.get(`/voters/voters/${id}/`)
+          .then(r => r.data)
+          .catch(() => null)
+      )
+    )
+
+    /* Build id → [phone, phone2, alt_phoneno2, alt_phoneno3] map */
+    const phoneMap: Record<number, string[]> = {}
+    results.forEach((v: any) => {
+      if (!v) return
+      const phones = [v.phone, v.phone2, v.alt_phoneno2, v.alt_phoneno3].filter(Boolean)
+      phoneMap[v.id] = phones
+    })
+
+    setPrintingId(null)
+    openPrintWindow(a, phoneMap)
+  }
 
   return (
     <div className="page-enter">
@@ -206,13 +245,16 @@ export default function TelecallingAssigned() {
 
                   <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => printAssignment(a)}
+                      onClick={() => handlePrint(a)}
+                      disabled={printingId === a.id}
                       className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg
                                  bg-navy text-white text-[11px] font-semibold
-                                 hover:bg-navy/90 transition-colors"
+                                 hover:bg-navy/90 transition-colors disabled:opacity-60"
                     >
-                      <i className="ph ph-printer text-[13px]" />
-                      Print
+                      {printingId === a.id
+                        ? <><i className="ph ph-spinner-gap animate-spin text-[13px]" />Loading…</>
+                        : <><i className="ph ph-printer text-[13px]" />Print</>
+                      }
                     </button>
                   </td>
                 </tr>

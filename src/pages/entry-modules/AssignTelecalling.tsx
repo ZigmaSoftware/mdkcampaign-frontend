@@ -9,6 +9,9 @@ interface VoterRow {
   name: string
   voter_id: string
   phone?: string
+  phone2?: string
+  alt_phoneno2?: string
+  alt_phoneno3?: string
   address?: string
   booth: number
   booth_name?: string
@@ -216,15 +219,15 @@ export default function AssignTelecalling() {
         const apiCount = r.data.count ?? 0
         const all: VoterRow[] = (r.data.results ?? []).map((v: any) => ({
           id: v.id, name: v.name, voter_id: v.voter_id,
-          phone: v.phone ?? '', address: v.address ?? '',
+          phone: v.phone ?? '', phone2: v.phone2 ?? '',
+          alt_phoneno2: v.alt_phoneno2 ?? '', alt_phoneno3: v.alt_phoneno3 ?? '',
+          address: v.address ?? '',
           booth: v.booth, booth_name: v.booth_name ?? v.booth_number ?? '',
           age: v.age, gender: v.gender,
         }))
         rawVotersRef.current = all
-        /* Filter out already-assigned voters; show all regardless of phone */
-        const filtered = all.filter(v => !assignedIdsRef.current.has(v.id))
         setRawCount(apiCount)
-        setVoters(filtered)
+        setVoters(all)
         setTotal(apiCount)
       })
       .catch(err => { if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast('Failed to load voters', 'error') })
@@ -256,7 +259,7 @@ export default function AssignTelecalling() {
     if (!telecaller) { showToast('Telecaller not found — please re-select', 'error'); return }
 
     const date        = filterDate || new Date().toISOString().slice(0, 10)
-    const groupVoters = voters.filter(v => selected.has(v.id))
+    const groupVoters = voters.filter(v => selected.has(v.id) && !assignedIdsRef.current.has(v.id))
 
     const payload = {
       telecaller_id:    telecaller.id,
@@ -264,14 +267,17 @@ export default function AssignTelecalling() {
       telecaller_phone: telecaller.phone ?? '',
       assigned_date:    date,
       voters: groupVoters.map(v => ({
-        voter:       v.id,
-        voter_name:  v.name,
-        voter_id_no: v.voter_id,
-        phone:       v.phone ?? '',
-        address:     v.address ?? '',
-        booth_name:  v.booth_name ?? '',
-        age:         v.age ?? null,
-        gender:      v.gender ?? '',
+        voter:        v.id,
+        voter_name:   v.name,
+        voter_id_no:  v.voter_id,
+        phone:        v.phone        ?? '',
+        phone2:       v.phone2       ?? '',
+        alt_phoneno2: v.alt_phoneno2 ?? '',
+        alt_phoneno3: v.alt_phoneno3 ?? '',
+        address:      v.address      ?? '',
+        booth_name:   v.booth_name   ?? '',
+        age:          v.age          ?? null,
+        gender:       v.gender       ?? '',
       })),
     }
 
@@ -434,7 +440,7 @@ export default function AssignTelecalling() {
                   <input type="checkbox" className="w-4 h-4 rounded border-2 border-border cursor-pointer accent-navy"
                     checked={isAllSelected} onChange={toggleAll} />
                 </th>
-                {['#', 'Voter Name', 'Voter ID', 'Phone', 'Age / Gender', 'Booth', 'Address'].map(h => (
+                {['#', 'Voter Name', 'Voter ID', 'Phone Numbers', 'Age / Gender', 'Booth', 'Address'].map(h => (
                   <th key={h} className="px-3 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">{h}</th>
                 ))}
               </tr>
@@ -456,27 +462,53 @@ export default function AssignTelecalling() {
                   </p>
                 </td></tr>
               ) : (
-                visibleVoters.map((v, idx) => (
-                  <tr key={v.id} onClick={() => toggleOne(v.id)}
-                    className={`border-b border-border cursor-pointer transition-colors
-                      ${selected.has(v.id) ? 'bg-blue-50' : 'hover:bg-surface-alt'}`}>
-                    <td className="px-4 py-[9px]" onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" className="w-4 h-4 rounded border-2 border-border cursor-pointer accent-navy"
-                        checked={selected.has(v.id)} onChange={() => toggleOne(v.id)} />
-                    </td>
-                    <td className="px-3 py-[9px] text-muted text-[11px]">{pageStart + idx}</td>
-                    <td className="px-3 py-[9px] font-semibold text-heading">{v.name}</td>
-                    <td className="px-3 py-[9px] text-muted font-mono text-[11px]">{v.voter_id}</td>
-                    <td className="px-3 py-[9px]">{v.phone || '—'}</td>
-                    <td className="px-3 py-[9px] text-muted">{v.age ?? '—'} / {genderLabel(v.gender)}</td>
-                    <td className="px-3 py-[9px]">
-                      {v.booth_name
-                        ? <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-medium">{v.booth_name}</span>
-                        : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="px-3 py-[9px] text-muted truncate max-w-[180px]">{v.address || '—'}</td>
-                  </tr>
-                ))
+                visibleVoters.map((v, idx) => {
+                  const isAssigned = assignedVoterIds.has(v.id)
+                  const phones = [v.phone, v.phone2, v.alt_phoneno2, v.alt_phoneno3].filter(Boolean)
+                  return (
+                    <tr key={v.id}
+                      onClick={() => { if (!isAssigned) toggleOne(v.id) }}
+                      className={`border-b border-border transition-colors
+                        ${isAssigned         ? 'bg-rose-50 opacity-60 cursor-not-allowed'
+                        : selected.has(v.id) ? 'bg-blue-50 cursor-pointer'
+                        :                      'hover:bg-surface-alt cursor-pointer'}`}>
+                      <td className="px-4 py-[9px]" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox"
+                          disabled={isAssigned}
+                          className="w-4 h-4 rounded border-2 border-border cursor-pointer accent-navy disabled:opacity-40"
+                          checked={selected.has(v.id)} onChange={() => { if (!isAssigned) toggleOne(v.id) }} />
+                      </td>
+                      <td className="px-3 py-[9px] text-muted text-[11px]">{pageStart + idx}</td>
+                      <td className="px-3 py-[9px]">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-heading">{v.name}</span>
+                          {isAssigned && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-600 whitespace-nowrap">
+                              Assigned
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-[9px] text-muted font-mono text-[11px]">{v.voter_id}</td>
+                      <td className="px-3 py-[9px]">
+                        {phones.length === 0 ? <span className="text-muted">—</span> : (
+                          <div className="flex flex-col gap-[2px]">
+                            {phones.map((p, i) => (
+                              <span key={i} className="text-[11px] font-mono text-heading">{p}</span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-[9px] text-muted">{v.age ?? '—'} / {genderLabel(v.gender)}</td>
+                      <td className="px-3 py-[9px]">
+                        {v.booth_name
+                          ? <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-medium">{v.booth_name}</span>
+                          : <span className="text-muted">—</span>}
+                      </td>
+                      <td className="px-3 py-[9px] text-muted truncate max-w-[180px]">{v.address || '—'}</td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

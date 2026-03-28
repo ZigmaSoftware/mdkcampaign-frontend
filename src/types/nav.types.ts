@@ -42,3 +42,4 @@ export type MasterModuleId =
   | 'candidate'
   | 'party'
   | 'task-category'
+  | 'campaign-activity'

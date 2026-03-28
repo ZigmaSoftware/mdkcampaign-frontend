@@ -182,6 +182,8 @@ export default function VoterEntry() {
     age:         useRef<HTMLInputElement>(null),
     phone:       useRef<HTMLInputElement>(null),
     phone2:      useRef<HTMLInputElement>(null),
+    alt_phoneno2: useRef<HTMLInputElement>(null),
+    alt_phoneno3: useRef<HTMLInputElement>(null),
     email:       useRef<HTMLInputElement>(null),
     vid:         useRef<HTMLInputElement>(null),
     aadhaar:     useRef<HTMLInputElement>(null),
@@ -220,9 +222,11 @@ export default function VoterEntry() {
     return {
       name:        v.name,
       father_name: v.father_name || '',
-      phone:       v.phone  || '',
-      phone2:      v.phone2 || '',
-      email:       v.email  || '',
+      phone:        v.phone        || '',
+      phone2:       v.phone2       || '',
+      alt_phoneno2: v.alt_phoneno2 || '',
+      alt_phoneno3: v.alt_phoneno3 || '',
+      email:        v.email        || '',
       vid:         v.voter_id || '',
       aadhaar:     v.aadhaar || '',
       booth:       String(v.booth   || ''),
@@ -258,6 +262,14 @@ export default function VoterEntry() {
     }
     if (d.phone2 && !isValidPhone(d.phone2)) {
       showToast('<i class="ph ph-warning"></i> Alt phone must be 10 digits starting with 6–9.', '#dc2626')
+      return
+    }
+    if (d.alt_phoneno2 && !isValidPhone(d.alt_phoneno2)) {
+      showToast('<i class="ph ph-warning"></i> Alt phone 2 must be 10 digits starting with 6–9.', '#dc2626')
+      return
+    }
+    if (d.alt_phoneno3 && !isValidPhone(d.alt_phoneno3)) {
+      showToast('<i class="ph ph-warning"></i> Alt phone 3 must be 10 digits starting with 6–9.', '#dc2626')
       return
     }
     if (d.aadhaar && !isValidAadhaar(d.aadhaar)) {
@@ -298,6 +310,8 @@ export default function VoterEntry() {
       aadhaar:         d.aadhaar      || undefined,
       phone:           d.phone        || undefined,
       phone2:          d.phone2       || undefined,
+      alt_phoneno2:    d.alt_phoneno2 || undefined,
+      alt_phoneno3:    d.alt_phoneno3 || undefined,
       email:           d.email        || undefined,
       booth:           boothId,
       village:         villageId,
@@ -414,6 +428,8 @@ export default function VoterEntry() {
         aadhaar:           v.aadhaar             || '',
         phone:             v.phone               || '',
         phone2:            v.phone2              || '',
+        alt_phone_2:       v.alt_phoneno2        || '',
+        alt_phone_3:       v.alt_phoneno3        || '',
         email:             v.email               || '',
         gender:            v.gender || '',
         age:               v.age                != null ? String(v.age) : '',
@@ -496,10 +512,10 @@ export default function VoterEntry() {
             config={{
               title: 'Import Voters',
               uploadEndpoint: '/voters/voters/bulk-upload/',
-              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'date_of_birth', 'gender', 'phone', 'alt_phone', 'booth_code', 'ward_code', 'caste', 'sentiment', 'religion', 'address'],
+              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'date_of_birth', 'gender', 'phone', 'alt_phone', 'alt_phoneno2', 'alt_phoneno3', 'booth_code', 'ward_code', 'caste', 'sentiment', 'religion', 'address'],
               sampleRow: {
                 voter_id: 'VTR001', name: 'Rajesh Kumar', father_name: 'Suresh Kumar',
-                age: '42', date_of_birth: '1982-06-15', gender: 'm', phone: '9876543210', alt_phone: '9123456780',
+                age: '42', date_of_birth: '1982-06-15', gender: 'm', phone: '9876543210', alt_phone: '9123456780', alt_phoneno2: '9988776655', alt_phoneno3: '9876500001',
                 booth_code: 'B001', ward_code: 'W001', caste: 'BC', sentiment: 'positive',
                 religion: 'Hindu', address: '12 Main Street, Erode',
               },
@@ -512,6 +528,8 @@ export default function VoterEntry() {
                 gender: 'm / f / o',
                 phone: '10-digit mobile',
                 alt_phone: 'Alternate mobile number',
+                alt_phoneno2: 'Second alternate mobile number',
+                alt_phoneno3: 'Third alternate mobile number',
                 booth_code: 'Booth code from master',
                 ward_code: 'Ward code from master',
                 caste: 'e.g. BC, MBC, SC, OC',
@@ -641,6 +659,14 @@ export default function VoterEntry() {
           </FormGroup>
           <FormGroup label="Alt. Phone">
             <input ref={r.phone2} type="tel" className={inputCls} placeholder="Optional" />
+          </FormGroup>
+          <FormGroup label="Alt. Phone 2">
+            <input ref={r.alt_phoneno2} type="tel" className={inputCls} placeholder="Optional" />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={2}>
+          <FormGroup label="Alt. Phone 3">
+            <input ref={r.alt_phoneno3} type="tel" className={inputCls} placeholder="Optional" />
           </FormGroup>
           <FormGroup label="Email">
             <input ref={r.email} type="email" className={inputCls} placeholder="example@mail.com" />

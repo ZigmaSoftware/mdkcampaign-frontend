@@ -17,6 +17,8 @@ interface VoterRecord {
   aadhaar?: string
   phone?: string
   phone2?: string
+  alt_phoneno2?: string
+  alt_phoneno3?: string
   email?: string
   booth: number
   village?: number

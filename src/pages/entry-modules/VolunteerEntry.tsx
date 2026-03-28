@@ -57,12 +57,17 @@ export default function VolunteerEntry() {
   const [isFormOpen, setFormOpen]           = useState(false)
   const [showImport, setShowImport]         = useState(false)
   const [search, setSearch]                 = useState('')
+  const [boothFilter, setBoothFilter]       = useState<number | undefined>(undefined)
   const [selectedBoothIds, setSelectedBoothIds] = useState<number[]>([])
+
   useEffect(() => {
-    api.fetchVolunteers().then(d => d && setVolunteers(d))
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchWards().then(d => d && setWards(d))
   }, [])
+
+  useEffect(() => {
+    api.fetchVolunteers(boothFilter).then(d => d && setVolunteers(d))
+  }, [boothFilter])
 
   const blocks = useBlocks()
 
@@ -280,6 +285,27 @@ export default function VolunteerEntry() {
             onExport={() => exportRecordsToCsv(allVolunteerRecords, 'Volunteers')}
             onPrint={() => printModule(allVolunteerRecords, 'Volunteers')}
           />
+          <div className="flex items-center gap-2 mt-2 mb-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-muted whitespace-nowrap">Filter by Booth</label>
+            <select
+              value={boothFilter ?? ''}
+              onChange={e => setBoothFilter(e.target.value ? Number(e.target.value) : undefined)}
+              className={`${selectCls} w-[220px]`}
+            >
+              <option value="">All Booths</option>
+              {booths.map(b => (
+                <option key={b.id} value={b.id}>{b.number} — {b.name}</option>
+              ))}
+            </select>
+            {boothFilter && (
+              <button
+                onClick={() => setBoothFilter(undefined)}
+                className="text-[11px] text-rose-500 hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           <RecordList
             records={filtered}
             editingId={editing ? String(editing.id) : null}

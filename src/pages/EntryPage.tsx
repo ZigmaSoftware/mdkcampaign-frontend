@@ -11,7 +11,6 @@ import AgentActivityEntry from './entry-modules/AgentActivityEntry'
 import FieldActivityEntry from './entry-modules/FieldActivityEntry'
 import VolunteerActivityEntry from './entry-modules/VolunteerActivityEntry'
 import VoterSurveyEntry from './entry-modules/VoterSurveyEntry'
-import UserEntryPage from './entry-modules/UserEntry'
 import AttendanceEntry from './entry-modules/AttendanceEntry'
 import AssignTelecalling from './entry-modules/AssignTelecalling'
 import TelecallingAssigned from './entry-modules/TelecallingAssigned'
@@ -40,7 +39,6 @@ export default function EntryPage({ activeTab, onTabChange }: EntryPageProps) {
       case 'volunteer':  return <VolunteerEntry />
       case 'event':      return <EventEntry />
       case 'campaign':   return <CampaignEntry />
-      case 'user':       return <UserEntryPage />
       case 'warroom':    return <WarRoomEntry />
       case 'dashboard':  return <DashboardEntry />
       case 'alliance':   return <AllianceEntry />

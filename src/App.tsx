@@ -3,6 +3,7 @@ import { ToastProvider } from './context/ToastContext'
 import { EntryStoreProvider } from './context/EntryStoreContext'
 import { MasterStoreProvider } from './context/MasterStoreContext'
 import { AuthProvider, useAuthContext } from './context/AuthContext'
+import { PermissionProvider, usePermissions } from './context/PermissionContext'
 
 import TriBar from './components/layout/TriBar'
 import TopBar from './components/layout/TopBar'
@@ -15,14 +16,17 @@ import EntryPage from './pages/EntryPage'
 import MastersConfigPage from './pages/MastersConfigPage'
 import ReportsPage from './pages/ReportsPage'
 import OpinionPollPage from './pages/OpinionPollPage'
+import UserSettingsPage from './pages/UserSettingsPage'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import PublicPollPage from './pages/PublicPollPage'
 
 import type { PageId, EntryModuleId, MasterModuleId } from './types/nav.types'
+import { TOP_NAV_TABS, ENTRY_TABS } from './constants/nav.constants'
 
 function AppShell() {
   const { user, isAuthenticated, logout } = useAuthContext()
+  const { canAccess } = usePermissions()
 
   const [activePage,       setActivePage]       = useState<PageId>('dashboard')
   const [activeEntryTab,   setActiveEntryTab]   = useState<EntryModuleId>('voter')
@@ -68,6 +72,8 @@ function AppShell() {
         return <ReportsPage />
       case 'opinion-poll':
         return <OpinionPollPage />
+      case 'user-settings':
+        return <UserSettingsPage />
       default:
         return <DashboardPage />
     }

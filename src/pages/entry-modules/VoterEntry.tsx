@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VoterRecord, BoothRecord, FieldSurveyRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Village, Party, Scheme } from '../../hooks/useMasterAPI'
+import type { Village, Party, Scheme, Ward, Panchayat } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
@@ -11,9 +11,10 @@ import EntryFormPanel from '../../components/entry/EntryFormPanel'
 import FormRow from '../../components/entry/FormRow'
 import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
 import FormActions from '../../components/entry/FormActions'
-import { exportRecordsToCsv } from '../../utils/exportCsv'
+import { exportVotersCsv } from '../../utils/exportCsv'
 import { printModule } from '../../utils/printModule'
 import { useToast } from '../../context/ToastContext'
+import { usePermissions } from '../../context/PermissionContext'
 import type { EntryRecord } from '../../types/entry.types'
 
 const FORM_ID = 'voter-form'
@@ -99,13 +100,15 @@ export default function VoterEntry() {
   const api       = useEntryAPI()
   const masterApi = useMasterAPI()
   const { showToast } = useToast()
+  const { canAdd, canEdit, canDelete } = usePermissions()
 
   const [voters,   setVoters]   = useState<VoterRecord[]>([])
   const [booths,   setBooths]   = useState<BoothRecord[]>([])
-  const [villages, setVillages] = useState<Village[]>([])
-  const [parties,  setParties]  = useState<Party[]>([])
-  const [schemes,  setSchemes]  = useState<Scheme[]>([])
-  const [surveys,  setSurveys]  = useState<FieldSurveyRecord[]>([])
+  const [villages,   setVillages]   = useState<Village[]>([])
+  const [panchayats, setPanchayats] = useState<Panchayat[]>([])
+  const [parties,    setParties]    = useState<Party[]>([])
+  const [schemes,    setSchemes]    = useState<Scheme[]>([])
+  const [surveys,    setSurveys]    = useState<FieldSurveyRecord[]>([])
 
   const [editing,    setEditing]   = useState<VoterRecord | null>(null)
   const [isFormOpen, setFormOpen]  = useState(false)
@@ -114,9 +117,13 @@ export default function VoterEntry() {
   const [editKey,    setEditKey]   = useState(0)
   const [villageFilter, setVillageFilter] = useState('')
   const [casteVal,   setCasteVal]  = useState('')
-  const [boothFilter, setBoothFilter] = useState<number | undefined>(undefined)
-  const [page,       setPage]      = useState(1)
-  const [totalCount, setTotalCount] = useState(0)
+  const [boothFilter,  setBoothFilter]  = useState<number | undefined>(undefined)
+  const [wardFilter,   setWardFilter]   = useState<number | undefined>(undefined)
+  const [pincodeFilter, setPincodeFilter] = useState('')
+  const [wards,        setWards]        = useState<Ward[]>([])
+  const [page,         setPage]         = useState(1)
+  const [totalCount,   setTotalCount]   = useState(0)
+  const [exporting,    setExporting]    = useState(false)
   const PAGE_SIZE = 10
 
   // Boolean flag state (can't use value refs for checkboxes)
@@ -133,8 +140,8 @@ export default function VoterEntry() {
   const masterApiRef = useRef(masterApi)
   masterApiRef.current = masterApi
 
-  const loadVoters = useCallback((p: number, q: string, boothId?: number) => {
-    apiRef.current.fetchVoters(boothId, q || undefined, p, PAGE_SIZE).then(d => {
+  const loadVoters = useCallback((p: number, q: string, boothId?: number, wId?: number, pin?: string) => {
+    apiRef.current.fetchVoters(boothId, q || undefined, p, PAGE_SIZE, wId, pin || undefined).then(d => {
       setVoters(d?.results ?? [])
       setTotalCount(d?.count ?? 0)
     })
@@ -143,7 +150,9 @@ export default function VoterEntry() {
   useEffect(() => {
     loadVoters(1, '')
     apiRef.current.fetchBooths().then(d => d && setBooths(d))
+    masterApiRef.current.fetchWards().then(d => d && setWards(d))
     masterApiRef.current.fetchVillages().then(d => d && setVillages(d))
+    masterApiRef.current.fetchPanchayats().then(d => d && setPanchayats(d))
     masterApiRef.current.fetchParties().then(d => d && setParties(d))
     masterApiRef.current.fetchSchemes().then(d => d && setSchemes(d))
     apiRef.current.fetchFieldSurveys().then(d => d && setSurveys(d))
@@ -153,9 +162,9 @@ export default function VoterEntry() {
   const isFirstSearchRender = useRef(true)
   useEffect(() => {
     if (isFirstSearchRender.current) { isFirstSearchRender.current = false; return }
-    const t = setTimeout(() => { setPage(1); loadVoters(1, search, boothFilter) }, 400)
+    const t = setTimeout(() => { setPage(1); loadVoters(1, search, boothFilter, wardFilter, pincodeFilter) }, 400)
     return () => clearTimeout(t)
-  }, [search, boothFilter, loadVoters])
+  }, [search, boothFilter, wardFilter, pincodeFilter, loadVoters])
 
   useEffect(() => {
     if (!pendingFill.current) return
@@ -188,8 +197,10 @@ export default function VoterEntry() {
     vid:         useRef<HTMLInputElement>(null),
     aadhaar:     useRef<HTMLInputElement>(null),
     village:     useRef<HTMLSelectElement>(null),
+    panchayat:   useRef<HTMLSelectElement>(null),
     booth:       useRef<HTMLSelectElement>(null),
     address:     useRef<HTMLTextAreaElement>(null),
+    pincode:     useRef<HTMLInputElement>(null),
     religion:    useRef<HTMLSelectElement>(null),
     caste:       useRef<HTMLSelectElement>(null),
     sub_caste:   useRef<HTMLSelectElement>(null),
@@ -229,9 +240,11 @@ export default function VoterEntry() {
       email:        v.email        || '',
       vid:         v.voter_id || '',
       aadhaar:     v.aadhaar || '',
-      booth:       String(v.booth   || ''),
-      village:     String(v.village || ''),
+      booth:       String(v.booth     || ''),
+      village:     String(v.village   || ''),
+      panchayat:   String(v.panchayat || ''),
       address:     v.address || '',
+      pincode:     v.pincode || '',
       sentiment:   SENTIMENT_REVERSE[v.sentiment || ''] || '',
       gender:      GENDER_REVERSE[v.gender || ''] || '',
       dob:         v.date_of_birth || '',
@@ -315,6 +328,7 @@ export default function VoterEntry() {
       email:           d.email        || undefined,
       booth:           boothId,
       village:         villageId,
+      panchayat:       d.panchayat ? Number(d.panchayat) : undefined,
       address:         [d.address, selectedVillage?.name || ''].filter(Boolean).join(', ') || '-',
       sentiment:       SENTIMENT_MAP[d.sentiment] || undefined,
       gender:          GENDER_MAP[d.gender]       || undefined,
@@ -335,6 +349,7 @@ export default function VoterEntry() {
       is_contacted:    isContacted,
       has_attended_event: hasAttendedEvent,
       is_volunteer:    isVolunteer,
+      pincode:         d.pincode      || undefined,
       notes:           d.notes        || undefined,
     }
 
@@ -412,26 +427,41 @@ export default function VoterEntry() {
   }
 
   // ── O(1) lookup maps ─────────────────────────────────────────────
-  const boothMap = useMemo(() => new Map(booths.map(b  => [b.id, b])),  [booths])
-  const partyMap = useMemo(() => new Map(parties.map(p => [p.id, p])), [parties])
+  const boothMap     = useMemo(() => new Map(booths.map(b     => [b.id, b])),     [booths])
+  const partyMap     = useMemo(() => new Map(parties.map(p    => [p.id, p])),    [parties])
+  const villageMap   = useMemo(() => new Map(villages.map(v   => [v.id, v])),   [villages])
+  const panchayatMap = useMemo(() => new Map(panchayats.map(p => [p.id, p])), [panchayats])
 
   const mapVoter = useMemo(() => (v: VoterRecord): EntryRecord => {
-    const booth = boothMap.get(v.booth)
-    const party = v.preferred_party ? partyMap.get(v.preferred_party) : undefined
+    const booth     = boothMap.get(v.booth)
+    const party     = v.preferred_party ? partyMap.get(v.preferred_party)   : undefined
+    const village   = v.village         ? villageMap.get(v.village)          : undefined
+    const panchayat = v.panchayat       ? panchayatMap.get(v.panchayat)      : undefined
+    const phones = [
+      v.phone        ? `Aadhar:${v.phone}`        : '',
+      v.phone2       ? `AC-100:${v.phone2}`        : '',
+      v.alt_phoneno2 ? `Common:${v.alt_phoneno2}`  : '',
+      v.alt_phoneno3 ? `Alt3:${v.alt_phoneno3}`    : '',
+    ].filter(Boolean).join(' · ')
     return {
       id:       String(v.id),
-      keyField: v.name,
-      sub:      [
-        booth ? `Booth ${booth.number}` : '—',
-        v.phone        || '',
-        v.phone2       || '',
-        v.alt_phoneno2 || '',
-        v.alt_phoneno3 || '',
-        v.age ? `Age ${v.age}` : '',
+      keyField: [
+        v.voter_id              || '',
+        v.name                  || '',
+        v.age ? `Age:${v.age}` : '',
+        phones,
+      ].filter(Boolean).join(' · '),
+      sub: [
+        booth ? `Booth ${booth.number}` : '',
+        booth?.ward_name         || '',
+        booth?.constituency_name || '',
+        v.address                || '',
+        v.pincode                || '',
       ].filter(Boolean).join(' · '),
       data: {
-        father_name:       v.father_name        || '',
+        name:              v.name               || '',
         voter_id:          v.voter_id            || '',
+        father_name:       v.father_name        || '',
         aadhaar:           v.aadhaar             || '',
         phone:             v.phone               || '',
         phone_2:           v.phone2              || '',
@@ -442,6 +472,7 @@ export default function VoterEntry() {
         age:               v.age                != null ? String(v.age) : '',
         date_of_birth:     v.date_of_birth       || '',
         address:           v.address             || '',
+        pincode:           v.pincode             || '',
         religion:          v.religion            || '',
         caste:             v.caste               || '',
         sub_caste:         v.sub_caste           || '',
@@ -451,6 +482,8 @@ export default function VoterEntry() {
         sentiment:         v.sentiment || '',
         preferred_party:   party ? (party.abbreviation || party.name) : '',
         booth:             v.booth ? String(v.booth) : '',
+        village:           village   ? village.name   : '',
+        panchayat:         panchayat ? panchayat.name : '',
         scheme_name:       v.scheme_name         || '',
         issue_name:        v.issue_name          || '',
         feedback_score:    v.feedback_score     != null ? String(v.feedback_score) : '',
@@ -462,9 +495,29 @@ export default function VoterEntry() {
       createdAt: v.created_at || '',
       backendId: v.id,
     }
-  }, [boothMap, partyMap])
+  }, [boothMap, partyMap, villageMap, panchayatMap])
 
   const allVoterRecords = useMemo(() => (voters ?? []).map(mapVoter), [voters, mapVoter])
+
+  const handleExportCsv = async () => {
+    setExporting(true)
+    try {
+      const all: VoterRecord[] = []
+      let p = 1
+      const BATCH = 500
+      while (true) {
+        const d = await apiRef.current.fetchVoters(boothFilter, search || undefined, p, BATCH, wardFilter, pincodeFilter || undefined)
+        if (!d) break
+        all.push(...d.results)
+        if (all.length >= d.count || d.results.length < BATCH) break
+        p++
+      }
+      const boothNumMap = new Map(booths.map(b => [String(b.id), `Booth ${b.number}`]))
+      exportVotersCsv(all.map(mapVoter), boothNumMap)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const filtered = useMemo(() => (voters ?? []).map(mapVoter), [voters, mapVoter])
 
@@ -510,20 +563,20 @@ export default function VoterEntry() {
           title="Voter Records"
           icon="ph ph-user"
           count={totalCount}
-          onAddNew={() => { setEditing(null); clear(); setFormOpen(true) }}
+          onAddNew={canAdd('voter') ? () => { setEditing(null); clear(); setFormOpen(true) } : undefined}
           addLabel="Add Voter"
-          onImport={() => setShowImport(true)}
+          onImport={canAdd('voter') ? () => setShowImport(true) : undefined}
         />
         {showImport && (
           <BulkImportModal
             config={{
               title: 'Import Voters',
               uploadEndpoint: '/voters/voters/bulk-upload/',
-              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'date_of_birth', 'gender', 'phone', 'alt_phone', 'alt_phoneno2', 'alt_phoneno3', 'booth_code', 'ward_code', 'caste', 'sentiment', 'religion', 'address'],
+              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'date_of_birth', 'gender', 'phone', 'alt_phone', 'alt_phoneno2', 'alt_phoneno3', 'booth_code', 'ward_code', 'panchayat_code', 'caste', 'sentiment', 'religion', 'address'],
               sampleRow: {
                 voter_id: 'VTR001', name: 'Rajesh Kumar', father_name: 'Suresh Kumar',
                 age: '42', date_of_birth: '1982-06-15', gender: 'm', phone: '9876543210', alt_phone: '9123456780', alt_phoneno2: '9988776655', alt_phoneno3: '9876500001',
-                booth_code: 'B001', ward_code: 'W001', caste: 'BC', sentiment: 'positive',
+                booth_code: 'B001', ward_code: 'W001', panchayat_code: 'P001', caste: 'BC', sentiment: 'positive',
                 religion: 'Hindu', address: '12 Main Street, Erode',
               },
               columnNotes: {
@@ -539,6 +592,7 @@ export default function VoterEntry() {
                 alt_phoneno3: 'Third alternate mobile number',
                 booth_code: 'Booth code from master',
                 ward_code: 'Ward code from master',
+                panchayat_code: 'Panchayat code from master',
                 caste: 'e.g. BC, MBC, SC, OC',
                 sentiment: 'positive / neutral / negative',
                 religion: 'Hindu / Muslim / Christian / Other',
@@ -554,19 +608,21 @@ export default function VoterEntry() {
             placeholder="Search voters..."
             value={search}
             onChange={setSearch}
-            onExport={() => exportRecordsToCsv(allVoterRecords, 'Voter_Details')}
+            onExport={handleExportCsv}
+            exportLoading={exporting}
             onPrint={() => printModule(allVoterRecords, 'Voter Details')}
           />
-          {/* Booth server-side filter */}
-          <div className="flex items-center gap-2 mb-2 mt-1">
+          {/* Server-side filters: Booth · Ward · Pincode */}
+          <div className="flex items-center gap-2 mb-2 mt-1 flex-wrap">
             <i className="ph ph-map-pin text-saffron text-[13px]" />
+            {/* Booth filter */}
             <select
               value={boothFilter ?? ''}
               onChange={e => {
                 const val = e.target.value ? Number(e.target.value) : undefined
                 setBoothFilter(val)
                 setPage(1)
-                loadVoters(1, search, val)
+                loadVoters(1, search, val, wardFilter, pincodeFilter)
               }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[180px] w-auto ${boothFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
@@ -575,12 +631,47 @@ export default function VoterEntry() {
                 <option key={b.id} value={b.id}>{b.number} — {b.name}</option>
               ))}
             </select>
-            {boothFilter && (
+            {/* Ward filter */}
+            <select
+              value={wardFilter ?? ''}
+              onChange={e => {
+                const val = e.target.value ? Number(e.target.value) : undefined
+                setWardFilter(val)
+                setPage(1)
+                loadVoters(1, search, boothFilter, val, pincodeFilter)
+              }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${wardFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Wards</option>
+              {wards.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+            {/* Pincode filter */}
+            <input
+              type="text"
+              placeholder="Pincode"
+              value={pincodeFilter}
+              maxLength={10}
+              onChange={e => {
+                setPincodeFilter(e.target.value)
+                setPage(1)
+                loadVoters(1, search, boothFilter, wardFilter, e.target.value)
+              }}
+              className={`form-input text-[11px] py-[4px] w-[110px] ${pincodeFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            />
+            {(boothFilter || wardFilter || pincodeFilter) && (
               <button
-                onClick={() => { setBoothFilter(undefined); setPage(1); loadVoters(1, search, undefined) }}
+                onClick={() => {
+                  setBoothFilter(undefined)
+                  setWardFilter(undefined)
+                  setPincodeFilter('')
+                  setPage(1)
+                  loadVoters(1, search, undefined, undefined, '')
+                }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
-                <i className="ph ph-x-circle" /> Clear
+                <i className="ph ph-x-circle" /> Clear Filters
               </button>
             )}
           </div>
@@ -592,8 +683,8 @@ export default function VoterEntry() {
             icon="ph ph-user"
             iconBg="#fff3e0"
             iconColor="#e07010"
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            onEdit={canEdit('voter') ? handleEdit : undefined}
+            onDelete={canDelete('voter') ? handleDelete : undefined}
             filterConfig={voterFilterConfig}
             itemsPerPage={PAGE_SIZE}
             serverTotal={totalCount}
@@ -608,13 +699,13 @@ export default function VoterEntry() {
               <div className="flex gap-2">
                 <button
                   disabled={page === 1}
-                  onClick={() => { const p = page - 1; setPage(p); loadVoters(p, search, boothFilter) }}
+                  onClick={() => { const p = page - 1; setPage(p); loadVoters(p, search, boothFilter, wardFilter, pincodeFilter) }}
                   className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
                 >← Prev</button>
                 <span className="text-[11px] text-muted py-1">Page {page} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
                 <button
                   disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
-                  onClick={() => { const p = page + 1; setPage(p); loadVoters(p, search, boothFilter) }}
+                  onClick={() => { const p = page + 1; setPage(p); loadVoters(p, search, boothFilter, wardFilter, pincodeFilter) }}
                   className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
                 >Next →</button>
               </div>
@@ -661,13 +752,13 @@ export default function VoterEntry() {
 
         {/* ── Section: Contact ───────────────────────────────────── */}
         <FormRow cols={3}>
-          <FormGroup label="Phone">
+          <FormGroup label="Phone(Aadhar)">
             <input ref={r.phone} type="tel" className={inputCls} placeholder="9XXXXXXXXX" />
           </FormGroup>
-          <FormGroup label="Alt. Phone">
+          <FormGroup label="Alt. Phone(AC-100)">
             <input ref={r.phone2} type="tel" className={inputCls} placeholder="Optional" />
           </FormGroup>
-          <FormGroup label="Alt. Phone 2">
+          <FormGroup label="Alt. Phone 2(common)">
             <input ref={r.alt_phoneno2} type="tel" className={inputCls} placeholder="Optional" />
           </FormGroup>
         </FormRow>
@@ -687,6 +778,9 @@ export default function VoterEntry() {
           <FormGroup label="Address">
             <textarea ref={r.address} className={textareaCls} rows={2} placeholder="Door no., Street name" />
           </FormGroup>
+          <FormGroup label="Pincode">
+            <input ref={r.pincode} className={inputCls} placeholder="6-digit pincode" maxLength={10} />
+          </FormGroup>
         </FormRow>
 
         {/* ── Section: Location ──────────────────────────────────── */}
@@ -698,10 +792,22 @@ export default function VoterEntry() {
               onChange={e => {
                 setVillageFilter(e.target.value)
                 if (r.booth.current) r.booth.current.value = ''
+                if (r.panchayat.current) r.panchayat.current.value = ''
               }}
             >
               <option value="">Select Village</option>
               {villages.map(w => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
+            </select>
+          </FormGroup>
+          <FormGroup label="Panchayat">
+            <select ref={r.panchayat} className={selectCls}>
+              <option value="">Select Panchayat</option>
+              {(villageFilter
+                ? panchayats.filter(p => String(p.ward) === villageFilter)
+                : panchayats
+              ).map(p => (
+                <option key={p.id} value={String(p.id)}>{p.name}</option>
+              ))}
             </select>
           </FormGroup>
           <FormGroup label="Booth" required>
@@ -717,6 +823,8 @@ export default function VoterEntry() {
               ))}
             </select>
           </FormGroup>
+        </FormRow>
+        <FormRow cols={1}>
           <FormGroup label="Current Location">
             <select ref={r.current_location} className={selectCls}>
               <option value="">Select</option>

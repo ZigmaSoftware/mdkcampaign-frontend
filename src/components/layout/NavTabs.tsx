@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { TOP_NAV_TABS } from '../../constants/nav.constants'
 import type { PageId } from '../../types/nav.types'
+import { usePermissions } from '../../context/PermissionContext'
 
 interface NavTabsProps {
   activePage:   PageId
@@ -9,7 +10,9 @@ interface NavTabsProps {
 
 export default function NavTabs({ activePage, onPageChange }: NavTabsProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const activeTab = TOP_NAV_TABS.find(t => t.id === activePage)
+  const { canAccess } = usePermissions()
+  const visibleTabs = TOP_NAV_TABS.filter(t => canAccess(t.id))
+  const activeTab = visibleTabs.find(t => t.id === activePage)
 
   return (
     <div
@@ -18,7 +21,7 @@ export default function NavTabs({ activePage, onPageChange }: NavTabsProps) {
     >
       {/* ── Desktop: horizontal tab strip ── */}
       <div className="scrollbar-none hidden md:flex overflow-x-auto border-b border-white/[0.08] px-3 gap-0">
-        {TOP_NAV_TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => onPageChange(tab.id)}
@@ -63,7 +66,7 @@ export default function NavTabs({ activePage, onPageChange }: NavTabsProps) {
           className="md:hidden absolute left-0 right-0 top-full z-50 flex flex-col shadow-xl"
           style={{ background: 'linear-gradient(135deg,#0b1d45,#0d2455)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
         >
-          {TOP_NAV_TABS.map(tab => (
+          {visibleTabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => { onPageChange(tab.id); setMobileOpen(false) }}

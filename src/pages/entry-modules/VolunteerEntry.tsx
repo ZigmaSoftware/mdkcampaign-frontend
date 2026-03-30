@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import apiClient from '../../utils/api'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Booth, Ward } from '../../hooks/useMasterAPI'
+import type { Booth, Ward, VolunteerRole, VolunteerType, Panchayat } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
@@ -45,6 +45,133 @@ const STATUS_REVERSE: Record<string, string> = {
   active: 'Active', inactive: 'Inactive', on_leave: 'Suspended',
 }
 
+/* ── Searchable multi-select for booths ────────────────────────── */
+function BoothMultiSelect({
+  booths,
+  selected,
+  onChange,
+}: {
+  booths: Booth[]
+  selected: number[]
+  onChange: (ids: number[]) => void
+}) {
+  const [open, setOpen]       = useState(false)
+  const [search, setSearch]   = useState('')
+  const containerRef          = useRef<HTMLDivElement>(null)
+
+  const filtered = booths.filter(b =>
+    `${b.number} ${b.name}`.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const toggle = useCallback((id: number) => {
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
+  }, [selected, onChange])
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const selectedBooths = booths.filter(b => selected.includes(b.id))
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger */}
+      <div
+        onClick={() => setOpen(v => !v)}
+        className={`${inputCls} flex items-center justify-between gap-2 cursor-pointer min-h-[34px] flex-wrap`}
+      >
+        <div className="flex flex-wrap gap-1 flex-1">
+          {selectedBooths.length === 0 ? (
+            <span className="text-muted text-[11px]">Select booths…</span>
+          ) : (
+            selectedBooths.map(b => (
+              <span
+                key={b.id}
+                className="inline-flex items-center gap-1 bg-saffron/15 text-navy text-[10px] font-semibold px-[6px] py-[2px] rounded-full"
+              >
+                {b.number} — {b.name}
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); toggle(b.id) }}
+                  className="text-navy/50 hover:text-kampr leading-none"
+                >
+                  <i className="ph ph-x text-[9px]" />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+        <i className={`ph ${open ? 'ph-caret-up' : 'ph-caret-down'} text-muted text-[12px] flex-shrink-0`} />
+      </div>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg overflow-hidden">
+          {/* Search */}
+          <div className="p-2 border-b border-border">
+            <div className="relative">
+              <i className="ph ph-magnifying-glass absolute left-2 top-1/2 -translate-y-1/2 text-muted text-[12px] pointer-events-none" />
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search booth number or name…"
+                className="w-full pl-7 pr-2 py-[5px] text-[11px] border border-border rounded focus:outline-none focus:border-saffron"
+              />
+            </div>
+          </div>
+          {/* List */}
+          <div className="max-h-[200px] overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-muted text-[11px] text-center py-4 italic">No booths found.</p>
+            ) : (
+              filtered.map(b => {
+                const checked = selected.includes(b.id)
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => toggle(b.id)}
+                    className={`flex items-center gap-2 px-3 py-[7px] cursor-pointer text-[11px] transition-colors
+                      ${checked ? 'bg-saffron/10 font-semibold text-navy' : 'hover:bg-[#f8fafc] text-textMain'}`}
+                  >
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors
+                      ${checked ? 'bg-saffron border-saffron' : 'border-border'}`}>
+                      {checked && <i className="ph ph-check text-[9px] text-white font-bold" />}
+                    </div>
+                    <span>{b.number} — {b.name}</span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+          {/* Footer */}
+          {selected.length > 0 && (
+            <div className="px-3 py-2 border-t border-border bg-[#f7f9fc] flex items-center justify-between">
+              <span className="text-[10px] text-muted">{selected.length} selected</span>
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="text-[10px] text-kampr hover:underline"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function VolunteerEntry() {
   const api = useEntryAPI()
   const masterApi = useMasterAPI()
@@ -53,6 +180,9 @@ export default function VolunteerEntry() {
   const [volunteers, setVolunteers]         = useState<VolunteerRecord[]>([])
   const [booths, setBooths]                 = useState<Booth[]>([])
   const [wards, setWards]                   = useState<Ward[]>([])
+  const [panchayats, setPanchayats]         = useState<Panchayat[]>([])
+  const [volunteerRoles, setVolunteerRoles] = useState<VolunteerRole[]>([])
+  const [volunteerTypes, setVolunteerTypes] = useState<VolunteerType[]>([])
   const [editing, setEditing]               = useState<VolunteerRecord | null>(null)
   const [isFormOpen, setFormOpen]           = useState(false)
   const [showImport, setShowImport]         = useState(false)
@@ -63,6 +193,9 @@ export default function VolunteerEntry() {
   useEffect(() => {
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchWards().then(d => d && setWards(d))
+    masterApi.fetchPanchayats().then(d => d && setPanchayats(d))
+    masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))
+    masterApi.fetchVolunteerTypes().then(d => d && setVolunteerTypes(d))
   }, [])
 
   useEffect(() => {
@@ -78,12 +211,14 @@ export default function VolunteerEntry() {
   }, [editing, isFormOpen, blocks])
 
   const r = {
-    name:    useRef<HTMLInputElement>(null),
-    block:   useRef<HTMLSelectElement>(null),
-    phone:   useRef<HTMLInputElement>(null),
-    phone2:  useRef<HTMLInputElement>(null),
-    ward:    useRef<HTMLSelectElement>(null),
-    role:    useRef<HTMLSelectElement>(null),
+    name:      useRef<HTMLInputElement>(null),
+    voter_id:  useRef<HTMLInputElement>(null),
+    block:     useRef<HTMLSelectElement>(null),
+    phone:     useRef<HTMLInputElement>(null),
+    phone2:    useRef<HTMLInputElement>(null),
+    ward:      useRef<HTMLSelectElement>(null),
+    panchayat: useRef<HTMLSelectElement>(null),
+    role:      useRef<HTMLSelectElement>(null),
     status:  useRef<HTMLSelectElement>(null),
     age:     useRef<HTMLInputElement>(null),
     gender:  useRef<HTMLSelectElement>(null),
@@ -96,15 +231,18 @@ export default function VolunteerEntry() {
 
   const clear = () => {
     Object.values(r).forEach(ref => { if (ref.current) ref.current.value = '' })
-    if (r.joined.current) r.joined.current.value = todayISO()
-    if (r.status.current) r.status.current.value = 'Active'
+    if (r.joined.current)    r.joined.current.value    = todayISO()
+    if (r.status.current)    r.status.current.value    = 'Active'
+    if (r.panchayat.current) r.panchayat.current.value = ''
     setSelectedBoothIds([])
   }
 
   const fillFromRecord = (v: VolunteerRecord) => {
-    if (r.name.current)   r.name.current.value   = v.user_name || ''
-    if (r.block.current)  r.block.current.value  = v.block  || ''
-    if (r.ward.current)   r.ward.current.value   = v.ward  ? String(v.ward)   : ''
+    if (r.name.current)     r.name.current.value     = v.user_name || ''
+    if (r.voter_id.current) r.voter_id.current.value = v.voter_id  || ''
+    if (r.block.current)    r.block.current.value    = v.block      || ''
+    if (r.ward.current)      r.ward.current.value      = v.ward      ? String(v.ward)      : ''
+    if (r.panchayat.current) r.panchayat.current.value = v.panchayat ? String(v.panchayat) : ''
     // Restore multi-selected booths (prefer M2M list, fall back to primary FK)
     setSelectedBoothIds(v.booths?.length ? v.booths : v.booth ? [v.booth] : [])
     if (r.status.current) r.status.current.value = STATUS_REVERSE[v.status || ''] || 'Active'
@@ -126,19 +264,22 @@ export default function VolunteerEntry() {
       showToast('<i class="ph ph-warning"></i> Phone must be 10 digits starting with 6–9.', '#dc2626')
       return
     }
-    const wardId    = r.ward.current?.value   ? parseInt(r.ward.current.value)   : null
+    const wardId       = r.ward.current?.value      ? parseInt(r.ward.current.value)      : null
+    const panchayatId  = r.panchayat.current?.value ? parseInt(r.panchayat.current.value) : null
     const statusVal = STATUS_MAP[r.status.current?.value || 'Active'] || 'active'
     const ageVal    = r.age.current?.value    ? parseInt(r.age.current.value)    : null
     const primaryBoothId = selectedBoothIds[0] ?? null
 
     const commonFields = {
-      name:        r.name.current?.value    || '',
+      name:        r.name.current?.value     || '',
+      voter_id:    r.voter_id.current?.value || '',
       phone:       phone,
       phone2:      r.phone2.current?.value  || '',
       block:       r.block.current?.value   || '',
       booth:       primaryBoothId,
       booths:      selectedBoothIds,
       ward:        wardId,
+      panchayat:   panchayatId,
       status:      statusVal,
       role:        r.role.current?.value    || '',
       age:         ageVal,
@@ -211,19 +352,21 @@ export default function VolunteerEntry() {
         STATUS_REVERSE[v.status || ''] || v.status || 'Active',
       ].filter(Boolean).join(' · '),
       data: {
+        name:           name,
+        voter_id:       v.voter_id       || '',
         phone:          v.phone          || '',
-        phone2:         v.phone2         || '',
+        phone_2:        v.phone2         || '',
         block:          v.block          || '',
         booth:          boothLabels.join(', '),
         ward:           wardInfo  ? wardInfo.name : '',
         age:            v.age     != null ? String(v.age) : '',
         gender:         v.gender         || '',
+        role:           v.role           || '',
+        volunteer_type: v.volunteer_type || '',
+        status:         STATUS_REVERSE[v.status || ''] || v.status || 'Active',
         joined_date:    v.joined_date    || '',
         source:         v.source         || '',
         skills:         v.skills         || '',
-        volunteer_type: v.volunteer_type || '',
-        role:           v.role           || '',
-        status:         v.status         || '',
         notes:          v.notes          || '',
       },
       createdAt: v.created_at || '',
@@ -256,14 +399,15 @@ export default function VolunteerEntry() {
             config={{
               title: 'Import Volunteers',
               uploadEndpoint: '/volunteers/volunteers/bulk-upload/',
-              sampleColumns: ['name', 'phone', 'alt_phone', 'booth_code', 'ward_code', 'role', 'volunteer_type', 'status'],
+              sampleColumns: ['name', 'voter_id', 'phone', 'alt_phone', 'booth_code', 'ward_code', 'role', 'volunteer_type', 'status'],
               sampleRow: {
-                name: 'Rajesh Kumar', phone: '9876543210', alt_phone: '',
+                name: 'Rajesh Kumar', voter_id: 'ABC1234567', phone: '9876543210', alt_phone: '',
                 booth_code: '1, 2, 3', ward_code: 'W001',
                 role: 'Booth Agent', volunteer_type: 'paid_volunteer', status: 'active',
               },
               columnNotes: {
                 name: 'Full name of volunteer (required)',
+                voter_id: 'Voter ID / EPIC number',
                 phone: '10-digit mobile',
                 alt_phone: 'Alternate mobile number',
                 booth_code: 'Comma-separated booth codes e.g. "1, 2, 3" or "B001,B002"',
@@ -317,27 +461,34 @@ export default function VolunteerEntry() {
             onDelete={handleDelete}
             filterConfig={[
               { key: 'status', label: 'Status', options: [
-                { value: 'active',   label: 'Active' },
-                { value: 'inactive', label: 'Inactive' },
-                { value: 'on_leave', label: 'Suspended' },
+                { value: 'Active',     label: 'Active' },
+                { value: 'Inactive',   label: 'Inactive' },
+                { value: 'Suspended',  label: 'Suspended' },
               ]},
-              { key: 'volunteer_type', label: 'Type', options: [
-                { value: 'paid_volunteer',          label: 'Paid Volunteer' },
-                { value: 'social_media_volunteer',  label: 'Social Media' },
-                { value: 'alliance_volunteer',      label: 'Alliance' },
+              { key: 'role', label: 'Role', options:
+                volunteerRoles.map(r => ({ value: r.name, label: r.name }))
+              },
+              { key: 'volunteer_type', label: 'Type', options:
+                volunteerTypes.map(t => ({ value: t.name, label: t.name }))
+              },
+              { key: 'gender', label: 'Gender', options: [
+                { value: 'Male',   label: 'Male' },
+                { value: 'Female', label: 'Female' },
+                { value: 'Other',  label: 'Other' },
               ]},
-              { key: 'role', label: 'Role', options: [
-                { value: 'Booth Agent',           label: 'Booth Agent' },
-                { value: 'Street Captain',        label: 'Street Captain' },
-                { value: 'Village Coordinator',   label: 'Village Coordinator' },
-                { value: 'WhatsApp Coordinator',  label: 'WhatsApp Coordinator' },
-                { value: 'Women Wing Member',     label: 'Women Wing' },
-                { value: 'Youth Wing Member',     label: 'Youth Wing' },
-                { value: 'Data Entry Operator',   label: 'Data Entry' },
-                { value: 'Driver / Vehicle Support', label: 'Driver' },
-                { value: 'Event Coordinator',     label: 'Event Coordinator' },
-                { value: 'Telecalling',           label: 'Telecalling' },
-                { value: 'General Volunteer',     label: 'General' },
+              { key: 'ward', label: 'Ward', options:
+                wards.map(w => ({ value: w.name, label: w.name }))
+              },
+              { key: 'block', label: 'Block', options:
+                blocks.map(b => ({ value: b.name, label: b.name }))
+              },
+              { key: 'source', label: 'Source', options: [
+                { value: 'WhatsApp Drive',       label: 'WhatsApp Drive' },
+                { value: 'Door-to-door',         label: 'Door-to-door' },
+                { value: 'Party Event',          label: 'Party Event' },
+                { value: 'Personal Reference',   label: 'Personal Reference' },
+                { value: 'Social Media',         label: 'Social Media' },
+                { value: 'NaMo App',             label: 'NaMo App' },
               ]},
             ]}
           />
@@ -352,9 +503,12 @@ export default function VolunteerEntry() {
         isEditing={!!editing}
         onClose={() => { setFormOpen(false); setEditing(null); clear() }}
       >
-        <FormRow cols={1}>
+        <FormRow cols={2}>
           <FormGroup label="Name" required>
             <input ref={r.name} className={inputCls} placeholder="Volunteer full name" />
+          </FormGroup>
+          <FormGroup label="Voter ID">
+            <input ref={r.voter_id} className={inputCls} placeholder="e.g. ABC1234567" />
           </FormGroup>
         </FormRow>
 
@@ -374,7 +528,7 @@ export default function VolunteerEntry() {
           </FormGroup>
         </FormRow>
 
-        <FormRow cols={3}>
+        <FormRow cols={4}>
           <FormGroup label="Block">
             <select ref={r.block} className={selectCls}>
               <option value="">Select Block</option>
@@ -387,20 +541,20 @@ export default function VolunteerEntry() {
               {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </FormGroup>
+          <FormGroup label="Panchayat">
+            <select ref={r.panchayat} className={selectCls}>
+              <option value="">Select Panchayat</option>
+              {panchayats.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </FormGroup>
           <FormGroup label="Role">
             <select ref={r.role} className={selectCls}>
               <option value="">Select</option>
-              <option>Booth Agent</option>
-              <option>Street Captain</option>
-              <option>Village Coordinator</option>
-              <option>WhatsApp Coordinator</option>
-              <option>Women Wing Member</option>
-              <option>Youth Wing Member</option>
-              <option>Data Entry Operator</option>
-              <option>Driver / Vehicle Support</option>
-              <option>Event Coordinator</option>
-              <option>Telecalling</option>
-              <option>General Volunteer</option>
+              {volunteerRoles.map(role => (
+                <option key={role.id} value={role.name}>{role.name}</option>
+              ))}
             </select>
           </FormGroup>
         </FormRow>
@@ -409,32 +563,12 @@ export default function VolunteerEntry() {
         <div className="mb-3">
           <div className="text-[11px] font-semibold text-navy mb-1">
             Booths <span className="text-muted font-normal">(select one or more)</span>
-            {selectedBoothIds.length > 0 && (
-              <span className="ml-2 text-saffron font-bold">{selectedBoothIds.length} selected</span>
-            )}
           </div>
-          <div className="border border-border rounded-lg p-2 max-h-[140px] overflow-y-auto bg-white grid grid-cols-2 sm:grid-cols-3 gap-1">
-            {booths.map(b => {
-              const checked = selectedBoothIds.includes(b.id)
-              return (
-                <label key={b.id}
-                  className={`flex items-center gap-2 px-2 py-[5px] rounded cursor-pointer text-[11px] transition-colors ${checked ? 'bg-[#fff3e0] font-semibold text-navy' : 'hover:bg-[#f8fafc]'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() =>
-                      setSelectedBoothIds(prev =>
-                        prev.includes(b.id) ? prev.filter(id => id !== b.id) : [...prev, b.id]
-                      )
-                    }
-                    className="accent-saffron w-[13px] h-[13px] flex-shrink-0"
-                  />
-                  <span className="truncate">{b.number} — {b.name}</span>
-                </label>
-              )
-            })}
-          </div>
+          <BoothMultiSelect
+            booths={booths}
+            selected={selectedBoothIds}
+            onChange={setSelectedBoothIds}
+          />
         </div>
 
         <FormRow cols={4}>
@@ -466,15 +600,15 @@ export default function VolunteerEntry() {
         </FormRow>
 
         <FormRow cols={2}>
-          <FormGroup label="Skills / Expertise">
-            <input ref={r.skills} className={inputCls} placeholder="Driving, Social media..." />
+          <FormGroup label="Designation">
+            <input ref={r.skills} className={inputCls} />
           </FormGroup>
           <FormGroup label="Volunteer Type">
             <select ref={r.volunteer_type} className={selectCls}>
               <option value="">Select</option>
-              <option value="paid_volunteer">Paid Volunteer</option>
-              <option value="social_media_volunteer">Social Media Volunteer</option>
-              <option value="alliance_volunteer">Alliance Volunteer</option>
+              {volunteerTypes.map(t => (
+                <option key={t.id} value={t.name}>{t.name}</option>
+              ))}
             </select>
           </FormGroup>
         </FormRow>

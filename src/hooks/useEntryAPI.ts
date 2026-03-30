@@ -22,9 +22,11 @@ interface VoterRecord {
   email?: string
   booth: number
   village?: number
+  panchayat?: number
   sentiment?: string
   gender?: string
   address?: string
+  pincode?: string
   age?: number
   date_of_birth?: string
   religion?: string
@@ -53,12 +55,14 @@ interface VolunteerRecord {
   user_name?: string         // full name from backend
   username?: string          // username from backend
   name?: string              // direct name field
+  voter_id?: string
   phone?: string
   phone2?: string
   booth: number | null
   booths?: number[]
   booth_names?: string[]
   ward: number | null
+  panchayat?: number | null
   status?: string
   role?: string
   age?: number | null
@@ -78,6 +82,8 @@ interface BoothRecord {
   number: string
   name: string
   ward: number
+  ward_name?: string
+  constituency_name?: string
   total_voters: number
   status?: string
   sentiment?: string
@@ -174,7 +180,7 @@ interface UseEntryAPIReturn {
   loading: boolean
   error: string | null
   // Voters
-  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number) => Promise<{ results: VoterRecord[]; count: number } | null>
+  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string) => Promise<{ results: VoterRecord[]; count: number } | null>
   fetchVoter: (voterId: number) => Promise<VoterRecord | null>
   createVoter: (voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
@@ -226,14 +232,16 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOTERS ====================
 
   const fetchVoters = useCallback(
-    async (boothId?: number, search?: string, page = 1, pageSize = 200): Promise<{ results: VoterRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string): Promise<{ results: VoterRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
         const { data } = await apiClient.get<ApiResponse<VoterRecord>>('/voters/voters/', {
           params: {
-            ...(boothId ? { booth: boothId } : {}),
-            ...(search  ? { search }         : {}),
+            ...(boothId  ? { booth: boothId }   : {}),
+            ...(search   ? { search }            : {}),
+            ...(wardId   ? { ward: wardId }      : {}),
+            ...(pincode  ? { pincode }           : {}),
             limit:  pageSize,
             offset: (page - 1) * pageSize,
           },

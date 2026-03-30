@@ -24,7 +24,7 @@ interface Ward {
 
 interface Booth {
   id: number; number: string; name: string; code: string; ward: number
-  ward_name?: string; constituency_name?: string
+  ward_name?: string; panchayat?: number | null; panchayat_name?: string; constituency_name?: string
   total_voters: number; male_voters?: number; female_voters?: number
   status?: string; sentiment?: string; address?: string
   village?: string; notes?: string
@@ -68,6 +68,19 @@ interface TaskCategory {
 
 interface CampaignActivityType {
   id: number; name: string; event_type: string; description?: string; order: number; is_active: boolean
+}
+
+interface VolunteerRole {
+  id: number; name: string; description?: string; order: number
+}
+
+interface VolunteerType {
+  id: number; name: string; description?: string; order: number
+}
+
+interface Panchayat {
+  id: number; name: string; code?: string; category?: string; description?: string
+  ward: number; ward_name?: string
 }
 
 export function useMasterAPI() {
@@ -229,6 +242,36 @@ export function useMasterAPI() {
   const deleteCampaignActivityType = useCallback((id: number) =>
     deleteOne(`/masters/campaign-activity-types/${id}/`), [deleteOne])
 
+  // ── Volunteer Types ───────────────────────────────────────────
+  const fetchVolunteerTypes = useCallback(() =>
+    getList<VolunteerType>('/masters/volunteer-types/'), [getList])
+  const createVolunteerType = useCallback((d: Partial<VolunteerType>) =>
+    createOne<VolunteerType>('/masters/volunteer-types/', d), [createOne])
+  const updateVolunteerType = useCallback((id: number, d: Partial<VolunteerType>) =>
+    updateOne<VolunteerType>(`/masters/volunteer-types/${id}/`, d), [updateOne])
+  const deleteVolunteerType = useCallback((id: number) =>
+    deleteOne(`/masters/volunteer-types/${id}/`), [deleteOne])
+
+  // ── Volunteer Roles ───────────────────────────────────────────
+  const fetchVolunteerRoles = useCallback(() =>
+    getList<VolunteerRole>('/masters/volunteer-roles/'), [getList])
+  const createVolunteerRole = useCallback((d: Partial<VolunteerRole>) =>
+    createOne<VolunteerRole>('/masters/volunteer-roles/', d), [createOne])
+  const updateVolunteerRole = useCallback((id: number, d: Partial<VolunteerRole>) =>
+    updateOne<VolunteerRole>(`/masters/volunteer-roles/${id}/`, d), [updateOne])
+  const deleteVolunteerRole = useCallback((id: number) =>
+    deleteOne(`/masters/volunteer-roles/${id}/`), [deleteOne])
+
+  // ── Panchayats ────────────────────────────────────────────────
+  const fetchPanchayats = useCallback((wardId?: number) =>
+    getList<Panchayat>('/masters/panchayats/', wardId ? { ward: wardId } : undefined), [getList])
+  const createPanchayat = useCallback((d: Partial<Panchayat>) =>
+    createOne<Panchayat>('/masters/panchayats/', d), [createOne])
+  const updatePanchayat = useCallback((id: number, d: Partial<Panchayat>) =>
+    updateOne<Panchayat>(`/masters/panchayats/${id}/`, d), [updateOne])
+  const deletePanchayat = useCallback((id: number) =>
+    deleteOne(`/masters/panchayats/${id}/`), [deleteOne])
+
   // ── Bulk upload (shared) ──────────────────────────────────────
   const bulkUpload = useCallback(async (
     endpoint: string,
@@ -270,10 +313,13 @@ export function useMasterAPI() {
     fetchTaskCategories, createTaskCategory, updateTaskCategory, deleteTaskCategory,
     fetchCampaignActivityTypes, createCampaignActivityType, updateCampaignActivityType, deleteCampaignActivityType,
     fetchVolunteerNames,
+    fetchVolunteerTypes, createVolunteerType, updateVolunteerType, deleteVolunteerType,
+    fetchVolunteerRoles, createVolunteerRole, updateVolunteerRole, deleteVolunteerRole,
+    fetchPanchayats, createPanchayat, updatePanchayat, deletePanchayat,
     bulkUpload,
   }
 }
 
 export type Village = Ward
-export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, TaskCategory, CampaignActivityType, VolunteerName }
+export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, TaskCategory, CampaignActivityType, VolunteerName, VolunteerRole, VolunteerType, Panchayat }
 export type UseMasterAPIReturn = ReturnType<typeof useMasterAPI>

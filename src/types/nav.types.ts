@@ -5,6 +5,7 @@ export type PageId =
   | 'masters-config'
   | 'report'
   | 'opinion-poll'
+  | 'user-settings'
 
 export type EntryModuleId =
   | 'voter'
@@ -34,7 +35,7 @@ export type MasterModuleId =
   | 'constituency'
   | 'ward'
   | 'area'
-  | 'booth'
+  | 'booth-master'
   | 'village'
   | 'scheme'
   | 'issue'
@@ -43,3 +44,6 @@ export type MasterModuleId =
   | 'party'
   | 'task-category'
   | 'campaign-activity'
+  | 'volunteer-role'
+  | 'volunteer-type'
+  | 'panchayat'

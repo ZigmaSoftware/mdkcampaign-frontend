@@ -1,11 +1,12 @@
 import React from 'react'
 
 interface EntrySearchToolbarProps {
-  placeholder: string
-  value:       string
-  onChange:    (q: string) => void
-  onExport?:   () => void
-  onPrint?:    () => void
+  placeholder:   string
+  value:         string
+  onChange:      (q: string) => void
+  onExport?:     () => void
+  exportLoading?: boolean
+  onPrint?:      () => void
 }
 
 export default function EntrySearchToolbar({
@@ -13,6 +14,7 @@ export default function EntrySearchToolbar({
   value,
   onChange,
   onExport,
+  exportLoading,
   onPrint,
 }: EntrySearchToolbarProps) {
   return (
@@ -27,16 +29,21 @@ export default function EntrySearchToolbar({
       />
       {onExport && (
         <button
-          onClick={onExport}
+          onClick={exportLoading ? undefined : onExport}
+          disabled={exportLoading}
           className="
             inline-flex items-center gap-[6px] px-[14px] py-[6px]
             bg-kampgreen-light text-kampgreen-dark border border-kampgreen/30
             rounded-md font-inter text-[10px] font-bold tracking-[0.8px] uppercase
-            cursor-pointer hover:bg-kampgreen hover:text-white transition-all duration-150
+            transition-all duration-150
+            disabled:opacity-60 disabled:cursor-not-allowed
+            enabled:cursor-pointer enabled:hover:bg-kampgreen enabled:hover:text-white
           "
         >
-          <i className="ph ph-file-csv text-[12px]" />
-          Export CSV
+          {exportLoading
+            ? <><i className="ph ph-circle-notch animate-spin text-[12px]" /> Exporting...</>
+            : <><i className="ph ph-file-csv text-[12px]" /> Export CSV</>
+          }
         </button>
       )}
       {onPrint && (

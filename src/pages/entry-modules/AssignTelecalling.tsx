@@ -370,7 +370,7 @@ export default function AssignTelecalling() {
               <i className="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-muted pointer-events-none" />
               <input
                 type="text"
-                placeholder="Name or Voter ID…"
+                placeholder="Name, Voter ID or Phone…"
                 value={filterSearch}
                 onChange={e => applySearch(e.target.value)}
                 className={`${inputCls} pl-7 w-[190px]`}

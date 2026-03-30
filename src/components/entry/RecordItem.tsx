@@ -16,8 +16,8 @@ interface RecordItemProps {
   isEditing?:  boolean
   tag?:        RecordTag
   onView?:     () => void
-  onEdit:      () => void
-  onDelete:    () => void
+  onEdit?:     () => void
+  onDelete?:   () => void
 }
 
 export default function RecordItem({
@@ -88,28 +88,32 @@ export default function RecordItem({
             <i className="ph ph-eye" />
           </button>
         )}
-        <button
-          onClick={onEdit}
-          title="Edit"
-          className="
-            w-[30px] h-[30px] rounded-md flex items-center justify-center
-            bg-navy-light text-navy border-none cursor-pointer text-[14px]
-            transition-all duration-150 hover:bg-navy hover:text-white
-          "
-        >
-          <i className="ph ph-pencil-simple" />
-        </button>
-        <button
-          onClick={onDelete}
-          title="Delete"
-          className="
-            w-[30px] h-[30px] rounded-md flex items-center justify-center
-            bg-kampr-light text-kampr border-none cursor-pointer text-[14px]
-            transition-all duration-150 hover:bg-kampr hover:text-white
-          "
-        >
-          <i className="ph ph-trash" />
-        </button>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            title="Edit"
+            className="
+              w-[30px] h-[30px] rounded-md flex items-center justify-center
+              bg-navy-light text-navy border-none cursor-pointer text-[14px]
+              transition-all duration-150 hover:bg-navy hover:text-white
+            "
+          >
+            <i className="ph ph-pencil-simple" />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            title="Delete"
+            className="
+              w-[30px] h-[30px] rounded-md flex items-center justify-center
+              bg-kampr-light text-kampr border-none cursor-pointer text-[14px]
+              transition-all duration-150 hover:bg-kampr hover:text-white
+            "
+          >
+            <i className="ph ph-trash" />
+          </button>
+        )}
       </div>
     </div>
   )

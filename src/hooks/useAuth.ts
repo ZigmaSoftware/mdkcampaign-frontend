@@ -18,7 +18,16 @@ interface LoginResponse {
   user?: User
 }
 
-export type UserRole = 'admin' | 'district_head' | 'constituency_mgr' | 'booth_agent' | 'volunteer' | 'voter' | 'analyst' | 'observer'
+export type UserRole =
+  | 'admin'
+  | 'volunteer'
+  | 'member'
+  | 'district_head'
+  | 'constituency_mgr'
+  | 'booth_agent'
+  | 'voter'
+  | 'analyst'
+  | 'observer'
 
 interface UseAuthReturn {
   user: User | null

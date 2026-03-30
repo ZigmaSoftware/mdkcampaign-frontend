@@ -40,6 +40,7 @@ interface BoothStat {
   total_voters: number
   voters_contacted: number
   coverage_percentage: number
+  volunteer_count: number
 }
 
 interface WardStat {
@@ -52,6 +53,29 @@ interface WardStat {
   sentiment: Record<string, number>
   caste_dist: Record<string, number>
   booth_count: number
+  volunteer_count: number
+}
+
+export interface VolunteerInfo {
+  id: number
+  name: string | null
+  phone: string | null
+  phone2: string | null
+  skills: string | null
+  role: string | null
+  status: string | null
+}
+
+export interface VoterBasicInfo {
+  id: number
+  voter_id: string | null
+  name: string | null
+  age: number | null
+  gender: string | null
+  sentiment: string | null
+  is_contacted: boolean | null
+  phone: string | null
+  ward_name: string | null
 }
 
 interface FixLinksResult { fixed_booths: number; fixed_voters: number }
@@ -63,6 +87,9 @@ interface UseAnalyticsAPIReturn {
   fetchDashboardStats: (constituencyId?: number) => Promise<DashboardStats | null>
   fetchBoothStats: (constituencyId?: number) => Promise<BoothStat[]>
   fetchWardStats: (constituencyId?: number) => Promise<WardStat[]>
+  fetchBoothVolunteers: (boothId: number) => Promise<VolunteerInfo[]>
+  fetchWardVolunteers: (wardId: number) => Promise<VolunteerInfo[]>
+  fetchBoothVoters: (boothId: number) => Promise<VoterBasicInfo[]>
   fixDataLinks: () => Promise<FixLinksResult | null>
 }
 
@@ -139,6 +166,36 @@ export function useAnalyticsAPI(): UseAnalyticsAPIReturn {
     []
   )
 
+  const fetchBoothVolunteers = useCallback(async (boothId: number): Promise<VolunteerInfo[]> => {
+    try {
+      const { data } = await apiClient.get<VolunteerInfo[]>(`/analytics/booth-volunteers/${boothId}/`)
+      return data
+    } catch (err) {
+      handleError(err, 'fetch booth volunteers')
+      return []
+    }
+  }, [])
+
+  const fetchWardVolunteers = useCallback(async (wardId: number): Promise<VolunteerInfo[]> => {
+    try {
+      const { data } = await apiClient.get<VolunteerInfo[]>(`/analytics/ward-volunteers/${wardId}/`)
+      return data
+    } catch (err) {
+      handleError(err, 'fetch ward volunteers')
+      return []
+    }
+  }, [])
+
+  const fetchBoothVoters = useCallback(async (boothId: number): Promise<VoterBasicInfo[]> => {
+    try {
+      const { data } = await apiClient.get<VoterBasicInfo[]>(`/analytics/booth-voters/${boothId}/`)
+      return data
+    } catch (err) {
+      handleError(err, 'fetch booth voters')
+      return []
+    }
+  }, [])
+
   const fixDataLinks = useCallback(async (): Promise<FixLinksResult | null> => {
     try {
       const { data } = await apiClient.post<FixLinksResult>('/analytics/fix-links/')
@@ -156,6 +213,9 @@ export function useAnalyticsAPI(): UseAnalyticsAPIReturn {
     fetchDashboardStats,
     fetchBoothStats,
     fetchWardStats,
+    fetchBoothVolunteers,
+    fetchWardVolunteers,
+    fetchBoothVoters,
     fixDataLinks,
   }
 }

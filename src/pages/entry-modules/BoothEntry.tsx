@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Booth, Ward } from '../../hooks/useMasterAPI'
+import type { Booth, Ward, Panchayat } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
@@ -47,8 +47,10 @@ export default function BoothEntry() {
   const api = useMasterAPI()
   const { showToast } = useToast()
 
-  const [booths, setBooths] = useState<Booth[]>([])
-  const [wards, setWards]   = useState<Ward[]>([])
+  const [booths,     setBooths]     = useState<Booth[]>([])
+  const [wards,      setWards]      = useState<Ward[]>([])
+  const [panchayats, setPanchayats] = useState<Panchayat[]>([])
+  const [wardFilter, setWardFilter] = useState('')
   const [volunteers, setVolunteers] = useState<VolunteerOption[]>([])
   const [editing, setEditing] = useState<Booth | null>(null)
   const [isFormOpen, setFormOpen] = useState(false)
@@ -65,6 +67,7 @@ export default function BoothEntry() {
   useEffect(() => {
     api.fetchBooths().then(d => d && setBooths(d))
     api.fetchWards().then(d => d && setWards(d))
+    api.fetchPanchayats().then(d => d && setPanchayats(d))
     api.fetchVolunteerNames().then(d => d && setVolunteers(d))
   }, [])
 
@@ -91,6 +94,7 @@ export default function BoothEntry() {
     num:       useRef<HTMLInputElement>(null),
     name:      useRef<HTMLInputElement>(null),
     ward:      useRef<HTMLSelectElement>(null),
+    panchayat: useRef<HTMLSelectElement>(null),
     address:   useRef<HTMLInputElement>(null),
     voters:    useRef<HTMLInputElement>(null),
     male:      useRef<HTMLInputElement>(null),
@@ -105,7 +109,9 @@ export default function BoothEntry() {
     if (r.num.current)       r.num.current.value       = booth.number
     if (r.name.current)      r.name.current.value      = booth.name
     if (r.ward.current)      r.ward.current.value      = String(booth.ward)
+    if (r.panchayat.current) r.panchayat.current.value = booth.panchayat ? String(booth.panchayat) : ''
     if (r.address.current)   r.address.current.value   = booth.address || ''
+    setWardFilter(String(booth.ward))
     if (r.voters.current)    r.voters.current.value    = String(booth.total_voters || '')
     if (r.male.current)      r.male.current.value      = String(booth.male_voters || '')
     if (r.female.current)    r.female.current.value    = String(booth.female_voters || '')
@@ -119,6 +125,7 @@ export default function BoothEntry() {
     Object.values(r).forEach(ref => { if (ref.current) ref.current.value = '' })
     setSelectedAgentIds([])
     setAgentSearch('')
+    setWardFilter('')
   }
 
   const handleSave = async () => {
@@ -126,7 +133,8 @@ export default function BoothEntry() {
     const name = r.name.current?.value.trim() ?? ''
     if (!num) { showToast('<i class="ph ph-warning"></i> Booth number is required!', '#dc2626'); return }
 
-    const wardId = r.ward.current?.value ? parseInt(r.ward.current.value) : undefined
+    const wardId      = r.ward.current?.value      ? parseInt(r.ward.current.value)      : undefined
+    const panchayatId = r.panchayat.current?.value ? parseInt(r.panchayat.current.value) : null
     // Derive village text from selected ward name (keeps booth.village in sync with booth.ward)
     const selectedWard = wards.find(w => w.id === wardId)
     const payload: Partial<Booth> = {
@@ -135,9 +143,10 @@ export default function BoothEntry() {
       total_voters: r.voters.current?.value ? parseInt(r.voters.current.value) : 0,
       male_voters:  r.male.current?.value   ? parseInt(r.male.current.value)   : undefined,
       female_voters: r.female.current?.value ? parseInt(r.female.current.value) : undefined,
-      address:  r.address.current?.value  || undefined,
-      village:  selectedWard?.name        || undefined,
-      notes:    r.notes.current?.value    || undefined,
+      address:   r.address.current?.value  || undefined,
+      village:   selectedWard?.name        || undefined,
+      panchayat: panchayatId,
+      notes:     r.notes.current?.value    || undefined,
       sentiment: SENTIMENT_MAP[r.sentiment.current?.value || ''] || undefined,
       status:    STATUS_MAP[r.status.current?.value || ''] || undefined,
       agent_ids: selectedAgentIds.length ? selectedAgentIds : undefined,
@@ -305,17 +314,31 @@ export default function BoothEntry() {
         isEditing={!!editing}
         onClose={() => { setFormOpen(false); setEditing(null); clear() }}
       >
-        <FormRow cols={3}>
+        <FormRow cols={2}>
           <FormGroup label="Booth No." required>
             <input ref={r.num} className={inputCls} placeholder="001" />
           </FormGroup>
           <FormGroup label="Booth Name / Location">
             <input ref={r.name} className={inputCls} placeholder="School name or landmark" />
           </FormGroup>
+        </FormRow>
+        <FormRow cols={2}>
           <FormGroup label="Ward" required>
-            <select ref={r.ward} className={selectCls}>
+            <select ref={r.ward} className={selectCls} onChange={e => {
+              setWardFilter(e.target.value)
+              if (r.panchayat.current) r.panchayat.current.value = ''
+            }}>
               <option value="">Select Ward</option>
               {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </FormGroup>
+          <FormGroup label="Panchayat">
+            <select ref={r.panchayat} className={selectCls}>
+              <option value="">Select Panchayat</option>
+              {(wardFilter
+                ? panchayats.filter(p => String(p.ward) === wardFilter)
+                : panchayats
+              ).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </FormGroup>
         </FormRow>

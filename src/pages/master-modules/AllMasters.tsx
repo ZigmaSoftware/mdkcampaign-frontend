@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory, CampaignActivityType } from '../../hooks/useMasterAPI'
+import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory, CampaignActivityType, VolunteerRole, VolunteerType, Panchayat } from '../../hooks/useMasterAPI'
 import type { MasterRecord } from '../../types/master.types'
 import MasterListCard from '../../components/masters/MasterListCard'
 import FormRow from '../../components/entry/FormRow'
@@ -526,39 +526,47 @@ export function AreaMaster() {
 export function BoothMaster() {
   const api = useMasterAPI()
   const { showToast } = useToast()
-  const numRef   = useRef<HTMLInputElement>(null)
-  const bnameRef = useRef<HTMLInputElement>(null)
-  const addrRef  = useRef<HTMLInputElement>(null)
-  const wardRef  = useRef<HTMLSelectElement>(null)
-  const agentRef = useRef<HTMLSelectElement>(null)
-  const [booths, setBooths] = useState<Booth[]>([])
-  const [wards, setWards]   = useState<Ward[]>([])
-  const [editing, setEditing] = useState<Booth | null>(null)
+  const numRef       = useRef<HTMLInputElement>(null)
+  const bnameRef     = useRef<HTMLInputElement>(null)
+  const addrRef      = useRef<HTMLInputElement>(null)
+  const wardRef      = useRef<HTMLSelectElement>(null)
+  const panchayatRef = useRef<HTMLSelectElement>(null)
+  const agentRef     = useRef<HTMLSelectElement>(null)
+  const [booths,     setBooths]     = useState<Booth[]>([])
+  const [wards,      setWards]      = useState<Ward[]>([])
+  const [panchayats, setPanchayats] = useState<Panchayat[]>([])
+  const [wardFilter, setWardFilter] = useState('')
+  const [editing,    setEditing]    = useState<Booth | null>(null)
   const [showImport, setShowImport] = useState(false)
 
   useEffect(() => {
     api.fetchBooths().then(d => d && setBooths(d))
     api.fetchWards().then(d => d && setWards(d))
+    api.fetchPanchayats().then(d => d && setPanchayats(d))
   }, [])
 
   const clearFields = () => {
     ;[numRef, bnameRef, addrRef].forEach(r => { if (r.current) r.current.value = '' })
-    if (wardRef.current)  wardRef.current.value  = ''
-    if (agentRef.current) agentRef.current.value = ''
+    if (wardRef.current)      wardRef.current.value      = ''
+    if (panchayatRef.current) panchayatRef.current.value = ''
+    if (agentRef.current)     agentRef.current.value     = ''
+    setWardFilter('')
   }
 
   const handleSave = async () => {
-    const num   = numRef.current?.value.trim() ?? ''
-    const bname = bnameRef.current?.value.trim() ?? ''
-    const addr  = addrRef.current?.value.trim() ?? ''
-    const wardId = wardRef.current?.value ? parseInt(wardRef.current.value) : undefined
-    const agentId = agentRef.current?.value ? parseInt(agentRef.current.value) : null
+    const num        = numRef.current?.value.trim() ?? ''
+    const bname      = bnameRef.current?.value.trim() ?? ''
+    const addr       = addrRef.current?.value.trim() ?? ''
+    const wardId     = wardRef.current?.value      ? parseInt(wardRef.current.value)      : undefined
+    const panchayatId = panchayatRef.current?.value ? parseInt(panchayatRef.current.value) : null
+    const agentId    = agentRef.current?.value     ? parseInt(agentRef.current.value)     : null
     if (!num) return
 
     if (editing) {
       const updated = await api.updateBooth(editing.id, {
         number: num, name: bname || `Booth ${num}`, address: addr || undefined,
         ...(wardId ? { ward: wardId } : {}),
+        panchayat: panchayatId,
         primary_volunteer: agentId,
       })
       if (updated) {
@@ -569,7 +577,9 @@ export function BoothMaster() {
     } else {
       const created = await api.createBooth({
         number: num, name: bname || `Booth ${num}`, code: `B${String(Date.now() % 10000).padStart(4, '0')}`,
-        ...(wardId ? { ward: wardId } : {}), address: addr || `Booth ${num}`, total_voters: 0,
+        ...(wardId ? { ward: wardId } : {}),
+        panchayat: panchayatId,
+        address: addr || `Booth ${num}`, total_voters: 0,
         ...(agentId ? { primary_volunteer: agentId } : {}),
       })
       if (created) {
@@ -584,11 +594,13 @@ export function BoothMaster() {
     const booth = booths.find(b => String(b.id) === id)
     if (!booth) return
     setEditing(booth)
-    if (numRef.current)   numRef.current.value   = booth.number
-    if (bnameRef.current) bnameRef.current.value = booth.name
-    if (addrRef.current)  addrRef.current.value  = booth.address || ''
-    if (wardRef.current)  wardRef.current.value  = String(booth.ward)
-    if (agentRef.current) agentRef.current.value = booth.primary_volunteer ? String(booth.primary_volunteer) : ''
+    if (numRef.current)       numRef.current.value       = booth.number
+    if (bnameRef.current)     bnameRef.current.value     = booth.name
+    if (addrRef.current)      addrRef.current.value      = booth.address || ''
+    if (wardRef.current)      wardRef.current.value      = String(booth.ward)
+    if (panchayatRef.current) panchayatRef.current.value = booth.panchayat ? String(booth.panchayat) : ''
+    if (agentRef.current)     agentRef.current.value     = booth.primary_volunteer ? String(booth.primary_volunteer) : ''
+    setWardFilter(String(booth.ward))
   }
 
   const handleDelete = async (id: string) => {
@@ -614,11 +626,25 @@ export function BoothMaster() {
         </FormRow>
         <FormRow cols={2}>
           <FormGroup label="Ward">
-            <select ref={wardRef} className={selectCls}>
+            <select ref={wardRef} className={selectCls} onChange={e => {
+              setWardFilter(e.target.value)
+              if (panchayatRef.current) panchayatRef.current.value = ''
+            }}>
               <option value="">Select Ward</option>
               {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </FormGroup>
+          <FormGroup label="Panchayat">
+            <select ref={panchayatRef} className={selectCls}>
+              <option value="">Select Panchayat</option>
+              {(wardFilter
+                ? panchayats.filter(p => String(p.ward) === wardFilter)
+                : panchayats
+              ).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={1}>
           <FormGroup label="Address">
             <input ref={addrRef} className={inputCls} placeholder="Full address" />
           </FormGroup>
@@ -1529,6 +1555,403 @@ export function CampaignActivityTypeMaster() {
         <MasterListCard
           title="Campaign Activity Types"
           icon="ph ph-megaphone"
+          records={recs}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </FormSection>
+    </div>
+  )
+}
+
+/* ── VOLUNTEER ROLE MASTER ───────────────────────────────────────────── */
+export function VolunteerRoleMaster() {
+  const api = useMasterAPI()
+  const { showToast } = useToast()
+  const nameRef  = useRef<HTMLInputElement>(null)
+  const descRef  = useRef<HTMLInputElement>(null)
+  const orderRef = useRef<HTMLInputElement>(null)
+  const [roles, setRoles]     = useState<VolunteerRole[]>([])
+  const [editing, setEditing] = useState<VolunteerRole | null>(null)
+
+  useEffect(() => {
+    api.fetchVolunteerRoles().then(d => d && setRoles(d))
+  }, [])
+
+  const clearFields = () => {
+    if (nameRef.current)  nameRef.current.value  = ''
+    if (descRef.current)  descRef.current.value  = ''
+    if (orderRef.current) orderRef.current.value = '0'
+    setEditing(null)
+  }
+
+  const handleSave = async () => {
+    const name = nameRef.current?.value.trim() ?? ''
+    if (!name) { showToast('<i class="ph ph-warning"></i> Role name is required!', '#dc2626'); return }
+    const payload: Partial<VolunteerRole> = {
+      name,
+      description: descRef.current?.value.trim() || undefined,
+      order: orderRef.current?.value ? parseInt(orderRef.current.value) : 0,
+    }
+    if (editing) {
+      const updated = await api.updateVolunteerRole(editing.id, payload)
+      if (updated) {
+        setRoles(prev => prev.map(r => r.id === editing.id ? { ...r, ...updated } : r))
+        showToast('<i class="ph ph-check-circle"></i> Role updated!', '#138808')
+      }
+      clearFields()
+    } else {
+      const created = await api.createVolunteerRole(payload)
+      if (created) {
+        setRoles(prev => [...prev, created].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)))
+        showToast('<i class="ph ph-check-circle"></i> Role saved!', '#138808')
+      }
+      clearFields()
+    }
+  }
+
+  const handleEdit = (id: string) => {
+    const role = roles.find(r => String(r.id) === id)
+    if (!role) return
+    setEditing(role)
+    if (nameRef.current)  nameRef.current.value  = role.name
+    if (descRef.current)  descRef.current.value  = role.description || ''
+    if (orderRef.current) orderRef.current.value = String(role.order)
+  }
+
+  const handleDelete = (id: string) => {
+    const role = roles.find(r => String(r.id) === id)
+    if (!role || !window.confirm('Delete this volunteer role?')) return
+    api.deleteVolunteerRole(role.id).then(ok => {
+      if (ok) {
+        setRoles(prev => prev.filter(r => r.id !== role.id))
+        showToast('<i class="ph ph-trash"></i> Role deleted.', '#dc2626')
+      }
+    })
+  }
+
+  const recs: MasterRecord[] = roles.map(r => ({
+    id:        String(r.id),
+    key:       r.name,
+    meta:      r.description || '',
+    backendId: r.id,
+  }))
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 page-enter">
+      <FormSection
+        title={editing ? 'Edit Volunteer Role' : 'Add Volunteer Role'}
+        icon="ph ph-identification-badge"
+        badge={editing ? (
+          <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+            + New
+          </button>
+        ) : undefined}
+      >
+        <FormRow cols={2}>
+          <FormGroup label="Role Name" required>
+            <input ref={nameRef} className={inputCls} placeholder="e.g. Booth Agent" />
+          </FormGroup>
+          <FormGroup label="Display Order">
+            <input ref={orderRef} type="number" className={inputCls} placeholder="0" defaultValue="0" min="0" />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={1}>
+          <FormGroup label="Description">
+            <input ref={descRef} className={inputCls} placeholder="Optional description" />
+          </FormGroup>
+        </FormRow>
+        <FormActions
+          onSave={handleSave}
+          onClear={clearFields}
+          saveLabel={editing ? 'Update Role' : 'Save Role'}
+          isEditing={!!editing}
+        />
+      </FormSection>
+
+      <FormSection title="Volunteer Roles" icon="ph ph-list-bullets" badge={
+        <span className="text-[9px] font-bold text-white/70">{roles.length} roles</span>
+      }>
+        <MasterListCard
+          title="Volunteer Roles"
+          icon="ph ph-identification-badge"
+          records={recs}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </FormSection>
+    </div>
+  )
+}
+
+/* ── VOLUNTEER TYPE MASTER ───────────────────────────────────────────── */
+export function VolunteerTypeMaster() {
+  const api = useMasterAPI()
+  const { showToast } = useToast()
+  const nameRef  = useRef<HTMLInputElement>(null)
+  const descRef  = useRef<HTMLInputElement>(null)
+  const orderRef = useRef<HTMLInputElement>(null)
+  const [types, setTypes]     = useState<VolunteerType[]>([])
+  const [editing, setEditing] = useState<VolunteerType | null>(null)
+
+  useEffect(() => {
+    api.fetchVolunteerTypes().then(d => d && setTypes(d))
+  }, [])
+
+  const clearFields = () => {
+    if (nameRef.current)  nameRef.current.value  = ''
+    if (descRef.current)  descRef.current.value  = ''
+    if (orderRef.current) orderRef.current.value = '0'
+    setEditing(null)
+  }
+
+  const handleSave = async () => {
+    const name = nameRef.current?.value.trim() ?? ''
+    if (!name) { showToast('<i class="ph ph-warning"></i> Type name is required!', '#dc2626'); return }
+    const payload: Partial<VolunteerType> = {
+      name,
+      description: descRef.current?.value.trim() || undefined,
+      order: orderRef.current?.value ? parseInt(orderRef.current.value) : 0,
+    }
+    if (editing) {
+      const updated = await api.updateVolunteerType(editing.id, payload)
+      if (updated) {
+        setTypes(prev => prev.map(t => t.id === editing.id ? { ...t, ...updated } : t))
+        showToast('<i class="ph ph-check-circle"></i> Type updated!', '#138808')
+      }
+      clearFields()
+    } else {
+      const created = await api.createVolunteerType(payload)
+      if (created) {
+        setTypes(prev => [...prev, created].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)))
+        showToast('<i class="ph ph-check-circle"></i> Type saved!', '#138808')
+      }
+      clearFields()
+    }
+  }
+
+  const handleEdit = (id: string) => {
+    const t = types.find(t => String(t.id) === id)
+    if (!t) return
+    setEditing(t)
+    if (nameRef.current)  nameRef.current.value  = t.name
+    if (descRef.current)  descRef.current.value  = t.description || ''
+    if (orderRef.current) orderRef.current.value = String(t.order)
+  }
+
+  const handleDelete = (id: string) => {
+    const t = types.find(t => String(t.id) === id)
+    if (!t || !window.confirm('Delete this volunteer type?')) return
+    api.deleteVolunteerType(t.id).then(ok => {
+      if (ok) {
+        setTypes(prev => prev.filter(x => x.id !== t.id))
+        showToast('<i class="ph ph-trash"></i> Type deleted.', '#dc2626')
+      }
+    })
+  }
+
+  const recs: MasterRecord[] = types.map(t => ({
+    id:        String(t.id),
+    key:       t.name,
+    meta:      t.description || '',
+    backendId: t.id,
+  }))
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 page-enter">
+      <FormSection
+        title={editing ? 'Edit Volunteer Type' : 'Add Volunteer Type'}
+        icon="ph ph-tag"
+        badge={editing ? (
+          <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+            + New
+          </button>
+        ) : undefined}
+      >
+        <FormRow cols={2}>
+          <FormGroup label="Type Name" required>
+            <input ref={nameRef} className={inputCls} placeholder="e.g. Paid Volunteer" />
+          </FormGroup>
+          <FormGroup label="Display Order">
+            <input ref={orderRef} type="number" className={inputCls} placeholder="0" defaultValue="0" min="0" />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={1}>
+          <FormGroup label="Description">
+            <input ref={descRef} className={inputCls} placeholder="Optional description" />
+          </FormGroup>
+        </FormRow>
+        <FormActions
+          onSave={handleSave}
+          onClear={clearFields}
+          saveLabel={editing ? 'Update Type' : 'Save Type'}
+          isEditing={!!editing}
+        />
+      </FormSection>
+
+      <FormSection title="Volunteer Types" icon="ph ph-list-bullets" badge={
+        <span className="text-[9px] font-bold text-white/70">{types.length} types</span>
+      }>
+        <MasterListCard
+          title="Volunteer Types"
+          icon="ph ph-tag"
+          records={recs}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </FormSection>
+    </div>
+  )
+}
+
+/* ── PANCHAYAT MASTER ───────────────────────────────────────────── */
+export function PanchayatMaster() {
+  const api = useMasterAPI()
+  const { showToast } = useToast()
+  const nameRef     = useRef<HTMLInputElement>(null)
+  const codeRef     = useRef<HTMLInputElement>(null)
+  const categoryRef = useRef<HTMLSelectElement>(null)
+  const descRef     = useRef<HTMLTextAreaElement>(null)
+  const wardRef     = useRef<HTMLSelectElement>(null)
+  const [panchayats, setPanchayats] = useState<Panchayat[]>([])
+  const [wards, setWards]           = useState<Ward[]>([])
+  const [editing, setEditing]       = useState<Panchayat | null>(null)
+
+  useEffect(() => {
+    api.fetchPanchayats().then(d => d && setPanchayats(d))
+    api.fetchWards().then(d => d && setWards(d))
+  }, [])
+
+  const clearFields = () => {
+    if (nameRef.current)     nameRef.current.value     = ''
+    if (codeRef.current)     codeRef.current.value     = ''
+    if (categoryRef.current) categoryRef.current.value = ''
+    if (descRef.current)     descRef.current.value     = ''
+    if (wardRef.current)     wardRef.current.value     = ''
+    setEditing(null)
+  }
+
+  const handleSave = async () => {
+    const name   = nameRef.current?.value.trim() ?? ''
+    const wardId = wardRef.current?.value ? Number(wardRef.current.value) : undefined
+    if (!name)   { showToast('<i class="ph ph-warning"></i> Name is required!', '#dc2626'); return }
+    if (!wardId) { showToast('<i class="ph ph-warning"></i> Select a ward!', '#dc2626'); return }
+    const payload: Partial<Panchayat> = {
+      name,
+      code:        codeRef.current?.value.trim()     || undefined,
+      category:    categoryRef.current?.value         || undefined,
+      description: descRef.current?.value.trim()     || undefined,
+      ward:        wardId,
+    }
+    if (editing) {
+      const updated = await api.updatePanchayat(editing.id, payload)
+      if (updated) {
+        const ward = wards.find(w => w.id === wardId)
+        setPanchayats(prev => prev.map(p => p.id === editing.id ? { ...p, ...updated, ward_name: ward?.name } : p))
+        showToast('<i class="ph ph-check-circle"></i> Panchayat updated!', '#138808')
+      }
+      clearFields()
+    } else {
+      const created = await api.createPanchayat(payload)
+      if (created) {
+        const ward = wards.find(w => w.id === wardId)
+        setPanchayats(prev => [...prev, { ...created, ward_name: ward?.name }])
+        showToast('<i class="ph ph-check-circle"></i> Panchayat saved!', '#138808')
+      }
+      clearFields()
+    }
+  }
+
+  const handleEdit = (id: string) => {
+    const p = panchayats.find(x => String(x.id) === id)
+    if (!p) return
+    setEditing(p)
+    if (nameRef.current)     nameRef.current.value     = p.name
+    if (codeRef.current)     codeRef.current.value     = p.code     || ''
+    if (categoryRef.current) categoryRef.current.value = p.category || ''
+    if (descRef.current)     descRef.current.value     = p.description || ''
+    if (wardRef.current)     wardRef.current.value     = String(p.ward)
+  }
+
+  const handleDelete = (id: string) => {
+    const p = panchayats.find(x => String(x.id) === id)
+    if (!p || !window.confirm('Delete this panchayat?')) return
+    api.deletePanchayat(p.id).then(ok => {
+      if (ok) {
+        setPanchayats(prev => prev.filter(x => x.id !== p.id))
+        showToast('<i class="ph ph-trash"></i> Panchayat deleted.', '#dc2626')
+      }
+    })
+  }
+
+  const CATEGORY_LABEL: Record<string, string> = {
+    village_panchayat: 'Village Panchayat',
+    town_panchayat:    'Town Panchayat',
+  }
+
+  const recs: MasterRecord[] = panchayats.map(p => ({
+    id:        String(p.id),
+    key:       p.name,
+    meta:      [p.ward_name, p.category ? CATEGORY_LABEL[p.category] : ''].filter(Boolean).join(' · '),
+    extra:     { Code: p.code || '', Category: p.category ? CATEGORY_LABEL[p.category] : '', Description: p.description || '' },
+    backendId: p.id,
+  }))
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 page-enter">
+      <FormSection
+        title={editing ? 'Edit Panchayat' : 'Add Panchayat'}
+        icon="ph ph-tree-structure"
+        badge={editing ? (
+          <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+            + New
+          </button>
+        ) : undefined}
+      >
+        <FormRow cols={2}>
+          <FormGroup label="Panchayat Name" required>
+            <input ref={nameRef} className={inputCls} placeholder="e.g. Ariyur Panchayat" />
+          </FormGroup>
+          <FormGroup label="Code">
+            <input ref={codeRef} className={inputCls} placeholder="e.g. P001" maxLength={20} />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={2}>
+          <FormGroup label="Ward" required>
+            <select ref={wardRef} className={selectCls}>
+              <option value="">Select Ward</option>
+              {wards.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </FormGroup>
+          <FormGroup label="Category">
+            <select ref={categoryRef} className={selectCls}>
+              <option value="">Select Category</option>
+              <option value="village_panchayat">Village Panchayat</option>
+              <option value="town_panchayat">Town Panchayat</option>
+            </select>
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={1}>
+          <FormGroup label="Description">
+            <textarea ref={descRef} className={textareaCls} placeholder="Optional description..." />
+          </FormGroup>
+        </FormRow>
+        <FormActions
+          onSave={handleSave}
+          onClear={clearFields}
+          saveLabel={editing ? 'Update Panchayat' : 'Save Panchayat'}
+          isEditing={!!editing}
+        />
+      </FormSection>
+
+      <FormSection title="Panchayats" icon="ph ph-list-bullets" badge={
+        <span className="text-[9px] font-bold text-white/70">{panchayats.length} panchayats</span>
+      }>
+        <MasterListCard
+          title="Panchayats"
+          icon="ph ph-tree-structure"
           records={recs}
           onEdit={handleEdit}
           onDelete={handleDelete}

@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { ENTRY_TABS } from '../../constants/nav.constants'
 import type { EntryModuleId } from '../../types/nav.types'
+import { usePermissions } from '../../context/PermissionContext'
 
 interface TabGroup {
   id:    string
@@ -33,31 +34,33 @@ const TAB_GROUPS: TabGroup[] = [
     label: 'Campaign',
     icon:  'ph ph-megaphone',
     tabs: [
-      { id: 'event',    label: 'Task Mgmt', icon: 'ph ph-calendar'      },
-      { id: 'campaign', label: 'Campaign',   icon: 'ph ph-megaphone'     },
-      // { id: 'warroom',  label: 'War Room',   icon: 'ph ph-castle-turret' },
+      { id: 'event',    label: 'Task Mgmt', icon: 'ph ph-calendar'  },
+      { id: 'campaign', label: 'Campaign',  icon: 'ph ph-megaphone' },
     ],
   },
-  // {
-  //   id:    'feedback',
-  //   label: 'Feedback',
-  //   icon:  'ph ph-chats',
-  //   tabs: [
-  //     { id: 'feedback',   label: 'Feedback',    icon: 'ph ph-chats'    },
-  //     { id: 'commitment', label: 'Commitments', icon: 'ph ph-push-pin' },
-  //     { id: 'grievance',  label: 'Grievance',   icon: 'ph ph-warning'  },
-  //   ],
-  // },
+  {
+    id:    'feedback',
+    label: 'Feedback',
+    icon:  'ph ph-chats',
+    tabs: [
+      { id: 'feedback',   label: 'Feedback',    icon: 'ph ph-chats'    },
+      { id: 'commitment', label: 'Commitments', icon: 'ph ph-push-pin' },
+      { id: 'grievance',  label: 'Grievance',   icon: 'ph ph-warning'  },
+    ],
+  },
   {
     id:    'activity',
     label: 'Activity Logs',
     icon:  'ph ph-clipboard-text',
     tabs: [
-      { id: 'voter-survey',       label: 'Feedback',          icon: 'ph ph-notepad'          },
-      { id: 'attendance',         label: 'Attendance',        icon: 'ph ph-clock'            },
-      { id: 'assign-telecalling',   label: 'Assign Telecalling',   icon: 'ph ph-phone-outgoing'  },
-      { id: 'telecalling-assigned', label: 'Telecalling Assigned', icon: 'ph ph-clipboard-text'  },
-      { id: 'feedback-review',      label: 'Feedback Review',      icon: 'ph ph-git-branch'       },
+      { id: 'voter-survey',         label: 'Voter Survey',         icon: 'ph ph-notepad'             },
+      { id: 'agent-activity',       label: 'Agent Log',            icon: 'ph ph-identification-card' },
+      { id: 'field-activity',       label: 'Field Log',            icon: 'ph ph-map-trifold'         },
+      { id: 'volunteer-activity',   label: 'Volunteer Log',        icon: 'ph ph-clipboard-text'      },
+      { id: 'attendance',           label: 'Attendance',           icon: 'ph ph-clock'               },
+      { id: 'assign-telecalling',   label: 'Assign Telecalling',   icon: 'ph ph-phone-outgoing'      },
+      { id: 'telecalling-assigned', label: 'Telecalling Assigned', icon: 'ph ph-clipboard-text'      },
+      { id: 'feedback-review',      label: 'Feedback Review',      icon: 'ph ph-git-branch'          },
     ],
   },
 ]
@@ -70,8 +73,24 @@ interface EntryTabBarProps {
 export default function EntryTabBar({ active, onChange }: EntryTabBarProps) {
   const [mobileOpen,    setMobileOpen]    = useState(false)
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null)
+  const { canView, loaded } = usePermissions()
 
-  const activeGroup = TAB_GROUPS.find(g => g.tabs.some(t => t.id === active))
+  // Filter groups and their tabs based on screen permissions
+  const visibleGroups = TAB_GROUPS
+    .map(g => ({ ...g, tabs: g.tabs.filter(t => canView(t.id)) }))
+    .filter(g => g.tabs.length > 0)
+
+  // Auto-redirect to first accessible tab when current tab is not visible
+  useEffect(() => {
+    if (!loaded) return
+    const allVisibleTabs = visibleGroups.flatMap(g => g.tabs)
+    const isActiveVisible = allVisibleTabs.some(t => t.id === active)
+    if (!isActiveVisible && allVisibleTabs.length > 0) {
+      onChange(allVisibleTabs[0].id)
+    }
+  }, [loaded, visibleGroups, active, onChange])
+
+  const activeGroup = visibleGroups.find(g => g.tabs.some(t => t.id === active))
   const activeTab   = ENTRY_TABS.find(t => t.id === active)
 
   const handleGroupClick = (group: TabGroup) => {
@@ -132,7 +151,7 @@ export default function EntryTabBar({ active, onChange }: EntryTabBarProps) {
           className="md:hidden absolute left-0 right-0 top-full z-50 shadow-2xl rounded-b-lg overflow-hidden"
           style={{ background: '#0a1a3e', border: '1px solid rgba(255,255,255,0.08)', borderTop: 'none' }}
         >
-          {TAB_GROUPS.map((group, gi) => {
+          {visibleGroups.map((group, gi) => {
             const isGroupActive = group.tabs.some(t => t.id === active)
             const isExpanded    = expandedGroup === group.id || isGroupActive
 
@@ -190,7 +209,7 @@ export default function EntryTabBar({ active, onChange }: EntryTabBarProps) {
 
       {/* Row 1 — Primary module group tabs */}
       <div className="hidden md:flex items-end gap-0 px-3 pt-3 pb-0 border-b border-white/[0.08]">
-        {TAB_GROUPS.map(group => {
+        {visibleGroups.map(group => {
           const isActive = group.tabs.some(t => t.id === active)
           return (
             <button

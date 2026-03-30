@@ -16,8 +16,8 @@ interface RecordListProps {
   icon:           string
   iconBg:         string
   iconColor:      string
-  onEdit:         (id: string) => void
-  onDelete:       (id: string) => void
+  onEdit?:        (id: string) => void
+  onDelete?:      (id: string) => void
   filterConfig?:  FilterConfig[]
   itemsPerPage?:  number
   serverTotal?:   number
@@ -121,8 +121,8 @@ export default function RecordList({
               isEditing={rec.id === editingId}
               tag={getTag?.(rec)}
               onView={disableView ? undefined : () => setViewingRec(rec)}
-              onEdit={() => onEdit(rec.id)}
-              onDelete={() => onDelete(rec.id)}
+              onEdit={onEdit ? () => onEdit(rec.id) : undefined}
+              onDelete={onDelete ? () => onDelete(rec.id) : undefined}
             />
           ))}
 

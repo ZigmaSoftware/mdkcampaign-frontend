@@ -13,7 +13,7 @@ const initialMasterStore: MasterStore = {
     { key: 'Sivagiri',      meta: '89 Booths · 74,315 Voters'  },
     { key: 'Erode City',    meta: '73 Booths · 79,450 Voters'  },
   ]),
-  booth: seed('booth', []),
+  'booth-master': seed('booth-master', []),
   village: seed('village', []),
   scheme: seed('scheme', [
     { key: 'PM Awas Yojana',       meta: 'Housing · Central · BPL Families'     },
@@ -39,6 +39,10 @@ const initialMasterStore: MasterStore = {
   candidate: seed('candidate', []),
   party: seed('party', []),
   'task-category': seed('task-category', []),
+  'campaign-activity': seed('campaign-activity', []),
+  'volunteer-role': seed('volunteer-role', []),
+  'volunteer-type': seed('volunteer-type', []),
+  'panchayat':      seed('panchayat', []),
 }
 
 export function masterReducer(state: MasterStore, action: MasterAction): MasterStore {

@@ -10,6 +10,51 @@ export function exportRecordsToCsv(records: EntryRecord[], moduleName: string): 
   downloadCsv(csv, `BJP_${moduleName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`)
 }
 
+const VOTER_COLUMNS: { key: string; label: string }[] = [
+  { key: 'voter_id',         label: 'Voter ID' },
+  { key: 'name',             label: 'Voter Name' },
+  { key: 'father_name',      label: 'Father Name' },
+  { key: 'phone',            label: 'Phone No' },
+  { key: 'phone_2',          label: 'Alt Phone 1' },
+  { key: 'phone_3',          label: 'Alt Phone 2' },
+  { key: 'phone_4',          label: 'Alt Phone 3' },
+  { key: 'gender',           label: 'Gender' },
+  { key: 'age',              label: 'Age' },
+  { key: 'date_of_birth',    label: 'Date of Birth' },
+  { key: 'address',          label: 'Address' },
+  { key: 'pincode',          label: 'Pincode' },
+  { key: 'current_location', label: 'Current Location' },
+  { key: 'booth',            label: 'Booth' },
+  { key: 'village',          label: 'Village (Ward)' },
+  { key: 'panchayat',        label: 'Panchayat' },
+  { key: 'religion',         label: 'Religion' },
+  { key: 'caste',            label: 'Caste' },
+  { key: 'sub_caste',        label: 'Sub Caste' },
+  { key: 'education',        label: 'Education' },
+  { key: 'occupation',       label: 'Occupation' },
+  { key: 'sentiment',        label: 'Sentiment' },
+  { key: 'preferred_party',  label: 'Preferred Party' },
+  { key: 'scheme_name',      label: 'Scheme' },
+  { key: 'issue_name',       label: 'Issue' },
+  { key: 'notes',            label: 'Notes' },
+]
+
+export function exportVotersCsv(records: EntryRecord[], boothNumberMap?: Map<string, string>): void {
+  if (!records.length) return
+  const header = VOTER_COLUMNS.map(c => c.label)
+  const rows = records.map(r => {
+    const d = r.data
+    return VOTER_COLUMNS.map(c => {
+      if (c.key === 'booth' && boothNumberMap) return boothNumberMap.get(d.booth) ?? d.booth ?? ''
+      return d[c.key] ?? ''
+    })
+  })
+  const csv = [header, ...rows]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  downloadCsv(csv, `BJP_Voter_Details_${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
 export function exportReportCsv(): void {
   const rows = [
     ['Metric', 'Value'],
@@ -30,9 +75,15 @@ export function exportReportCsv(): void {
 }
 
 function downloadCsv(csv: string, filename: string): void {
+  // BOM makes Excel open UTF-8 CSV correctly
+  const bom = '\uFEFF'
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+  a.href = url
   a.download = filename
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(a.href)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

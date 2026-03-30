@@ -453,7 +453,6 @@ export default function VoterEntry() {
       ].filter(Boolean).join(' · '),
       sub: [
         booth ? `Booth ${booth.number}` : '',
-        booth?.ward_name         || '',
         booth?.constituency_name || '',
         v.address                || '',
         v.pincode                || '',
@@ -802,10 +801,7 @@ export default function VoterEntry() {
           <FormGroup label="Panchayat">
             <select ref={r.panchayat} className={selectCls}>
               <option value="">Select Panchayat</option>
-              {(villageFilter
-                ? panchayats.filter(p => String(p.ward) === villageFilter)
-                : panchayats
-              ).map(p => (
+              {panchayats.map(p => (
                 <option key={p.id} value={String(p.id)}>{p.name}</option>
               ))}
             </select>
@@ -816,7 +812,7 @@ export default function VoterEntry() {
                 {villageFilter ? 'Select Booth' : 'Select Village first'}
               </option>
               {(villageFilter
-                ? booths.filter(b => b.ward && String(b.ward) === villageFilter)
+                ? booths.filter(b => b.panchayat && String(b.panchayat) === villageFilter)
                 : booths
               ).map(b => (
                 <option key={b.id} value={String(b.id)}>{b.number} — {b.name}</option>

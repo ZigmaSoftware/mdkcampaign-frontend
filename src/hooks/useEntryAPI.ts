@@ -81,8 +81,7 @@ interface BoothRecord {
   id: number
   number: string
   name: string
-  ward: number
-  ward_name?: string
+  panchayat?: number | null
   constituency_name?: string
   total_voters: number
   status?: string
@@ -384,7 +383,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
       setError(null)
       try {
         const { data } = await apiClient.get<ApiResponse<BoothRecord>>('/masters/booths/', {
-          params: { limit: 1000, ...(constraintFilter ? { ward__constituency: constraintFilter } : {}) },
+          params: { limit: 1000 },
         })
         return data.results || []
       } catch (err) {

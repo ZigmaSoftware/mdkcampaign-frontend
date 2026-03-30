@@ -504,16 +504,16 @@ export default function ReportsPage() {
     !boothSearch.trim() ||
     (b.name || '').toLowerCase().includes(boothSearch.toLowerCase()) ||
     (b.number || '').toLowerCase().includes(boothSearch.toLowerCase()) ||
-    (b.ward_name || '').toLowerCase().includes(boothSearch.toLowerCase())
+    (b.constituency_name || '').toLowerCase().includes(boothSearch.toLowerCase())
   )
 
   /* ── CSV exports ─────────────────────────────────────────────────── */
   const exportBooths = () => {
     if (!boothData.length) return
     const rows = [
-      ['#', 'Booth No', 'Booth Name', 'Ward', 'Total Voters', 'Contacted', 'Coverage %'],
+      ['#', 'Booth No', 'Booth Name', 'Total Voters', 'Contacted', 'Coverage %'],
       ...boothData.map((b, i) => [
-        String(i + 1), b.number || '', b.name || '', b.ward_name || '',
+        String(i + 1), b.number || '', b.name || '',
         String(b.total_voters), String(b.voters_contacted), String(b.coverage_percentage),
       ]),
     ]

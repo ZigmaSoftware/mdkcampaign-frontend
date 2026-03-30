@@ -47,3 +47,4 @@ export type MasterModuleId =
   | 'volunteer-role'
   | 'volunteer-type'
   | 'panchayat'
+  | 'union'

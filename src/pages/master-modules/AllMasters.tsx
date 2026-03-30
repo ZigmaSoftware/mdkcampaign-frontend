@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory, CampaignActivityType, VolunteerRole, VolunteerType, Panchayat } from '../../hooks/useMasterAPI'
+import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory, CampaignActivityType, VolunteerRole, VolunteerType, Panchayat, Union } from '../../hooks/useMasterAPI'
 import type { MasterRecord } from '../../types/master.types'
 import MasterListCard from '../../components/masters/MasterListCard'
 import FormRow from '../../components/entry/FormRow'
@@ -529,35 +529,28 @@ export function BoothMaster() {
   const numRef       = useRef<HTMLInputElement>(null)
   const bnameRef     = useRef<HTMLInputElement>(null)
   const addrRef      = useRef<HTMLInputElement>(null)
-  const wardRef      = useRef<HTMLSelectElement>(null)
   const panchayatRef = useRef<HTMLSelectElement>(null)
   const agentRef     = useRef<HTMLSelectElement>(null)
   const [booths,     setBooths]     = useState<Booth[]>([])
-  const [wards,      setWards]      = useState<Ward[]>([])
   const [panchayats, setPanchayats] = useState<Panchayat[]>([])
-  const [wardFilter, setWardFilter] = useState('')
   const [editing,    setEditing]    = useState<Booth | null>(null)
   const [showImport, setShowImport] = useState(false)
 
   useEffect(() => {
     api.fetchBooths().then(d => d && setBooths(d))
-    api.fetchWards().then(d => d && setWards(d))
     api.fetchPanchayats().then(d => d && setPanchayats(d))
   }, [])
 
   const clearFields = () => {
     ;[numRef, bnameRef, addrRef].forEach(r => { if (r.current) r.current.value = '' })
-    if (wardRef.current)      wardRef.current.value      = ''
     if (panchayatRef.current) panchayatRef.current.value = ''
     if (agentRef.current)     agentRef.current.value     = ''
-    setWardFilter('')
   }
 
   const handleSave = async () => {
     const num        = numRef.current?.value.trim() ?? ''
     const bname      = bnameRef.current?.value.trim() ?? ''
     const addr       = addrRef.current?.value.trim() ?? ''
-    const wardId     = wardRef.current?.value      ? parseInt(wardRef.current.value)      : undefined
     const panchayatId = panchayatRef.current?.value ? parseInt(panchayatRef.current.value) : null
     const agentId    = agentRef.current?.value     ? parseInt(agentRef.current.value)     : null
     if (!num) return
@@ -565,7 +558,6 @@ export function BoothMaster() {
     if (editing) {
       const updated = await api.updateBooth(editing.id, {
         number: num, name: bname || `Booth ${num}`, address: addr || undefined,
-        ...(wardId ? { ward: wardId } : {}),
         panchayat: panchayatId,
         primary_volunteer: agentId,
       })
@@ -577,7 +569,6 @@ export function BoothMaster() {
     } else {
       const created = await api.createBooth({
         number: num, name: bname || `Booth ${num}`, code: `B${String(Date.now() % 10000).padStart(4, '0')}`,
-        ...(wardId ? { ward: wardId } : {}),
         panchayat: panchayatId,
         address: addr || `Booth ${num}`, total_voters: 0,
         ...(agentId ? { primary_volunteer: agentId } : {}),
@@ -597,10 +588,8 @@ export function BoothMaster() {
     if (numRef.current)       numRef.current.value       = booth.number
     if (bnameRef.current)     bnameRef.current.value     = booth.name
     if (addrRef.current)      addrRef.current.value      = booth.address || ''
-    if (wardRef.current)      wardRef.current.value      = String(booth.ward)
     if (panchayatRef.current) panchayatRef.current.value = booth.panchayat ? String(booth.panchayat) : ''
     if (agentRef.current)     agentRef.current.value     = booth.primary_volunteer ? String(booth.primary_volunteer) : ''
-    setWardFilter(String(booth.ward))
   }
 
   const handleDelete = async (id: string) => {
@@ -624,23 +613,11 @@ export function BoothMaster() {
             <input ref={bnameRef} className={inputCls} placeholder="School or landmark" />
           </FormGroup>
         </FormRow>
-        <FormRow cols={2}>
-          <FormGroup label="Ward">
-            <select ref={wardRef} className={selectCls} onChange={e => {
-              setWardFilter(e.target.value)
-              if (panchayatRef.current) panchayatRef.current.value = ''
-            }}>
-              <option value="">Select Ward</option>
-              {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </FormGroup>
+        <FormRow cols={1}>
           <FormGroup label="Panchayat">
             <select ref={panchayatRef} className={selectCls}>
               <option value="">Select Panchayat</option>
-              {(wardFilter
-                ? panchayats.filter(p => String(p.ward) === wardFilter)
-                : panchayats
-              ).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {panchayats.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </FormGroup>
         </FormRow>
@@ -659,10 +636,9 @@ export function BoothMaster() {
       <MasterListCard
         title="Booths"
         icon="ph ph-list"
-        records={toRecs(booths, b => `${b.ward_name || ''} · ${b.total_voters} voters · ${b.status || ''}`.replace(/^ · /, ''), b => ({
+        records={toRecs(booths, b => `${b.total_voters} voters · ${b.status || ''}`.replace(/^ · /, ''), b => ({
           'Booth Number':   b.number,
           'Booth Name':     b.name,
-          'Ward':           b.ward_name || '',
           'Constituency':   b.constituency_name || '',
           'Address':        b.address || '',
           'Total Voters':   String(b.total_voters),
@@ -682,9 +658,9 @@ export function BoothMaster() {
           config={{
             title: 'Import Booths',
             uploadEndpoint: '/masters/booths/bulk-upload/',
-            sampleColumns: ['code', 'number', 'name', 'ward_code', 'address', 'total_voters', 'male_voters', 'female_voters', 'status', 'sentiment', 'volunteer_name'],
-            sampleRow: { code: 'B001', number: '1', name: 'Panchayat School Booth', ward_code: 'W001', address: 'Main Road', total_voters: '500', male_voters: '250', female_voters: '250', status: 'pending', sentiment: 'neutral', volunteer_name: 'Rajesh Kumar' },
-            columnNotes: { code: 'Unique booth code (required)', number: 'Booth number', name: 'Booth name / location', ward_code: 'Ward code from master', address: 'Full address', total_voters: 'Total voters count', male_voters: 'Male voter count', female_voters: 'Female voter count', status: 'pending / assigned / working / completed / issue', sentiment: 'positive / neutral / negative', volunteer_name: 'Volunteer name to assign as booth agent' },
+            sampleColumns: ['code', 'number', 'name', 'address', 'total_voters', 'male_voters', 'female_voters', 'status', 'sentiment', 'volunteer_name'],
+            sampleRow: { code: 'B001', number: '1', name: 'Panchayat School Booth', address: 'Main Road', total_voters: '500', male_voters: '250', female_voters: '250', status: 'pending', sentiment: 'neutral', volunteer_name: 'Rajesh Kumar' },
+            columnNotes: { code: 'Unique booth code (required)', number: 'Booth number', name: 'Booth name / location', address: 'Full address', total_voters: 'Total voters count', male_voters: 'Male voter count', female_voters: 'Female voter count', status: 'pending / assigned / working / completed / issue', sentiment: 'positive / neutral / negative', volunteer_name: 'Volunteer name to assign as booth agent' },
             onSuccess: () => { api.fetchBooths().then(d => d && setBooths(d)) },
           }}
           onClose={() => setShowImport(false)}
@@ -1435,7 +1411,6 @@ export function CampaignActivityTypeMaster() {
   const api = useMasterAPI()
   const { showToast } = useToast()
   const nameRef      = useRef<HTMLInputElement>(null)
-  const eventTypeRef = useRef<HTMLSelectElement>(null)
   const descRef      = useRef<HTMLTextAreaElement>(null)
   const orderRef     = useRef<HTMLInputElement>(null)
   const [activityTypes, setActivityTypes] = useState<CampaignActivityType[]>([])
@@ -1447,7 +1422,6 @@ export function CampaignActivityTypeMaster() {
 
   const clearFields = () => {
     if (nameRef.current)      nameRef.current.value      = ''
-    if (eventTypeRef.current) eventTypeRef.current.value = ''
     if (descRef.current)      descRef.current.value      = ''
     if (orderRef.current)     orderRef.current.value     = '0'
     setEditing(null)
@@ -1458,7 +1432,6 @@ export function CampaignActivityTypeMaster() {
     if (!name) { showToast('<i class="ph ph-warning"></i> Activity name is required!', '#dc2626'); return }
     const payload: Partial<CampaignActivityType> = {
       name,
-      event_type:  eventTypeRef.current?.value || 'meeting',
       description: descRef.current?.value.trim() || undefined,
       order:       orderRef.current?.value ? parseInt(orderRef.current.value) : 0,
       is_active:   true,
@@ -1485,7 +1458,6 @@ export function CampaignActivityTypeMaster() {
     if (!a) return
     setEditing(a)
     if (nameRef.current)      nameRef.current.value      = a.name
-    if (eventTypeRef.current) eventTypeRef.current.value = a.event_type
     if (descRef.current)      descRef.current.value      = a.description || ''
     if (orderRef.current)     orderRef.current.value     = String(a.order)
   }
@@ -1504,7 +1476,7 @@ export function CampaignActivityTypeMaster() {
   const recs: MasterRecord[] = activityTypes.map(a => ({
     id:        String(a.id),
     key:       a.name,
-    meta:      a.event_type,
+    meta:      a.description || '',
     extra:     { description: a.description || '' },
     backendId: a.id,
   }))
@@ -1520,17 +1492,9 @@ export function CampaignActivityTypeMaster() {
           </button>
         ) : undefined}
       >
-        <FormRow cols={2}>
+        <FormRow cols={1}>
           <FormGroup label="Activity Name" required>
             <input ref={nameRef} className={inputCls} placeholder="e.g. Door-to-door Visit" />
-          </FormGroup>
-          <FormGroup label="Event Type" required>
-            <select ref={eventTypeRef} className={selectCls}>
-              <option value="meeting">Meeting</option>
-              <option value="rally">Rally</option>
-              <option value="door_door">Door-to-Door</option>
-              <option value="training">Training / Digital</option>
-            </select>
           </FormGroup>
         </FormRow>
         <FormRow cols={2}>
@@ -1811,51 +1775,50 @@ export function PanchayatMaster() {
   const nameRef     = useRef<HTMLInputElement>(null)
   const codeRef     = useRef<HTMLInputElement>(null)
   const categoryRef = useRef<HTMLSelectElement>(null)
+  const unionRef    = useRef<HTMLSelectElement>(null)
   const descRef     = useRef<HTMLTextAreaElement>(null)
-  const wardRef     = useRef<HTMLSelectElement>(null)
   const [panchayats, setPanchayats] = useState<Panchayat[]>([])
-  const [wards, setWards]           = useState<Ward[]>([])
+  const [unions,     setUnions]     = useState<Union[]>([])
   const [editing, setEditing]       = useState<Panchayat | null>(null)
 
   useEffect(() => {
     api.fetchPanchayats().then(d => d && setPanchayats(d))
-    api.fetchWards().then(d => d && setWards(d))
+    api.fetchUnions().then(d => d && setUnions(d))
   }, [])
 
   const clearFields = () => {
     if (nameRef.current)     nameRef.current.value     = ''
     if (codeRef.current)     codeRef.current.value     = ''
     if (categoryRef.current) categoryRef.current.value = ''
+    if (unionRef.current)    unionRef.current.value    = ''
     if (descRef.current)     descRef.current.value     = ''
-    if (wardRef.current)     wardRef.current.value     = ''
     setEditing(null)
   }
 
   const handleSave = async () => {
-    const name   = nameRef.current?.value.trim() ?? ''
-    const wardId = wardRef.current?.value ? Number(wardRef.current.value) : undefined
-    if (!name)   { showToast('<i class="ph ph-warning"></i> Name is required!', '#dc2626'); return }
-    if (!wardId) { showToast('<i class="ph ph-warning"></i> Select a ward!', '#dc2626'); return }
+    const name = nameRef.current?.value.trim() ?? ''
+    if (!name) { showToast('<i class="ph ph-warning"></i> Name is required!', '#dc2626'); return }
+    const unionId = unionRef.current?.value ? Number(unionRef.current.value) : null
     const payload: Partial<Panchayat> = {
       name,
-      code:        codeRef.current?.value.trim()     || undefined,
-      category:    categoryRef.current?.value         || undefined,
-      description: descRef.current?.value.trim()     || undefined,
-      ward:        wardId,
+      code:        codeRef.current?.value.trim()  || undefined,
+      category:    categoryRef.current?.value      || undefined,
+      union:       unionId,
+      description: descRef.current?.value.trim()  || undefined,
     }
     if (editing) {
       const updated = await api.updatePanchayat(editing.id, payload)
       if (updated) {
-        const ward = wards.find(w => w.id === wardId)
-        setPanchayats(prev => prev.map(p => p.id === editing.id ? { ...p, ...updated, ward_name: ward?.name } : p))
+        const u = unions.find(x => x.id === unionId)
+        setPanchayats(prev => prev.map(p => p.id === editing.id ? { ...p, ...updated, union_name: u?.name } : p))
         showToast('<i class="ph ph-check-circle"></i> Panchayat updated!', '#138808')
       }
       clearFields()
     } else {
       const created = await api.createPanchayat(payload)
       if (created) {
-        const ward = wards.find(w => w.id === wardId)
-        setPanchayats(prev => [...prev, { ...created, ward_name: ward?.name }])
+        const u = unions.find(x => x.id === unionId)
+        setPanchayats(prev => [...prev, { ...created, union_name: u?.name }])
         showToast('<i class="ph ph-check-circle"></i> Panchayat saved!', '#138808')
       }
       clearFields()
@@ -1869,8 +1832,8 @@ export function PanchayatMaster() {
     if (nameRef.current)     nameRef.current.value     = p.name
     if (codeRef.current)     codeRef.current.value     = p.code     || ''
     if (categoryRef.current) categoryRef.current.value = p.category || ''
+    if (unionRef.current)    unionRef.current.value    = p.union ? String(p.union) : ''
     if (descRef.current)     descRef.current.value     = p.description || ''
-    if (wardRef.current)     wardRef.current.value     = String(p.ward)
   }
 
   const handleDelete = (id: string) => {
@@ -1892,8 +1855,8 @@ export function PanchayatMaster() {
   const recs: MasterRecord[] = panchayats.map(p => ({
     id:        String(p.id),
     key:       p.name,
-    meta:      [p.ward_name, p.category ? CATEGORY_LABEL[p.category] : ''].filter(Boolean).join(' · '),
-    extra:     { Code: p.code || '', Category: p.category ? CATEGORY_LABEL[p.category] : '', Description: p.description || '' },
+    meta:      [p.union_name, p.category ? CATEGORY_LABEL[p.category] : ''].filter(Boolean).join(' · '),
+    extra:     { Code: p.code || '', Union: p.union_name || '', Category: p.category ? CATEGORY_LABEL[p.category] : '', Description: p.description || '' },
     backendId: p.id,
   }))
 
@@ -1917,11 +1880,11 @@ export function PanchayatMaster() {
           </FormGroup>
         </FormRow>
         <FormRow cols={2}>
-          <FormGroup label="Ward" required>
-            <select ref={wardRef} className={selectCls}>
-              <option value="">Select Ward</option>
-              {wards.map(w => (
-                <option key={w.id} value={w.id}>{w.name}</option>
+          <FormGroup label="Union">
+            <select ref={unionRef} className={selectCls}>
+              <option value="">Select Union</option>
+              {unions.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
               ))}
             </select>
           </FormGroup>
@@ -1952,6 +1915,161 @@ export function PanchayatMaster() {
         <MasterListCard
           title="Panchayats"
           icon="ph ph-tree-structure"
+          records={recs}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </FormSection>
+    </div>
+  )
+}
+
+/* ── UNION MASTER ───────────────────────────────────────────────── */
+export function UnionMaster() {
+  const api = useMasterAPI()
+  const { showToast } = useToast()
+  const nameRef  = useRef<HTMLInputElement>(null)
+  const codeRef  = useRef<HTMLInputElement>(null)
+  const blockRef = useRef<HTMLSelectElement>(null)
+  const descRef  = useRef<HTMLTextAreaElement>(null)
+  const [unions,   setUnions]   = useState<Union[]>([])
+  const [blocks,   setBlocks]   = useState<Area[]>([])
+  const [editing,  setEditing]  = useState<Union | null>(null)
+  const [blockFilter, setBlockFilter] = useState('')
+
+  useEffect(() => {
+    api.fetchUnions().then(d => d && setUnions(d))
+    api.fetchAreas().then(d => d && setBlocks(d))
+  }, [])
+
+  const clearFields = () => {
+    if (nameRef.current)  nameRef.current.value  = ''
+    if (codeRef.current)  codeRef.current.value  = ''
+    if (blockRef.current) blockRef.current.value = ''
+    if (descRef.current)  descRef.current.value  = ''
+    setBlockFilter('')
+    setEditing(null)
+  }
+
+  const handleSave = async () => {
+    const name = nameRef.current?.value.trim() ?? ''
+    if (!name) { showToast('<i class="ph ph-warning"></i> Name is required!', '#dc2626'); return }
+    const blockId = blockRef.current?.value ? Number(blockRef.current.value) : null
+    const payload: Partial<Union> = {
+      name,
+      code:        codeRef.current?.value.trim()  || undefined,
+      block:       blockId,
+      description: descRef.current?.value.trim()  || undefined,
+    }
+    if (editing) {
+      const updated = await api.updateUnion(editing.id, payload)
+      if (updated) {
+        const blk = blocks.find(b => b.id === blockId)
+        setUnions(prev => prev.map(u => u.id === editing.id ? { ...u, ...updated, block_name: blk?.name } : u))
+        showToast('<i class="ph ph-check-circle"></i> Union updated!', '#138808')
+      }
+      clearFields()
+    } else {
+      const created = await api.createUnion(payload)
+      if (created) {
+        const blk = blocks.find(b => b.id === blockId)
+        setUnions(prev => [...prev, { ...created, block_name: blk?.name }])
+        showToast('<i class="ph ph-check-circle"></i> Union saved!', '#138808')
+      }
+      clearFields()
+    }
+  }
+
+  const handleEdit = (id: string) => {
+    const u = unions.find(x => String(x.id) === id)
+    if (!u) return
+    setEditing(u)
+    if (nameRef.current)  nameRef.current.value  = u.name
+    if (codeRef.current)  codeRef.current.value  = u.code     || ''
+    if (blockRef.current) blockRef.current.value = u.block ? String(u.block) : ''
+    if (descRef.current)  descRef.current.value  = u.description || ''
+    setBlockFilter(u.block ? String(u.block) : '')
+  }
+
+  const handleDelete = (id: string) => {
+    const u = unions.find(x => String(x.id) === id)
+    if (!u || !window.confirm('Delete this union?')) return
+    api.deleteUnion(u.id).then(ok => {
+      if (ok) {
+        setUnions(prev => prev.filter(x => x.id !== u.id))
+        showToast('<i class="ph ph-trash"></i> Union deleted.', '#dc2626')
+      }
+    })
+  }
+
+  const filtered = blockFilter ? unions.filter(u => String(u.block) === blockFilter) : unions
+
+  const recs: MasterRecord[] = filtered.map(u => ({
+    id:        String(u.id),
+    key:       u.name,
+    meta:      u.block_name || '',
+    extra:     { Code: u.code || '', Block: u.block_name || '', Description: u.description || '' },
+    backendId: u.id,
+  }))
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 page-enter">
+      <FormSection
+        title={editing ? 'Edit Union' : 'Add Union'}
+        icon="ph ph-buildings"
+        badge={editing ? (
+          <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+            + New
+          </button>
+        ) : undefined}
+      >
+        <FormRow cols={2}>
+          <FormGroup label="Union Name" required>
+            <input ref={nameRef} className={inputCls} placeholder="e.g. Erode Union" />
+          </FormGroup>
+          <FormGroup label="Code">
+            <input ref={codeRef} className={inputCls} placeholder="e.g. U001" maxLength={20} />
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={2}>
+          <FormGroup label="Block">
+            <select ref={blockRef} className={selectCls}>
+              <option value="">Select Block</option>
+              {blocks.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </FormGroup>
+        </FormRow>
+        <FormRow cols={1}>
+          <FormGroup label="Description">
+            <textarea ref={descRef} className={textareaCls} placeholder="Optional description..." />
+          </FormGroup>
+        </FormRow>
+        <FormActions
+          onSave={handleSave}
+          onClear={clearFields}
+          saveLabel={editing ? 'Update Union' : 'Save Union'}
+          isEditing={!!editing}
+        />
+      </FormSection>
+
+      <FormSection title="Unions" icon="ph ph-list-bullets" badge={
+        <span className="text-[9px] font-bold text-white/70">{filtered.length} unions</span>
+      }>
+        <div className="px-4 pt-3">
+          <select
+            className={selectCls}
+            value={blockFilter}
+            onChange={e => setBlockFilter(e.target.value)}
+          >
+            <option value="">All Blocks</option>
+            {blocks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+        <MasterListCard
+          title="Unions"
+          icon="ph ph-buildings"
           records={recs}
           onEdit={handleEdit}
           onDelete={handleDelete}

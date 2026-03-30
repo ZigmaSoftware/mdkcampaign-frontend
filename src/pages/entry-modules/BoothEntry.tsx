@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Booth, Ward, Panchayat } from '../../hooks/useMasterAPI'
+import type { Booth, Panchayat } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
@@ -48,9 +48,7 @@ export default function BoothEntry() {
   const { showToast } = useToast()
 
   const [booths,     setBooths]     = useState<Booth[]>([])
-  const [wards,      setWards]      = useState<Ward[]>([])
   const [panchayats, setPanchayats] = useState<Panchayat[]>([])
-  const [wardFilter, setWardFilter] = useState('')
   const [volunteers, setVolunteers] = useState<VolunteerOption[]>([])
   const [editing, setEditing] = useState<Booth | null>(null)
   const [isFormOpen, setFormOpen] = useState(false)
@@ -66,7 +64,6 @@ export default function BoothEntry() {
 
   useEffect(() => {
     api.fetchBooths().then(d => d && setBooths(d))
-    api.fetchWards().then(d => d && setWards(d))
     api.fetchPanchayats().then(d => d && setPanchayats(d))
     api.fetchVolunteerNames().then(d => d && setVolunteers(d))
   }, [])
@@ -93,7 +90,6 @@ export default function BoothEntry() {
   const r = {
     num:       useRef<HTMLInputElement>(null),
     name:      useRef<HTMLInputElement>(null),
-    ward:      useRef<HTMLSelectElement>(null),
     panchayat: useRef<HTMLSelectElement>(null),
     address:   useRef<HTMLInputElement>(null),
     voters:    useRef<HTMLInputElement>(null),
@@ -108,10 +104,8 @@ export default function BoothEntry() {
   const fill = (booth: Booth) => {
     if (r.num.current)       r.num.current.value       = booth.number
     if (r.name.current)      r.name.current.value      = booth.name
-    if (r.ward.current)      r.ward.current.value      = String(booth.ward)
     if (r.panchayat.current) r.panchayat.current.value = booth.panchayat ? String(booth.panchayat) : ''
     if (r.address.current)   r.address.current.value   = booth.address || ''
-    setWardFilter(String(booth.ward))
     if (r.voters.current)    r.voters.current.value    = String(booth.total_voters || '')
     if (r.male.current)      r.male.current.value      = String(booth.male_voters || '')
     if (r.female.current)    r.female.current.value    = String(booth.female_voters || '')
@@ -125,7 +119,6 @@ export default function BoothEntry() {
     Object.values(r).forEach(ref => { if (ref.current) ref.current.value = '' })
     setSelectedAgentIds([])
     setAgentSearch('')
-    setWardFilter('')
   }
 
   const handleSave = async () => {
@@ -133,10 +126,7 @@ export default function BoothEntry() {
     const name = r.name.current?.value.trim() ?? ''
     if (!num) { showToast('<i class="ph ph-warning"></i> Booth number is required!', '#dc2626'); return }
 
-    const wardId      = r.ward.current?.value      ? parseInt(r.ward.current.value)      : undefined
     const panchayatId = r.panchayat.current?.value ? parseInt(r.panchayat.current.value) : null
-    // Derive village text from selected ward name (keeps booth.village in sync with booth.ward)
-    const selectedWard = wards.find(w => w.id === wardId)
     const payload: Partial<Booth> = {
       number: num,
       name: name || `Booth ${num}`,
@@ -144,7 +134,6 @@ export default function BoothEntry() {
       male_voters:  r.male.current?.value   ? parseInt(r.male.current.value)   : undefined,
       female_voters: r.female.current?.value ? parseInt(r.female.current.value) : undefined,
       address:   r.address.current?.value  || undefined,
-      village:   selectedWard?.name        || undefined,
       panchayat: panchayatId,
       notes:     r.notes.current?.value    || undefined,
       sentiment: SENTIMENT_MAP[r.sentiment.current?.value || ''] || undefined,
@@ -153,7 +142,7 @@ export default function BoothEntry() {
     }
 
     if (editing) {
-      const updated = await api.updateBooth(editing.id, { ...payload, ...(wardId ? { ward: wardId } : {}) })
+      const updated = await api.updateBooth(editing.id, { ...payload })
       if (updated) {
         setBooths(prev => prev.map(b => b.id === editing.id ? { ...b, ...updated } : b))
         showToast('<i class="ph ph-check-circle"></i> Booth updated!', '#138808')
@@ -165,7 +154,7 @@ export default function BoothEntry() {
       }
     } else {
       const created = await api.createBooth({
-        ...payload, ...(wardId ? { ward: wardId } : {}), code: `B${String(Date.now() % 10000).padStart(4, '0')}`,
+        ...payload, code: `B${String(Date.now() % 10000).padStart(4, '0')}`,
       })
       if (created) {
         setBooths(prev => [...prev, created])
@@ -199,11 +188,10 @@ export default function BoothEntry() {
   const mapBooth = (b: Booth): EntryRecord => ({
     id: String(b.id),
     keyField: `Booth ${b.number}${b.name !== `Booth ${b.number}` ? ' – ' + b.name : ''}`,
-    sub: `${b.ward_name || '—'} · ${b.total_voters} voters · ${b.sentiment || ''} · ${b.status || ''}`.replace(/ · $/, ''),
+    sub: `${b.total_voters} voters · ${b.sentiment || ''} · ${b.status || ''}`.replace(/^ · /, ''),
     data: {
       booth_number:   b.number,
       booth_name:     b.name,
-      ward:           b.ward_name           || '',
       constituency:   b.constituency_name   || '',
       address:        b.address             || '',
       total_voters:   String(b.total_voters || 0),
@@ -222,7 +210,7 @@ export default function BoothEntry() {
     .filter(b => {
       if (!search.trim()) return true
       const q = search.toLowerCase()
-      return b.number.toLowerCase().includes(q) || b.name.toLowerCase().includes(q) || (b.ward_name || '').toLowerCase().includes(q)
+      return b.number.toLowerCase().includes(q) || b.name.toLowerCase().includes(q)
     })
     .map<EntryRecord>(mapBooth)
 
@@ -244,10 +232,10 @@ export default function BoothEntry() {
             config={{
               title: 'Import Booths',
               uploadEndpoint: '/masters/booths/bulk-upload/',
-              sampleColumns: ['code', 'number', 'name', 'ward_code', 'address', 'village', 'total_voters', 'male_voters', 'female_voters', 'status', 'sentiment'],
+              sampleColumns: ['code', 'number', 'name', 'address', 'village', 'total_voters', 'male_voters', 'female_voters', 'status', 'sentiment'],
               sampleRow: {
                 code: 'B001', number: '1', name: 'Primary School Booth',
-                ward_code: 'W001', address: 'Main Road, Erode',
+                address: 'Main Road, Erode',
                 village: 'Erode Town', total_voters: '500',
                 male_voters: '250', female_voters: '250',
                 status: 'pending', sentiment: 'neutral',
@@ -256,7 +244,6 @@ export default function BoothEntry() {
                 code: 'Unique booth code (required)',
                 number: 'Booth number',
                 name: 'Booth name / location',
-                ward_code: 'Ward code from master',
                 address: 'Full address',
                 village: 'Village or locality name',
                 total_voters: 'Total registered voters',
@@ -288,7 +275,6 @@ export default function BoothEntry() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             filterConfig={[
-              { key: 'ward_name', label: 'Ward', options: [...new Set(booths.map(b => b.ward_name || '').filter(Boolean))].map(w => ({ value: w, label: w })) },
               { key: 'status',    label: 'Status', options: [
                 { value: 'assigned',  label: 'Assigned & Ready' },
                 { value: 'pending',   label: 'Pending' },
@@ -322,23 +308,11 @@ export default function BoothEntry() {
             <input ref={r.name} className={inputCls} placeholder="School name or landmark" />
           </FormGroup>
         </FormRow>
-        <FormRow cols={2}>
-          <FormGroup label="Ward" required>
-            <select ref={r.ward} className={selectCls} onChange={e => {
-              setWardFilter(e.target.value)
-              if (r.panchayat.current) r.panchayat.current.value = ''
-            }}>
-              <option value="">Select Ward</option>
-              {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </FormGroup>
+        <FormRow cols={1}>
           <FormGroup label="Panchayat">
             <select ref={r.panchayat} className={selectCls}>
               <option value="">Select Panchayat</option>
-              {(wardFilter
-                ? panchayats.filter(p => String(p.ward) === wardFilter)
-                : panchayats
-              ).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {panchayats.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </FormGroup>
         </FormRow>

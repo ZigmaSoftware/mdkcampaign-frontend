@@ -35,7 +35,6 @@ interface BoothStat {
   id: number
   name: string
   number: string
-  ward_name: string | null
   constituency_name: string | null
   total_voters: number
   voters_contacted: number

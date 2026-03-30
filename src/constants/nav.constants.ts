@@ -47,4 +47,5 @@ export const MASTER_TABS: { id: MasterModuleId; label: string; icon: string }[] 
   { id: 'volunteer-role',    label: 'Vol. Roles',        icon: 'ph ph-identification-badge' },
   { id: 'volunteer-type',    label: 'Vol. Types',        icon: 'ph ph-tag'                  },
   { id: 'panchayat',         label: 'Panchayat',         icon: 'ph ph-tree-structure'        },
+  { id: 'union',             label: 'Union',             icon: 'ph ph-buildings'             },
 ]

@@ -131,10 +131,9 @@ export function CampaignEntry() {
 
     // Also persist to backend so dashboard "Upcoming Events" can display it
     const constituencyId = constituencies[0]?.id
-    const eventType = activityTypes.find(a => a.name === d.type)?.event_type ?? 'meeting'
     await entryApi.createCampaignEvent({
       title:              d.type,
-      event_type:         eventType,
+      event_type:         'meeting',
       scheduled_date:     d.date || new Date().toISOString().slice(0, 10),
       scheduled_time:     d.time || undefined,
       location,

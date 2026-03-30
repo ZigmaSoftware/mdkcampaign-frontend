@@ -43,6 +43,7 @@ const initialMasterStore: MasterStore = {
   'volunteer-role': seed('volunteer-role', []),
   'volunteer-type': seed('volunteer-type', []),
   'panchayat':      seed('panchayat', []),
+  'union':          seed('union', []),
 }
 
 export function masterReducer(state: MasterStore, action: MasterAction): MasterStore {

@@ -20,6 +20,7 @@ import {
   VolunteerRoleMaster,
   VolunteerTypeMaster,
   PanchayatMaster,
+  UnionMaster,
 } from './master-modules/AllMasters'
 
 interface MastersConfigPageProps {
@@ -57,6 +58,7 @@ export default function MastersConfigPage({ activeTab, onTabChange }: MastersCon
       case 'volunteer-role':    return <VolunteerRoleMaster />
       case 'volunteer-type':    return <VolunteerTypeMaster />
       case 'panchayat':         return <PanchayatMaster />
+      case 'union':             return <UnionMaster />
       default:                  return visibleTabs[0] ? renderFirst(visibleTabs[0].id) : null
     }
   }
@@ -77,6 +79,7 @@ export default function MastersConfigPage({ activeTab, onTabChange }: MastersCon
       case 'volunteer-role':    return <VolunteerRoleMaster />
       case 'volunteer-type':    return <VolunteerTypeMaster />
       case 'panchayat':         return <PanchayatMaster />
+      case 'union':             return <UnionMaster />
       default:                  return <DistrictMaster />
     }
   }

@@ -345,10 +345,20 @@ export default function VolunteerEntry() {
       : v.booth ? [`Booth ${booths.find(b => b.id === v.booth)?.number ?? v.booth}`] : []
     return {
       id: String(v.id),
-      keyField: name,
+      keyField: [
+        v.voter_id                    || '',
+        name,
+        v.age != null ? `Age:${v.age}` : '',
+        v.phone  ? `Ph:${v.phone}`   : '',
+        v.phone2 ? `Alt:${v.phone2}` : '',
+      ].filter(Boolean).join(' · '),
       sub: [
-        boothLabels.length ? boothLabels.join(', ') : null,
-        wardInfo  ? wardInfo.name : null,
+        boothLabels.length ? boothLabels.join(', ') : '',
+        v.panchayat_name || '',
+        v.union_name     || '',
+        v.block          || '',
+        v.role           ? `Role: ${v.role}`                 : '',
+        v.volunteer_type ? `Designation: ${v.volunteer_type}` : '',
         STATUS_REVERSE[v.status || ''] || v.status || 'Active',
       ].filter(Boolean).join(' · '),
       data: {
@@ -357,6 +367,8 @@ export default function VolunteerEntry() {
         phone:          v.phone          || '',
         phone_2:        v.phone2         || '',
         block:          v.block          || '',
+        panchayat_name: v.panchayat_name || '',
+        union_name:     v.union_name     || '',
         booth:          boothLabels.join(', '),
         ward:           wardInfo  ? wardInfo.name : '',
         age:            v.age     != null ? String(v.age) : '',
@@ -377,7 +389,22 @@ export default function VolunteerEntry() {
   const filtered = volunteers
     .filter(v => {
       if (!search.trim()) return true
-      return getVolName(v).toLowerCase().includes(search.toLowerCase())
+      const q = search.toLowerCase()
+      return [
+        v.voter_id,
+        getVolName(v),
+        v.phone,
+        v.phone2,
+        v.role,
+        v.volunteer_type,
+        v.status,
+        v.block,
+        v.panchayat_name,
+        v.union_name,
+        v.skills,
+        v.source,
+        ...(v.booth_names ?? []),
+      ].some(field => field?.toLowerCase().includes(q))
     })
     .map<EntryRecord>(mapVolunteer)
 
@@ -423,7 +450,7 @@ export default function VolunteerEntry() {
         )}
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar
-            placeholder="Search volunteers..."
+            placeholder="Search by name, voter ID, phone, role, panchayat, union, block…"
             value={search}
             onChange={setSearch}
             onExport={() => exportRecordsToCsv(allVolunteerRecords, 'Volunteers')}
@@ -481,6 +508,16 @@ export default function VolunteerEntry() {
               },
               { key: 'block', label: 'Block', options:
                 blocks.map(b => ({ value: b.name, label: b.name }))
+              },
+              { key: 'union_name', label: 'Union', options:
+                [...new Set(volunteers.map(v => v.union_name).filter(Boolean))]
+                  .sort()
+                  .map(n => ({ value: n!, label: n! }))
+              },
+              { key: 'panchayat_name', label: 'Panchayat', options:
+                [...new Set(volunteers.map(v => v.panchayat_name).filter(Boolean))]
+                  .sort()
+                  .map(n => ({ value: n!, label: n! }))
               },
               { key: 'source', label: 'Source', options: [
                 { value: 'WhatsApp Drive',       label: 'WhatsApp Drive' },

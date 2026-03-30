@@ -16,14 +16,16 @@ interface RecordListProps {
   icon:           string
   iconBg:         string
   iconColor:      string
-  onEdit?:        (id: string) => void
-  onDelete?:      (id: string) => void
-  filterConfig?:  FilterConfig[]
+  onEdit?:              (id: string) => void
+  onDelete?:            (id: string) => void
+  onViewVolunteers?:    (id: string) => void
+  filterConfig?:        FilterConfig[]
   itemsPerPage?:  number
   serverTotal?:   number
   startIndex?:    number
   disableView?:   boolean
   getTag?:        (rec: EntryRecord) => RecordTag | undefined
+  onTagClick?:    (id: string) => void
 }
 
 export default function RecordList({
@@ -35,12 +37,14 @@ export default function RecordList({
   iconColor,
   onEdit,
   onDelete,
+  onViewVolunteers,
   filterConfig,
   itemsPerPage = DEFAULT_PAGE_SIZE,
   serverTotal,
   startIndex = 0,
   disableView = false,
   getTag,
+  onTagClick,
 }: RecordListProps) {
   const [page,       setPage]       = useState(1)
   const [filters,    setFilters]    = useState<Record<string, string>>({})
@@ -120,7 +124,9 @@ export default function RecordList({
               sub={rec.sub}
               isEditing={rec.id === editingId}
               tag={getTag?.(rec)}
+              onTagClick={onTagClick ? () => onTagClick(rec.id) : undefined}
               onView={disableView ? undefined : () => setViewingRec(rec)}
+              onViewVolunteers={onViewVolunteers ? () => onViewVolunteers(rec.id) : undefined}
               onEdit={onEdit ? () => onEdit(rec.id) : undefined}
               onDelete={onDelete ? () => onDelete(rec.id) : undefined}
             />

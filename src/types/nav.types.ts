@@ -29,6 +29,7 @@ export type EntryModuleId =
   | 'assign-telecalling'
   | 'telecalling-assigned'
   | 'feedback-review'
+  | 'global-search'
 
 export type MasterModuleId =
   | 'district'

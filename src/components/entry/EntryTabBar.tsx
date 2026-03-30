@@ -12,6 +12,14 @@ interface TabGroup {
 
 const TAB_GROUPS: TabGroup[] = [
   {
+    id:    'search',
+    label: 'Search',
+    icon:  'ph ph-magnifying-glass',
+    tabs: [
+      { id: 'global-search', label: 'Global Search', icon: 'ph ph-magnifying-glass' },
+    ],
+  },
+  {
     id:    'field-data',
     label: 'Field Data',
     icon:  'ph ph-database',

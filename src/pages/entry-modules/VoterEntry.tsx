@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
-import type { VoterRecord, BoothRecord, FieldSurveyRecord } from '../../hooks/useEntryAPI'
+import type { VoterRecord, VolunteerRecord, BoothRecord, FieldSurveyRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Village, Party, Scheme, Ward, Panchayat } from '../../hooks/useMasterAPI'
+import type { Village, Party, Scheme, Ward } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
@@ -96,6 +96,7 @@ const EDU_CHOICES = [
 const isValidPhone = (v: string) => v === '' || /^[6-9]\d{9}$/.test(v)
 const isValidAadhaar = (v: string) => v === '' || /^\d{12}$/.test(v)
 
+
 export default function VoterEntry() {
   const api       = useEntryAPI()
   const masterApi = useMasterAPI()
@@ -105,7 +106,6 @@ export default function VoterEntry() {
   const [voters,   setVoters]   = useState<VoterRecord[]>([])
   const [booths,   setBooths]   = useState<BoothRecord[]>([])
   const [villages,   setVillages]   = useState<Village[]>([])
-  const [panchayats, setPanchayats] = useState<Panchayat[]>([])
   const [parties,    setParties]    = useState<Party[]>([])
   const [schemes,    setSchemes]    = useState<Scheme[]>([])
   const [surveys,    setSurveys]    = useState<FieldSurveyRecord[]>([])
@@ -125,6 +125,10 @@ export default function VoterEntry() {
   const [totalCount,   setTotalCount]   = useState(0)
   const [exporting,    setExporting]    = useState(false)
   const PAGE_SIZE = 10
+
+  const [volunteers,      setVolunteers]      = useState<VolunteerRecord[]>([])
+  const [boothVolModal,   setBoothVolModal]   = useState<number | null>(null)       // boothId being viewed
+  const [volDetailModal,  setVolDetailModal]  = useState<VolunteerRecord | null>(null) // volunteer badge click
 
   // Boolean flag state (can't use value refs for checkboxes)
   const [isContacted,      setIsContacted]      = useState(false)
@@ -147,15 +151,16 @@ export default function VoterEntry() {
     })
   }, [PAGE_SIZE])
 
+
   useEffect(() => {
     loadVoters(1, '')
     apiRef.current.fetchBooths().then(d => d && setBooths(d))
     masterApiRef.current.fetchWards().then(d => d && setWards(d))
     masterApiRef.current.fetchVillages().then(d => d && setVillages(d))
-    masterApiRef.current.fetchPanchayats().then(d => d && setPanchayats(d))
     masterApiRef.current.fetchParties().then(d => d && setParties(d))
     masterApiRef.current.fetchSchemes().then(d => d && setSchemes(d))
     apiRef.current.fetchFieldSurveys().then(d => d && setSurveys(d))
+    apiRef.current.fetchVolunteers().then(d => d && setVolunteers(d))
   }, [loadVoters])
 
   // Debounced server-side search — skip the initial mount run (handled above)
@@ -197,7 +202,6 @@ export default function VoterEntry() {
     vid:         useRef<HTMLInputElement>(null),
     aadhaar:     useRef<HTMLInputElement>(null),
     village:     useRef<HTMLSelectElement>(null),
-    panchayat:   useRef<HTMLSelectElement>(null),
     booth:       useRef<HTMLSelectElement>(null),
     address:     useRef<HTMLTextAreaElement>(null),
     pincode:     useRef<HTMLInputElement>(null),
@@ -242,7 +246,6 @@ export default function VoterEntry() {
       aadhaar:     v.aadhaar || '',
       booth:       String(v.booth     || ''),
       village:     String(v.village   || ''),
-      panchayat:   String(v.panchayat || ''),
       address:     v.address || '',
       pincode:     v.pincode || '',
       sentiment:   SENTIMENT_REVERSE[v.sentiment || ''] || '',
@@ -328,7 +331,6 @@ export default function VoterEntry() {
       email:           d.email        || undefined,
       booth:           boothId,
       village:         villageId,
-      panchayat:       d.panchayat ? Number(d.panchayat) : undefined,
       address:         [d.address, selectedVillage?.name || ''].filter(Boolean).join(', ') || '-',
       sentiment:       SENTIMENT_MAP[d.sentiment] || undefined,
       gender:          GENDER_MAP[d.gender]       || undefined,
@@ -430,13 +432,16 @@ export default function VoterEntry() {
   const boothMap     = useMemo(() => new Map(booths.map(b     => [b.id, b])),     [booths])
   const partyMap     = useMemo(() => new Map(parties.map(p    => [p.id, p])),    [parties])
   const villageMap   = useMemo(() => new Map(villages.map(v   => [v.id, v])),   [villages])
-  const panchayatMap = useMemo(() => new Map(panchayats.map(p => [p.id, p])), [panchayats])
+  const volunteerByVoterId = useMemo(
+    () => new Map(volunteers.filter(v => v.voter_id).map(v => [v.voter_id!, v])),
+    [volunteers]
+  )
 
   const mapVoter = useMemo(() => (v: VoterRecord): EntryRecord => {
     const booth     = boothMap.get(v.booth)
     const party     = v.preferred_party ? partyMap.get(v.preferred_party)   : undefined
     const village   = v.village         ? villageMap.get(v.village)          : undefined
-    const panchayat = v.panchayat       ? panchayatMap.get(v.panchayat)      : undefined
+    const matchedVol = v.voter_id ? volunteerByVoterId.get(v.voter_id) : undefined
     const phones = [
       v.phone        ? `Aadhar:${v.phone}`        : '',
       v.phone2       ? `AC-100:${v.phone2}`        : '',
@@ -456,6 +461,8 @@ export default function VoterEntry() {
         booth?.constituency_name || '',
         v.address                || '',
         v.pincode                || '',
+        matchedVol?.role           ? `Role: ${matchedVol.role}`           : '',
+        matchedVol?.volunteer_type ? `Designation: ${matchedVol.volunteer_type}` : '',
       ].filter(Boolean).join(' · '),
       data: {
         name:              v.name               || '',
@@ -482,7 +489,6 @@ export default function VoterEntry() {
         preferred_party:   party ? (party.abbreviation || party.name) : '',
         booth:             v.booth ? String(v.booth) : '',
         village:           village   ? village.name   : '',
-        panchayat:         panchayat ? panchayat.name : '',
         scheme_name:       v.scheme_name         || '',
         issue_name:        v.issue_name          || '',
         feedback_score:    v.feedback_score     != null ? String(v.feedback_score) : '',
@@ -490,11 +496,14 @@ export default function VoterEntry() {
         is_contacted:      v.is_contacted        ? 'Yes' : '',
         has_attended_event: v.has_attended_event ? 'Yes' : '',
         is_volunteer:      v.is_volunteer        ? 'Yes' : '',
+        volunteer_match:       matchedVol              ? 'yes' : '',
+        volunteer_role:        matchedVol?.role         || '',
+        volunteer_designation: matchedVol?.volunteer_type || '',
       },
       createdAt: v.created_at || '',
       backendId: v.id,
     }
-  }, [boothMap, partyMap, villageMap, panchayatMap])
+  }, [boothMap, partyMap, villageMap, volunteerByVoterId])
 
   const allVoterRecords = useMemo(() => (voters ?? []).map(mapVoter), [voters, mapVoter])
 
@@ -571,11 +580,11 @@ export default function VoterEntry() {
             config={{
               title: 'Import Voters',
               uploadEndpoint: '/voters/voters/bulk-upload/',
-              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'date_of_birth', 'gender', 'phone', 'alt_phone', 'alt_phoneno2', 'alt_phoneno3', 'booth_code', 'ward_code', 'panchayat_code', 'caste', 'sentiment', 'religion', 'address'],
+              sampleColumns: ['voter_id', 'name', 'father_name', 'age', 'date_of_birth', 'gender', 'phone', 'alt_phone', 'alt_phoneno2', 'alt_phoneno3', 'booth_code', 'ward_code', 'caste', 'sentiment', 'religion', 'address'],
               sampleRow: {
                 voter_id: 'VTR001', name: 'Rajesh Kumar', father_name: 'Suresh Kumar',
                 age: '42', date_of_birth: '1982-06-15', gender: 'm', phone: '9876543210', alt_phone: '9123456780', alt_phoneno2: '9988776655', alt_phoneno3: '9876500001',
-                booth_code: 'B001', ward_code: 'W001', panchayat_code: 'P001', caste: 'BC', sentiment: 'positive',
+                booth_code: 'B001', ward_code: 'W001', caste: 'BC', sentiment: 'positive',
                 religion: 'Hindu', address: '12 Main Street, Erode',
               },
               columnNotes: {
@@ -591,26 +600,26 @@ export default function VoterEntry() {
                 alt_phoneno3: 'Third alternate mobile number',
                 booth_code: 'Booth code from master',
                 ward_code: 'Ward code from master',
-                panchayat_code: 'Panchayat code from master',
                 caste: 'e.g. BC, MBC, SC, OC',
                 sentiment: 'positive / neutral / negative',
                 religion: 'Hindu / Muslim / Christian / Other',
                 address: 'Full address',
               },
-              onSuccess: () => { setPage(1); loadVoters(1, search) },
+              onSuccess: () => { setPage(1); loadVoters(1, search, boothFilter, wardFilter, pincodeFilter) },
             }}
             onClose={() => setShowImport(false)}
           />
         )}
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar
-            placeholder="Search voters..."
+            placeholder="Search by name, voter ID, phone, Aadhaar, father name, address…"
             value={search}
             onChange={setSearch}
             onExport={handleExportCsv}
             exportLoading={exporting}
             onPrint={() => printModule(allVoterRecords, 'Voter Details')}
           />
+
           {/* Server-side filters: Booth · Ward · Pincode */}
           <div className="flex items-center gap-2 mb-2 mt-1 flex-wrap">
             <i className="ph ph-map-pin text-saffron text-[13px]" />
@@ -684,6 +693,26 @@ export default function VoterEntry() {
             iconColor="#e07010"
             onEdit={canEdit('voter') ? handleEdit : undefined}
             onDelete={canDelete('voter') ? handleDelete : undefined}
+            getTag={rec => {
+              if (rec.data.volunteer_match !== 'yes') return undefined
+              const parts = [
+                rec.data.volunteer_role,
+                rec.data.volunteer_designation,
+              ].filter(Boolean)
+              const label = parts.length ? `Volunteer · ${parts.join(' · ')}` : 'Volunteer'
+              return { label, bg: '#dcfce7', color: '#166534' }
+            }}
+            onTagClick={id => {
+              const voter = voters.find(v => String(v.id) === id)
+              if (voter?.voter_id) {
+                const vol = volunteerByVoterId.get(voter.voter_id)
+                if (vol) setVolDetailModal(vol)
+              }
+            }}
+            onViewVolunteers={id => {
+              const voter = voters.find(v => String(v.id) === id)
+              if (voter?.booth) setBoothVolModal(voter.booth)
+            }}
             filterConfig={voterFilterConfig}
             itemsPerPage={PAGE_SIZE}
             serverTotal={totalCount}
@@ -710,6 +739,154 @@ export default function VoterEntry() {
               </div>
             </div>
           )}
+
+          {/* ── Volunteer detail modal (badge click) ──────────────── */}
+          {volDetailModal && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: 'rgba(0,0,0,0.45)' }}
+              onClick={() => setVolDetailModal(null)}
+            >
+              <div
+                className="bg-surface rounded-card shadow-card w-full max-w-sm overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="bg-[#166534] text-white px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <i className="ph ph-identification-badge text-[16px]" />
+                    <div>
+                      <div className="text-[12px] font-bold leading-tight">
+                        {volDetailModal.name || volDetailModal.user_name || `Volunteer #${volDetailModal.id}`}
+                      </div>
+                      <div className="text-[9.5px] text-white/60 mt-[1px]">Volunteer Profile</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setVolDetailModal(null)}
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all"
+                  >
+                    <i className="ph ph-x text-[14px]" />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="px-5 py-4 space-y-3">
+                  {[
+                    { label: 'Voter ID',     value: volDetailModal.voter_id    || '—' },
+                    { label: 'Phone',        value: volDetailModal.phone        || '—' },
+                    { label: 'Role',         value: volDetailModal.role         || '—' },
+                    { label: 'Designation',  value: volDetailModal.volunteer_type || '—' },
+                    { label: 'Status',       value: volDetailModal.status       || '—' },
+                    { label: 'Joined Date',  value: volDetailModal.joined_date  || '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-start gap-3">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.6px] text-muted w-[90px] flex-shrink-0 pt-[1px]">
+                        {label}
+                      </span>
+                      <span className="text-[12px] font-semibold text-body">{value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Footer */}
+                <div className="border-t border-border px-5 py-3 flex justify-end">
+                  <button
+                    onClick={() => setVolDetailModal(null)}
+                    className="px-4 py-[6px] rounded-md bg-[#166534] text-white text-[11px] font-bold hover:opacity-80 transition-all"
+                  >Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Booth volunteers modal ─────────────────────────────── */}
+          {boothVolModal != null && (() => {
+            const booth = booths.find(b => b.id === boothVolModal)
+            const vols  = volunteers.filter(v =>
+              v.booth === boothVolModal || v.booths?.includes(boothVolModal)
+            )
+            const STATUS_COLOR: Record<string, string> = {
+              active:   'bg-green-100 text-green-700',
+              inactive: 'bg-gray-100 text-gray-500',
+              on_leave: 'bg-yellow-100 text-yellow-700',
+            }
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style={{ background: 'rgba(0,0,0,0.45)' }}
+                onClick={() => setBoothVolModal(null)}
+              >
+                <div
+                  className="bg-surface rounded-card shadow-card w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="bg-navy text-white px-5 py-3 flex items-center justify-between flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <i className="ph ph-users text-saffron text-[14px]" />
+                      <div>
+                        <div className="text-[12px] font-bold leading-tight">
+                          Volunteers — Booth {booth?.number}
+                        </div>
+                        <div className="text-[9.5px] text-white/60 mt-[1px]">{booth?.name}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setBoothVolModal(null)}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all text-[14px]"
+                    >
+                      <i className="ph ph-x" />
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div className="overflow-y-auto flex-1">
+                    {vols.length === 0 ? (
+                      <p className="text-muted text-[11px] text-center py-8 italic">
+                        No volunteers assigned to this booth.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {vols.map(v => {
+                          const displayName = v.name || v.user_name || v.username || `Volunteer #${v.id}`
+                          const statusCls   = STATUS_COLOR[v.status ?? ''] ?? 'bg-gray-100 text-gray-500'
+                          return (
+                            <div key={v.id} className="flex items-center gap-3 px-5 py-3">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                                style={{ background: '#e8f0fe' }}>
+                                <i className="ph ph-user text-[14px]" style={{ color: '#1a56db' }} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] font-semibold text-body">{displayName}</p>
+                                <p className="text-[10px] text-muted truncate">
+                                  {[v.phone, v.role, v.volunteer_type].filter(Boolean).join(' · ')}
+                                </p>
+                              </div>
+                              {v.status && (
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded capitalize flex-shrink-0 ${statusCls}`}>
+                                  {v.status.replace('_', ' ')}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="border-t border-border px-5 py-3 flex items-center justify-between flex-shrink-0">
+                    <span className="text-[10px] text-muted">{vols.length} volunteer{vols.length !== 1 ? 's' : ''}</span>
+                    <button
+                      onClick={() => setBoothVolModal(null)}
+                      className="px-4 py-[6px] rounded-md bg-navy text-white text-[11px] font-bold hover:bg-navy/80 transition-all"
+                    >Close</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </div>
 
@@ -791,19 +968,10 @@ export default function VoterEntry() {
               onChange={e => {
                 setVillageFilter(e.target.value)
                 if (r.booth.current) r.booth.current.value = ''
-                if (r.panchayat.current) r.panchayat.current.value = ''
               }}
             >
               <option value="">Select Village</option>
               {villages.map(w => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
-            </select>
-          </FormGroup>
-          <FormGroup label="Panchayat">
-            <select ref={r.panchayat} className={selectCls}>
-              <option value="">Select Panchayat</option>
-              {panchayats.map(p => (
-                <option key={p.id} value={String(p.id)}>{p.name}</option>
-              ))}
             </select>
           </FormGroup>
           <FormGroup label="Booth" required>
@@ -811,10 +979,7 @@ export default function VoterEntry() {
               <option value="">
                 {villageFilter ? 'Select Booth' : 'Select Village first'}
               </option>
-              {(villageFilter
-                ? booths.filter(b => b.panchayat && String(b.panchayat) === villageFilter)
-                : booths
-              ).map(b => (
+              {booths.map(b => (
                 <option key={b.id} value={String(b.id)}>{b.number} — {b.name}</option>
               ))}
             </select>

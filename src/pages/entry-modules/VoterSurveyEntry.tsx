@@ -142,6 +142,7 @@ export default function VoterSurveyEntry() {
 
   const pendingFill       = useRef<FieldSurveyRecord | null>(null)
   const selectedVoterRef  = useRef<FlatVoter | null>(null)
+  const currentVoterIdRef = useRef<number | null>(null)   // voter FK for the active form session
   const [fillKey, setFillKey] = useState(0)   // increment to re-trigger form fill
 
   const r = {
@@ -176,6 +177,7 @@ export default function VoterSurveyEntry() {
     if (!isFormOpen) return
     if (pendingFill.current) {
       const d = pendingFill.current
+      currentVoterIdRef.current = d.voter ?? null
       if (r.surveyDate.current)     r.surveyDate.current.value     = d.survey_date      ?? todayISO()
       if (r.booth.current)          r.booth.current.value          = d.booth_no          ?? ''
       if (r.telecaller.current)     r.telecaller.current.value     = d.surveyed_by       ?? ''
@@ -194,6 +196,7 @@ export default function VoterSurveyEntry() {
       pendingFill.current = null
     } else if (selectedVoterRef.current) {
       const v = selectedVoterRef.current
+      currentVoterIdRef.current = v.voter ?? null
       if (r.surveyDate.current)     r.surveyDate.current.value = v.assigned_date || todayISO()
       if (r.booth.current)          r.booth.current.value      = v.booth_name
       if (r.telecaller.current)     r.telecaller.current.value = v.telecaller_name
@@ -233,6 +236,7 @@ export default function VoterSurveyEntry() {
        backend never receives empty-string values it may reject.           */
     const str = (v?: string) => v?.trim() || undefined
     return {
+      ...(currentVoterIdRef.current != null ? { voter: currentVoterIdRef.current } : {}),
       survey_date:        r.surveyDate.current?.value?.trim() || todayISO(),
       voter_name:         r.voterName.current?.value?.trim()  || '',
       age:                r.age.current?.value ? Number(r.age.current.value) : undefined,
@@ -251,7 +255,7 @@ export default function VoterSurveyEntry() {
     }
   }
 
-  const closeForm = () => { setFormOpen(false); setEditingId(null); clear() }
+  const closeForm = () => { setFormOpen(false); setEditingId(null); currentVoterIdRef.current = null; clear() }
 
   const handleSave = async () => {
     const d = collect()

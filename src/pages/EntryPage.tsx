@@ -3,6 +3,7 @@ import SectionHeader from '../components/ui/SectionHeader'
 import EntryTabBar from '../components/entry/EntryTabBar'
 import type { EntryModuleId } from '../types/nav.types'
 
+import GlobalSearch from './entry-modules/GlobalSearch'
 import VoterEntry from './entry-modules/VoterEntry'
 import BoothEntry from './entry-modules/BoothEntry'
 import VolunteerEntry from './entry-modules/VolunteerEntry'
@@ -34,6 +35,7 @@ interface EntryPageProps {
 export default function EntryPage({ activeTab, onTabChange }: EntryPageProps) {
   const renderModule = () => {
     switch (activeTab) {
+      case 'global-search': return <GlobalSearch />
       case 'voter':      return <VoterEntry />
       case 'booth':      return <BoothEntry />
       case 'volunteer':  return <VolunteerEntry />

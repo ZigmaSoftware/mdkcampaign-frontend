@@ -463,6 +463,10 @@ export default function ReportsPage() {
   const [boothLoading, setBoothLoad] = useState(true)
   const [fixing,      setFixing]     = useState(false)
 
+  const [panchayatFilter, setPanchayatFilter] = useState('')
+  const [unionFilter,     setUnionFilter]     = useState('')
+  const [blockFilter,     setBlockFilter]     = useState('')
+
   const reload = () => {
     setLoad(true)
     setBoothLoad(true)
@@ -500,20 +504,44 @@ export default function ReportsPage() {
     (w.constituency_name || '').toLowerCase().includes(search.toLowerCase())
   )
 
-  const filteredBooths = boothData.filter(b =>
-    !boothSearch.trim() ||
-    (b.name || '').toLowerCase().includes(boothSearch.toLowerCase()) ||
-    (b.number || '').toLowerCase().includes(boothSearch.toLowerCase()) ||
-    (b.constituency_name || '').toLowerCase().includes(boothSearch.toLowerCase())
+  const filteredBooths = boothData.filter(b => {
+    if (panchayatFilter && b.panchayat_name !== panchayatFilter) return false
+    if (unionFilter     && b.union_name     !== unionFilter)     return false
+    if (blockFilter     && b.block_name     !== blockFilter)     return false
+    if (!boothSearch.trim()) return true
+    const q = boothSearch.toLowerCase()
+    return (
+      (b.name || '').toLowerCase().includes(q) ||
+      (b.number || '').toLowerCase().includes(q) ||
+      (b.constituency_name || '').toLowerCase().includes(q) ||
+      (b.panchayat_name || '').toLowerCase().includes(q) ||
+      (b.union_name || '').toLowerCase().includes(q) ||
+      (b.block_name || '').toLowerCase().includes(q)
+    )
+  })
+
+  // Unique values for dropdown filters (from full boothData, not filtered)
+  const uniquePanchayats = useMemo(
+    () => [...new Set(boothData.map(b => b.panchayat_name).filter(Boolean))].sort(),
+    [boothData]
+  )
+  const uniqueUnions = useMemo(
+    () => [...new Set(boothData.map(b => b.union_name).filter(Boolean))].sort(),
+    [boothData]
+  )
+  const uniqueBlocks = useMemo(
+    () => [...new Set(boothData.map(b => b.block_name).filter(Boolean))].sort(),
+    [boothData]
   )
 
   /* ── CSV exports ─────────────────────────────────────────────────── */
   const exportBooths = () => {
     if (!boothData.length) return
     const rows = [
-      ['#', 'Booth No', 'Booth Name', 'Total Voters', 'Contacted', 'Coverage %'],
+      ['#', 'Booth No', 'Booth Name', 'Panchayat', 'Union', 'Block', 'Total Voters', 'Contacted', 'Coverage %'],
       ...boothData.map((b, i) => [
         String(i + 1), b.number || '', b.name || '',
+        b.panchayat_name || '', b.union_name || '', b.block_name || '',
         String(b.total_voters), String(b.voters_contacted), String(b.coverage_percentage),
       ]),
     ]
@@ -533,10 +561,10 @@ export default function ReportsPage() {
     showToast('<i class="ph ph-file-csv"></i> Village report exported!', '#138808')
   }
 
-  /* ── KPI totals ─────────────────────────────────────────────────── */
-  const totalVoters    = villageData.reduce((s, w) => s + (w.total_voters    || 0), 0)
-  const totalContacted = villageData.reduce((s, w) => s + (w.voters_contacted || 0), 0)
-  const totalBooths    = villageData.reduce((s, w) => s + (w.booth_count      || 0), 0)
+  /* ── KPI totals (from booth data which is always populated) ─────── */
+  const totalVoters    = boothData.reduce((s, b) => s + (b.total_voters    || 0), 0)
+  const totalContacted = boothData.reduce((s, b) => s + (b.voters_contacted || 0), 0)
+  const totalBooths    = boothData.length
   const overallPct     = totalVoters > 0 ? Math.round(totalContacted * 100 / totalVoters) : 0
 
   return (
@@ -603,18 +631,64 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="px-[18px] py-[14px]">
-          <div className="relative mb-3">
-            <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-[13px] pointer-events-none" />
-            <input
-              type="text" value={boothSearch}
-              onChange={e => setBoothSearch(e.target.value)}
-              placeholder="Search booth number, name or ward…"
-              className="form-input pl-8 py-[5px] text-[11px] w-full max-w-[360px]"
-            />
-            {boothSearch && (
-              <button onClick={() => setBoothSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-[12px] hover:text-kampr">
-                <i className="ph ph-x" />
+          {/* Filter row */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {/* Panchayat filter */}
+            <select
+              value={panchayatFilter}
+              onChange={e => { setPanchayatFilter(e.target.value); setUnionFilter(''); setBlockFilter('') }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${panchayatFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Panchayat</option>
+              {uniquePanchayats.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {/* Union filter */}
+            <select
+              value={unionFilter}
+              onChange={e => { setUnionFilter(e.target.value); setBlockFilter('') }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${unionFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Union</option>
+              {(panchayatFilter
+                ? [...new Set(boothData.filter(b => b.panchayat_name === panchayatFilter).map(b => b.union_name).filter(Boolean))].sort()
+                : uniqueUnions
+              ).map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+            {/* Block filter */}
+            <select
+              value={blockFilter}
+              onChange={e => setBlockFilter(e.target.value)}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${blockFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Block</option>
+              {(unionFilter
+                ? [...new Set(boothData.filter(b => b.union_name === unionFilter).map(b => b.block_name).filter(Boolean))].sort()
+                : uniqueBlocks
+              ).map(bl => <option key={bl} value={bl}>{bl}</option>)}
+            </select>
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px] max-w-[320px]">
+              <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-[13px] pointer-events-none" />
+              <input
+                type="text" value={boothSearch}
+                onChange={e => setBoothSearch(e.target.value)}
+                placeholder="Search booth number, name…"
+                className="form-input pl-8 py-[5px] text-[11px] w-full"
+              />
+              {boothSearch && (
+                <button onClick={() => setBoothSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-[12px] hover:text-kampr">
+                  <i className="ph ph-x" />
+                </button>
+              )}
+            </div>
+            {/* Clear all filters */}
+            {(panchayatFilter || unionFilter || blockFilter || boothSearch) && (
+              <button
+                onClick={() => { setPanchayatFilter(''); setUnionFilter(''); setBlockFilter(''); setBoothSearch('') }}
+                className="text-[10px] font-bold text-kampr flex items-center gap-1"
+              >
+                <i className="ph ph-x-circle" /> Clear
               </button>
             )}
           </div>
@@ -626,64 +700,13 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Village-wise table card */}
-      <div className="bg-surface rounded-card shadow-card overflow-hidden">
-        <div className="bg-navy px-[18px] py-[11px] flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-white text-[11px] font-bold tracking-[0.6px] uppercase">
-            <i className="ph ph-tree-structure mr-1" /> Village-wise
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge
-              label={`${filteredVillages.length}${filteredVillages.length !== villageData.length ? `/${villageData.length}` : ''} Villages`}
-              variant="s"
-            />
-            {showFixButton && (
-              <button
-                onClick={handleFixLinks}
-                disabled={fixing}
-                className="inline-flex items-center gap-1 px-[10px] py-[3px] text-[9px] font-bold
-                           tracking-[0.6px] uppercase rounded border border-saffron/60
-                           bg-saffron-light text-saffron-dark hover:bg-saffron hover:text-navy
-                           disabled:opacity-50 transition-all"
-              >
-                <i className={`ph ${fixing ? 'ph-spinner animate-spin' : 'ph-link'}`} />
-                {fixing ? 'Fixing…' : 'Fix Data Links'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="px-[18px] py-[14px]">
-          {/* Search */}
-          <div className="relative mb-3">
-            <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-[13px] pointer-events-none" />
-            <input
-              type="text" value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search village or constituency…"
-              className="form-input pl-8 py-[5px] text-[11px] w-full max-w-[360px]"
-            />
-            {search && (
-              <button onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-[12px] hover:text-kampr">
-                <i className="ph ph-x" />
-              </button>
-            )}
-          </div>
-
-          {loading ? (
-            <p className="text-muted text-[11px] text-center py-10 italic">Loading data…</p>
-          ) : (
-            <VillageTable rows={filteredVillages} fetchVolunteers={api.fetchWardVolunteers} />
-          )}
-        </div>
-      </div>
+  
     </div>
   )
 }
 
 /* ── Booth table ─────────────────────────────────────────────────── */
-type BoothSortKey = 'number' | 'name' | 'total_voters' | 'voters_contacted' | 'coverage_percentage' | 'volunteer_count'
+type BoothSortKey = 'number' | 'name' | 'panchayat_name' | 'union_name' | 'block_name' | 'total_voters' | 'voters_contacted' | 'coverage_percentage' | 'volunteer_count'
 
 function BoothTable({
   rows,
@@ -760,6 +783,9 @@ function BoothTable({
               <th className="w-8">#</th>
               <Th label="Booth No"     colKey="number"              {...thProps} />
               <Th label="Booth Name"   colKey="name"                {...thProps} />
+              <Th label="Panchayat"    colKey="panchayat_name"      {...thProps} />
+              <Th label="Union"        colKey="union_name"          {...thProps} />
+              <Th label="Block"        colKey="block_name"          {...thProps} />
               <Th label="Total Voters" colKey="total_voters"        {...thProps} className="text-right" />
               <Th label="Contacted"    colKey="voters_contacted"    {...thProps} className="text-right" />
               <Th label="Coverage"     colKey="coverage_percentage" {...thProps} />
@@ -772,6 +798,9 @@ function BoothTable({
                 <td className="text-muted">{(page - 1) * PAGE_SIZE + i + 1}</td>
                 <td className="font-bold text-navy">{b.number || '—'}</td>
                 <td>{b.name || '—'}</td>
+                <td className="text-muted">{b.panchayat_name || '—'}</td>
+                <td className="text-muted">{b.union_name || '—'}</td>
+                <td className="text-muted">{b.block_name || '—'}</td>
                 <td className="text-right">
                   <button
                     onClick={() => openVoterPopup(b)}
@@ -806,7 +835,7 @@ function BoothTable({
           </tbody>
           <tfoot>
             <tr className="font-bold bg-navy-light">
-              <td colSpan={3} className="text-right text-[10px] uppercase tracking-wider text-muted">Grand Total</td>
+              <td colSpan={6} className="text-right text-[10px] uppercase tracking-wider text-muted">Grand Total</td>
               <td className="text-right text-navy">{grandTotal.toLocaleString()}</td>
               <td className="text-right text-navy">{grandContact.toLocaleString()}</td>
               <td />

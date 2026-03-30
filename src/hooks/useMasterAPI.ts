@@ -104,8 +104,18 @@ export function useMasterAPI() {
   const getList = useCallback(async <T>(url: string, params?: any): Promise<T[] | null> => {
     setLoading(true); setError(null)
     try {
-      const { data } = await apiClient.get<ApiResponse<T>>(url, { params: { limit: 1000, ...params } })
-      return data.results || []
+      const BATCH = 2000
+      const all: T[] = []
+      let offset = 0
+      while (true) {
+        const { data } = await apiClient.get<ApiResponse<T>>(url, {
+          params: { limit: BATCH, offset, ...params },
+        })
+        all.push(...(data.results || []))
+        if (!data.next || all.length >= data.count) break
+        offset += BATCH
+      }
+      return all
     } catch (err) { handleError(err, `fetch ${url}`); return null }
     finally { setLoading(false) }
   }, [])

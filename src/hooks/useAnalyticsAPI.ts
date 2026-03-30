@@ -36,6 +36,9 @@ interface BoothStat {
   name: string
   number: string
   constituency_name: string | null
+  panchayat_name: string
+  union_name: string
+  block_name: string
   total_voters: number
   voters_contacted: number
   coverage_percentage: number

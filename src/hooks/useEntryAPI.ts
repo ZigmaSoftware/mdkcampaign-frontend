@@ -22,7 +22,6 @@ interface VoterRecord {
   email?: string
   booth: number
   village?: number
-  panchayat?: number
   sentiment?: string
   gender?: string
   address?: string
@@ -62,7 +61,6 @@ interface VolunteerRecord {
   booths?: number[]
   booth_names?: string[]
   ward: number | null
-  panchayat?: number | null
   status?: string
   role?: string
   age?: number | null
@@ -70,6 +68,8 @@ interface VolunteerRecord {
   joined_date?: string
   source?: string
   block?: string
+  panchayat_name?: string
+  union_name?: string
   skills?: string
   vehicle?: string
   volunteer_type?: string
@@ -113,6 +113,7 @@ interface ActivityLogRecord {
 
 interface FieldSurveyRecord {
   id: number
+  voter?: number | null     // FK to Voter — set when survey created via telecalling
   survey_date: string
   block?: string
   village?: string
@@ -185,7 +186,7 @@ interface UseEntryAPIReturn {
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   deleteVoter: (voterId: number) => Promise<boolean>
   // Volunteers
-  fetchVolunteers: (boothId?: number) => Promise<VolunteerRecord[] | null>
+  fetchVolunteers: (boothId?: number, search?: string, wardId?: number) => Promise<VolunteerRecord[] | null>
   createVolunteer: (volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   updateVolunteer: (volunteerId: number, volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   // Booths
@@ -237,10 +238,10 @@ export function useEntryAPI(): UseEntryAPIReturn {
       try {
         const { data } = await apiClient.get<ApiResponse<VoterRecord>>('/voters/voters/', {
           params: {
-            ...(boothId  ? { booth: boothId }   : {}),
-            ...(search   ? { search }            : {}),
-            ...(wardId   ? { ward: wardId }      : {}),
-            ...(pincode  ? { pincode }           : {}),
+            ...(boothId ? { booth: boothId } : {}),
+            ...(search  ? { search }         : {}),
+            ...(wardId  ? { ward: wardId }   : {}),
+            ...(pincode ? { pincode }        : {}),
             limit:  pageSize,
             offset: (page - 1) * pageSize,
           },
@@ -320,12 +321,17 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOLUNTEERS ====================
 
   const fetchVolunteers = useCallback(
-    async (boothId?: number): Promise<VolunteerRecord[] | null> => {
+    async (boothId?: number, search?: string, wardId?: number): Promise<VolunteerRecord[] | null> => {
       setLoading(true)
       setError(null)
       try {
         const { data } = await apiClient.get<ApiResponse<VolunteerRecord>>('/volunteers/volunteers/', {
-          params: { limit: 1000, ...(boothId ? { booth: boothId } : {}) },
+          params: {
+            limit: 1000,
+            ...(boothId ? { booth: boothId } : {}),
+            ...(search  ? { search }         : {}),
+            ...(wardId  ? { ward: wardId }   : {}),
+          },
         })
         return data.results || []
       } catch (err) {

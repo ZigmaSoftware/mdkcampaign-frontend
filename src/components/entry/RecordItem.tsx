@@ -15,9 +15,11 @@ interface RecordItemProps {
   sub:         string
   isEditing?:  boolean
   tag?:        RecordTag
-  onView?:     () => void
-  onEdit?:     () => void
-  onDelete?:   () => void
+  onTagClick?: () => void
+  onView?:             () => void
+  onViewVolunteers?:   () => void
+  onEdit?:             () => void
+  onDelete?:           () => void
 }
 
 export default function RecordItem({
@@ -29,7 +31,9 @@ export default function RecordItem({
   sub,
   isEditing,
   tag,
+  onTagClick,
   onView,
+  onViewVolunteers,
   onEdit,
   onDelete,
 }: RecordItemProps) {
@@ -53,12 +57,23 @@ export default function RecordItem({
         <div className="text-[12px] font-bold text-textMain flex items-center gap-1 flex-wrap">
           {title}
           {tag && (
-            <span
-              className="inline-flex items-center text-[9px] font-bold px-[6px] py-[2px] rounded-[10px] tracking-[0.4px] ml-[6px]"
-              style={{ background: tag.bg, color: tag.color }}
-            >
-              {tag.label}
-            </span>
+            onTagClick ? (
+              <button
+                onClick={onTagClick}
+                className="inline-flex items-center text-[9px] font-bold px-[6px] py-[2px] rounded-[10px] tracking-[0.4px] ml-[6px] border-none cursor-pointer transition-opacity hover:opacity-75"
+                style={{ background: tag.bg, color: tag.color }}
+                title="Click to view volunteer details"
+              >
+                {tag.label} <i className="ph ph-caret-right text-[8px] ml-[2px]" />
+              </button>
+            ) : (
+              <span
+                className="inline-flex items-center text-[9px] font-bold px-[6px] py-[2px] rounded-[10px] tracking-[0.4px] ml-[6px]"
+                style={{ background: tag.bg, color: tag.color }}
+              >
+                {tag.label}
+              </span>
+            )
           )}
           {isEditing && (
             <span
@@ -86,6 +101,19 @@ export default function RecordItem({
             "
           >
             <i className="ph ph-eye" />
+          </button>
+        )}
+        {onViewVolunteers && (
+          <button
+            onClick={onViewVolunteers}
+            title="View booth volunteers"
+            className="
+              w-[30px] h-[30px] rounded-md flex items-center justify-center
+              bg-[#edf7ed] text-[#2e7d32] border-none cursor-pointer text-[14px]
+              transition-all duration-150 hover:bg-[#2e7d32] hover:text-white
+            "
+          >
+            <i className="ph ph-users" />
           </button>
         )}
         {onEdit && (

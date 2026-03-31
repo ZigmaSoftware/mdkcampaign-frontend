@@ -1,10 +1,12 @@
 import { useRef, useState, useEffect } from 'react'
+import apiClient from '../../utils/api'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { ActivityLogRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Booth, Ward } from '../../hooks/useMasterAPI'
 import { useAuthContext } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
+import { usePermissions } from '../../context/PermissionContext'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
 import EntryFormPanel from '../../components/entry/EntryFormPanel'
@@ -53,19 +55,22 @@ interface ActivityEntryBaseProps {
   iconColor: string
   activityTypes: string[]
   userIdPrefix: string
+  showVolunteerAssign?: boolean
 }
 
 export default function ActivityEntryBase({
   moduleId, title, icon, addLabel, saveLabel,
-  listTitle, emptyMsg, iconBg, iconColor, activityTypes, userIdPrefix,
+  listTitle, emptyMsg, iconBg, iconColor, activityTypes, userIdPrefix, showVolunteerAssign,
 }: ActivityEntryBaseProps) {
   const { fetchActivityLogs, createActivityLog, updateActivityLog, deleteActivityLog } = useEntryAPI()
   const masterApi = useMasterAPI()
   const { user } = useAuthContext()
   const { showToast } = useToast()
+  const { canAdd, canEdit, canDelete } = usePermissions()
 
-  const [booths, setBooths] = useState<Booth[]>([])
-  const [wards,  setWards]  = useState<Ward[]>([])
+  const [booths,     setBooths]     = useState<Booth[]>([])
+  const [wards,      setWards]      = useState<Ward[]>([])
+  const [volunteers, setVolunteers] = useState<{ id: number; name: string; role?: string }[]>([])
 
   const category = CATEGORY_MAP[moduleId] ?? 'agent'
   const username = user?.username ?? ''
@@ -91,12 +96,18 @@ export default function ActivityEntryBase({
     village:      useRef<HTMLSelectElement>(null),
     booth:        useRef<HTMLSelectElement>(null),
     notes:        useRef<HTMLTextAreaElement>(null),
+    volunteer:    useRef<HTMLSelectElement>(null),
   }
 
   useEffect(() => {
     fetchActivityLogs(category).then(res => { if (res) setRecords(res) })
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchWards().then(d => d && setWards(d))
+    if (showVolunteerAssign) {
+      apiClient.get('/volunteers/volunteers/', { params: { status: 'active', limit: 500 } })
+        .then(res => setVolunteers(res.data.results ?? []))
+        .catch(() => {})
+    }
   }, [category])
 
   useEffect(() => {
@@ -108,6 +119,7 @@ export default function ActivityEntryBase({
       if (r.village.current)      r.village.current.value      = d.village      ?? ''
       if (r.booth.current)        r.booth.current.value        = d.booth        ?? ''
       if (r.notes.current)        r.notes.current.value        = d.notes        ?? ''
+      if (r.volunteer.current)    r.volunteer.current.value    = d.volunteer    ?? ''
       pendingFill.current = null
     }
   }, [isFormOpen, editingId])
@@ -119,19 +131,25 @@ export default function ActivityEntryBase({
     if (r.village.current)      r.village.current.value      = ''
     if (r.booth.current)        r.booth.current.value        = ''
     if (r.notes.current)        r.notes.current.value        = ''
+    if (r.volunteer.current)    r.volunteer.current.value    = ''
   }
 
-  const collect = () => ({
-    category,
-    username,
-    user_role: role,
-    activity_type: r.activityType.current?.value ?? '',
-    date:          r.date.current?.value         ?? todayISO(),
-    hours_worked:  r.hoursWorked.current?.value  ? Number(r.hoursWorked.current.value) : undefined,
-    village:       r.village.current?.value      ?? '',
-    booth_no:      r.booth.current?.value        ?? '',
-    notes:         r.notes.current?.value        ?? '',
-  })
+  const collect = () => {
+    const volunteerId = r.volunteer.current?.value ?? ''
+    const volunteerRec = volunteers.find(v => String(v.id) === volunteerId)
+    return {
+      category,
+      username,
+      user_role: role,
+      activity_type: r.activityType.current?.value ?? '',
+      date:          r.date.current?.value         ?? todayISO(),
+      hours_worked:  r.hoursWorked.current?.value  ? Number(r.hoursWorked.current.value) : undefined,
+      village:       r.village.current?.value      ?? '',
+      booth_no:      r.booth.current?.value        ?? '',
+      notes:         r.notes.current?.value        ?? '',
+      ...(showVolunteerAssign && volunteerRec ? { assigned_to: volunteerRec.name ?? String(volunteerRec.id) } : {}),
+    }
+  }
 
   const handleSave = async () => {
     const d = collect()
@@ -164,6 +182,7 @@ export default function ActivityEntryBase({
   const handleEdit = (id: number) => {
     const rec = records.find(r => r.id === id)
     if (!rec) return
+    const assignedVol = volunteers.find(v => (v.name ?? String(v.id)) === rec.assigned_to)
     pendingFill.current = {
       activityType: rec.activity_type ?? '',
       date:         rec.date          ?? todayISO(),
@@ -171,6 +190,7 @@ export default function ActivityEntryBase({
       village:      rec.village       ?? '',
       booth:        rec.booth_no      ?? '',
       notes:        rec.notes         ?? '',
+      volunteer:    assignedVol ? String(assignedVol.id) : '',
     }
     setEditingId(id)
     setFormOpen(true)
@@ -207,7 +227,7 @@ export default function ActivityEntryBase({
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
         <EntryListHeader
           title={listTitle} icon={icon} count={records.length}
-          onAddNew={() => { setEditingId(null); clear(); setFormOpen(true) }} addLabel={addLabel}
+          onAddNew={canAdd(moduleId) ? () => { setEditingId(null); clear(); setFormOpen(true) } : undefined} addLabel={addLabel}
         />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar
@@ -267,16 +287,20 @@ export default function ActivityEntryBase({
                       </div>
                       <div>
                         <p className="text-[13px] font-semibold text-navy">{rec.activity_type}</p>
-                        <p className="text-[11px] text-muted">{rec.date} · {rec.village || '—'} · Booth {rec.booth_no || '—'}{rec.hours_worked ? ` · ${rec.hours_worked} hrs` : ''}</p>
+                        <p className="text-[11px] text-muted">{rec.date} · {rec.village || '—'} · Booth {rec.booth_no || '—'}{rec.hours_worked ? ` · ${rec.hours_worked} hrs` : ''}{rec.assigned_to ? ` · Assigned: ${rec.assigned_to}` : ''}</p>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => handleEdit(rec.id)} className="p-[7px] rounded-lg hover:bg-[#f0f4ff] text-navy transition-colors">
-                        <i className="ph ph-pencil text-[14px]" />
-                      </button>
-                      <button onClick={() => handleDelete(rec.id)} className="p-[7px] rounded-lg hover:bg-[#fff0f0] text-kampr transition-colors">
-                        <i className="ph ph-trash text-[14px]" />
-                      </button>
+                      {canEdit(moduleId) && (
+                        <button onClick={() => handleEdit(rec.id)} className="p-[7px] rounded-lg hover:bg-[#f0f4ff] text-navy transition-colors">
+                          <i className="ph ph-pencil text-[14px]" />
+                        </button>
+                      )}
+                      {canDelete(moduleId) && (
+                        <button onClick={() => handleDelete(rec.id)} className="p-[7px] rounded-lg hover:bg-[#fff0f0] text-kampr transition-colors">
+                          <i className="ph ph-trash text-[14px]" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -384,6 +408,22 @@ export default function ActivityEntryBase({
             </select>
           </FormGroup>
         </FormRow>
+
+        {showVolunteerAssign && (
+          <FormRow cols={1}>
+            <FormGroup label="Assign Volunteer">
+              <select ref={r.volunteer} className={selectCls}>
+                <option value="">— Select volunteer —</option>
+                {volunteers.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.name ?? `Volunteer #${v.id}`}{v.role ? ` (${v.role})` : ''}
+                  </option>
+                ))}
+              </select>
+            </FormGroup>
+          </FormRow>
+        )}
+
         <FormRow cols={1}>
           <FormGroup label="Activity Notes">
             <textarea ref={r.notes} className={textareaCls} rows={3} placeholder="Describe what was done, any observations..." />

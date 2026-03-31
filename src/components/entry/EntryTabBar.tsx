@@ -9,16 +9,16 @@ interface TabGroup {
   icon:  string
   tabs:  { id: EntryModuleId; label: string; icon: string }[]
 }
-
+  
 const TAB_GROUPS: TabGroup[] = [
-  {
-    id:    'search',
-    label: 'Search',
-    icon:  'ph ph-magnifying-glass',
-    tabs: [
-      { id: 'global-search', label: 'Global Search', icon: 'ph ph-magnifying-glass' },
-    ],
-  },
+  // {
+  //   id:    'search',
+  //   label: 'Search',
+  //   icon:  'ph ph-magnifying-glass',
+  //   tabs: [
+  //     { id: 'global-search', label: 'Global Search', icon: 'ph ph-magnifying-glass' },
+  //   ],
+  // },
   {
     id:    'field-data',
     label: 'Field Data',
@@ -47,25 +47,25 @@ const TAB_GROUPS: TabGroup[] = [
       { id: 'campaign', label: 'Campaign',  icon: 'ph ph-megaphone' },
     ],
   },
-  {
-    id:    'feedback',
-    label: 'Feedback',
-    icon:  'ph ph-chats',
-    tabs: [
-      { id: 'feedback',   label: 'Feedback',    icon: 'ph ph-chats'    },
-      { id: 'commitment', label: 'Commitments', icon: 'ph ph-push-pin' },
-      { id: 'grievance',  label: 'Grievance',   icon: 'ph ph-warning'  },
-    ],
-  },
+  // {
+  //   id:    'feedback',
+  //   label: 'Feedback',
+  //   icon:  'ph ph-chats',
+  //   tabs: [
+  //     { id: 'feedback',   label: 'Feedback',    icon: 'ph ph-chats'    },
+  //     { id: 'commitment', label: 'Commitments', icon: 'ph ph-push-pin' },
+  //     { id: 'grievance',  label: 'Grievance',   icon: 'ph ph-warning'  },
+  //   ],
+  // },
   {
     id:    'activity',
     label: 'Activity Logs',
     icon:  'ph ph-clipboard-text',
     tabs: [
       { id: 'voter-survey',         label: 'Voter Survey',         icon: 'ph ph-notepad'             },
-      { id: 'agent-activity',       label: 'Agent Log',            icon: 'ph ph-identification-card' },
-      { id: 'field-activity',       label: 'Field Log',            icon: 'ph ph-map-trifold'         },
-      { id: 'volunteer-activity',   label: 'Volunteer Log',        icon: 'ph ph-clipboard-text'      },
+      // { id: 'agent-activity',       label: 'Agent Log',            icon: 'ph ph-identification-card' },
+      { id: 'field-activity',       label: 'Field Survey',         icon: 'ph ph-map-trifold'         },
+      // { id: 'volunteer-activity',   label: 'Volunteer Log',        icon: 'ph ph-clipboard-text'      },
       { id: 'attendance',           label: 'Attendance',           icon: 'ph ph-clock'               },
       { id: 'assign-telecalling',   label: 'Assign Telecalling',   icon: 'ph ph-phone-outgoing'      },
       { id: 'telecalling-assigned', label: 'Telecalling Assigned', icon: 'ph ph-clipboard-text'      },

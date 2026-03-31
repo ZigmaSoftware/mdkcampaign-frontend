@@ -9,6 +9,7 @@ import FormRow from '../../components/entry/FormRow'
 import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
 import FormActions from '../../components/entry/FormActions'
 import { useToast } from '../../context/ToastContext'
+import { usePermissions } from '../../context/PermissionContext'
 import type { EntryRecord } from '../../types/entry.types'
 import RecordList from '../../components/entry/RecordList'
 import { exportRecordsToCsv } from '../../utils/exportCsv'
@@ -46,6 +47,7 @@ interface VolunteerOption { id: number; user_name: string; phone: string }
 export default function BoothEntry() {
   const api = useMasterAPI()
   const { showToast } = useToast()
+  const { canAdd, canEdit, canDelete } = usePermissions()
 
   const [booths,     setBooths]     = useState<Booth[]>([])
   const [panchayats, setPanchayats] = useState<Panchayat[]>([])
@@ -223,7 +225,7 @@ export default function BoothEntry() {
           title="Booth Records"
           icon="ph ph-map-pin"
           count={booths.length}
-          onAddNew={() => { setEditing(null); clear(); setFormOpen(true) }}
+          onAddNew={canAdd('booth') ? () => { setEditing(null); clear(); setFormOpen(true) } : undefined}
           addLabel="Add Booth"
           onImport={() => setShowImport(true)}
         />
@@ -272,8 +274,8 @@ export default function BoothEntry() {
             icon="ph ph-map-pin"
             iconBg="#dbeafe"
             iconColor="#0d2455"
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            onEdit={canEdit('booth') ? handleEdit : undefined}
+            onDelete={canDelete('booth') ? handleDelete : undefined}
             filterConfig={[
               { key: 'status',    label: 'Status', options: [
                 { value: 'assigned',  label: 'Assigned & Ready' },

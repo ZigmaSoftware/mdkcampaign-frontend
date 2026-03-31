@@ -16,6 +16,7 @@ import FormActions from '../../components/entry/FormActions'
 import { exportRecordsToCsv } from '../../utils/exportCsv'
 import { printModule } from '../../utils/printModule'
 import { useToast } from '../../context/ToastContext'
+import { usePermissions } from '../../context/PermissionContext'
 import type { EntryRecord } from '../../types/entry.types'
 
 const FORM_ID = 'task-form'
@@ -36,6 +37,7 @@ export default function EventEntry() {
   const userApi   = useUserAPI()
   const masterApi = useMasterAPI()
   const { showToast } = useToast()
+  const { canAdd, canEdit, canDelete } = usePermissions()
 
   const [tasks,      setTasks]      = useState<TaskRecord[]>([])
   const [users,      setUsers]      = useState<UserRecord[]>([])
@@ -250,7 +252,7 @@ export default function EventEntry() {
           title="Task Management"
           icon="ph ph-clipboard-text"
           count={tasks.length}
-          onAddNew={() => { setEditing(null); clear(); setFormOpen(true) }}
+          onAddNew={canAdd('event') ? () => { setEditing(null); clear(); setFormOpen(true) } : undefined}
           addLabel="Add Task"
         />
         <div className="px-[18px] py-[14px]">
@@ -310,8 +312,8 @@ export default function EventEntry() {
             icon="ph ph-clipboard-text"
             iconBg="#ede9fe"
             iconColor="#7c3aed"
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            onEdit={canEdit('event') ? handleEdit : undefined}
+            onDelete={canDelete('event') ? handleDelete : undefined}
             getTag={getTaskTag}
             filterConfig={[
               { key: 'task_category', label: 'Category', options: categoryFilterOptions },

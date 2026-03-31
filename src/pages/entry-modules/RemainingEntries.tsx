@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react'
+import { usePermissions } from '../../context/PermissionContext'
 import { useEntryModule } from '../../hooks/useEntryModule'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Ward, Booth, Constituency, CampaignActivityType } from '../../hooks/useMasterAPI'
@@ -50,6 +51,7 @@ function BlockOptions({ allLabel = 'Select' }: { allLabel?: string }) {
 /* ── CAMPAIGN ACTIVITY ──────────────────────────────────────────────── */
 export function CampaignEntry() {
   const em = useEntryModule('campaign', 'campaign-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const masterApi = useMasterAPI()
   const entryApi  = useEntryAPI()
 
@@ -162,7 +164,7 @@ export function CampaignEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Campaign Activities" icon="ph ph-megaphone" count={em.records.length} onAddNew={em.openForm} addLabel="Add Activity" />
+        <EntryListHeader title="Campaign Activities" icon="ph ph-megaphone" count={em.records.length} onAddNew={canAdd('campaign') ? em.openForm : undefined} addLabel="Add Activity" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search activities..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Campaign_Activities')} onPrint={() => printModule(em.records,'Campaign Activities')} />
           {/* Date range filter */}
@@ -192,7 +194,7 @@ export function CampaignEntry() {
               )}
             </div>
           </div>
-          <RecordList records={dateFiltered} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={dateFiltered} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={canEdit('campaign') ? handleEdit : undefined} onDelete={canDelete('campaign') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="campaign-form" title="Campaign Activity" icon="ph ph-megaphone" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -261,6 +263,7 @@ export function CampaignEntry() {
 /* ── USER MANAGEMENT ────────────────────────────────────────────────── */
 export function UserEntry() {
   const em = useEntryModule('user', 'user-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const r = {
     name: useRef<HTMLInputElement>(null), username: useRef<HTMLInputElement>(null),
     pass: useRef<HTMLInputElement>(null), phone: useRef<HTMLInputElement>(null),
@@ -283,10 +286,10 @@ export function UserEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Users List" icon="ph ph-user-gear" count={em.records.length} onAddNew={em.openForm} addLabel="Add User" />
+        <EntryListHeader title="Users List" icon="ph ph-user-gear" count={em.records.length} onAddNew={canAdd('user') ? em.openForm : undefined} addLabel="Add User" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search users..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'User_Management')} onPrint={() => printModule(em.records,'User Management')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No users added yet. Click "Add User" to begin.' icon="ph ph-user-gear" iconBg="#dbeafe" iconColor="#0d2455" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No users added yet. Click "Add User" to begin.' icon="ph ph-user-gear" iconBg="#dbeafe" iconColor="#0d2455" onEdit={canEdit('user') ? handleEdit : undefined} onDelete={canDelete('user') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="user-form" title="User Management" icon="ph ph-user-gear" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -321,6 +324,7 @@ export function UserEntry() {
 /* ── WAR ROOM ───────────────────────────────────────────────────────── */
 export function WarRoomEntry() {
   const em = useEntryModule('warroom', 'warroom-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const r = {
     type: useRef<HTMLSelectElement>(null), priority: useRef<HTMLSelectElement>(null),
     dt: useRef<HTMLInputElement>(null), area: useRef<HTMLSelectElement>(null),
@@ -343,10 +347,10 @@ export function WarRoomEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="War Room Logs" icon="ph ph-castle-turret" count={em.records.length} badgeVariant="br" onAddNew={em.openForm} addLabel="Add Log" />
+        <EntryListHeader title="War Room Logs" icon="ph ph-castle-turret" count={em.records.length} badgeVariant="br" onAddNew={canAdd('warroom') ? em.openForm : undefined} addLabel="Add Log" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search war room logs..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'War_Room')} onPrint={() => printModule(em.records,'War Room')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No war room logs yet. Click "Add Log" to begin.' icon="ph ph-castle-turret" iconBg="#fee2e2" iconColor="#dc2626" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No war room logs yet. Click "Add Log" to begin.' icon="ph ph-castle-turret" iconBg="#fee2e2" iconColor="#dc2626" onEdit={canEdit('warroom') ? handleEdit : undefined} onDelete={canDelete('warroom') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="warroom-form" title="War Room Log" icon="ph ph-castle-turret" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -380,6 +384,7 @@ export function WarRoomEntry() {
 /* ── DASHBOARD UPDATES ──────────────────────────────────────────────── */
 export function DashboardEntry() {
   const em = useEntryModule('dashboard', 'dashboard-entry-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const r = {
     type: useRef<HTMLSelectElement>(null), date: useRef<HTMLInputElement>(null),
     by: useRef<HTMLInputElement>(null), area: useRef<HTMLSelectElement>(null),
@@ -399,10 +404,10 @@ export function DashboardEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Dashboard Updates" icon="ph ph-gauge" count={em.records.length} onAddNew={em.openForm} addLabel="Add Update" />
+        <EntryListHeader title="Dashboard Updates" icon="ph ph-gauge" count={em.records.length} onAddNew={canAdd('dashboard') ? em.openForm : undefined} addLabel="Add Update" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search updates..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Dashboard_Updates')} onPrint={() => printModule(em.records,'Dashboard Updates')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No dashboard updates yet. Click "Add Update" to begin.' icon="ph ph-gauge" iconBg="#fff3e0" iconColor="#e07010" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No dashboard updates yet. Click "Add Update" to begin.' icon="ph ph-gauge" iconBg="#fff3e0" iconColor="#e07010" onEdit={canEdit('dashboard') ? handleEdit : undefined} onDelete={canDelete('dashboard') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="dashboard-entry-form" title="Dashboard Update" icon="ph ph-gauge" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -429,6 +434,7 @@ export function DashboardEntry() {
 /* ── ALLIANCE ───────────────────────────────────────────────────────── */
 export function AllianceEntry() {
   const em = useEntryModule('alliance', 'alliance-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const r = {
     party: useRef<HTMLInputElement>(null), contact: useRef<HTMLInputElement>(null),
     desig: useRef<HTMLInputElement>(null), phone: useRef<HTMLInputElement>(null),
@@ -453,10 +459,10 @@ export function AllianceEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Alliance Records" icon="ph ph-handshake" count={em.records.length} onAddNew={em.openForm} addLabel="Add Alliance" />
+        <EntryListHeader title="Alliance Records" icon="ph ph-handshake" count={em.records.length} onAddNew={canAdd('alliance') ? em.openForm : undefined} addLabel="Add Alliance" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search alliance records..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Alliance')} onPrint={() => printModule(em.records,'Alliance')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No alliance records yet. Click "Add Alliance" to begin.' icon="ph ph-handshake" iconBg="#dcfce7" iconColor="#0d6606" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No alliance records yet. Click "Add Alliance" to begin.' icon="ph ph-handshake" iconBg="#dcfce7" iconColor="#0d6606" onEdit={canEdit('alliance') ? handleEdit : undefined} onDelete={canDelete('alliance') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="alliance-form" title="Alliance Party" icon="ph ph-handshake" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -498,6 +504,7 @@ export function AllianceEntry() {
 /* ── KEY PEOPLE ─────────────────────────────────────────────────────── */
 export function KeyPeopleEntry() {
   const em = useEntryModule('keypeople', 'keypeople-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const r = {
     name: useRef<HTMLInputElement>(null), role: useRef<HTMLInputElement>(null),
     cat: useRef<HTMLSelectElement>(null), phone: useRef<HTMLInputElement>(null),
@@ -519,10 +526,10 @@ export function KeyPeopleEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Key People List" icon="ph ph-star" count={em.records.length} onAddNew={em.openForm} addLabel="Add Key Person" />
+        <EntryListHeader title="Key People List" icon="ph ph-star" count={em.records.length} onAddNew={canAdd('keypeople') ? em.openForm : undefined} addLabel="Add Key Person" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search key people..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Key_People')} onPrint={() => printModule(em.records,'Key People')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No key people added yet. Click "Add Key Person" to begin.' icon="ph ph-star" iconBg="#fde68a" iconColor="#e07010" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No key people added yet. Click "Add Key Person" to begin.' icon="ph ph-star" iconBg="#fde68a" iconColor="#e07010" onEdit={canEdit('keypeople') ? handleEdit : undefined} onDelete={canDelete('keypeople') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="keypeople-form" title="Key Person" icon="ph ph-star" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -599,6 +606,7 @@ function feedbackToRecord(f: any): EntryRecord {
 /* ── FEEDBACK ───────────────────────────────────────────────────────── */
 export function FeedbackEntry() {
   const em = useEntryModule('feedback', 'feedback-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const [dbRecords, setDbRecords] = useState<EntryRecord[]>([])
 
   useEffect(() => {
@@ -682,10 +690,10 @@ export function FeedbackEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Feedback Records" icon="ph ph-chats" count={allRecords.length} onAddNew={em.openForm} addLabel="Add Feedback" />
+        <EntryListHeader title="Feedback Records" icon="ph ph-chats" count={allRecords.length} onAddNew={canAdd('feedback') ? em.openForm : undefined} addLabel="Add Feedback" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search feedback..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(allRecords,'Feedback')} onPrint={() => printModule(allRecords,'Feedback')} />
-          <RecordList records={filtered} editingId={em.editingId} emptyMsg='No feedback records yet. Click "Add Feedback" to begin.' icon="ph ph-chats" iconBg="#ede9fe" iconColor="#7c3aed" onEdit={handleEdit} onDelete={handleDelete} />
+          <RecordList records={filtered} editingId={em.editingId} emptyMsg='No feedback records yet. Click "Add Feedback" to begin.' icon="ph ph-chats" iconBg="#ede9fe" iconColor="#7c3aed" onEdit={canEdit('feedback') ? handleEdit : undefined} onDelete={canDelete('feedback') ? handleDelete : undefined} />
         </div>
       </div>
       <EntryFormPanel id="feedback-form" title="Voter Feedback" icon="ph ph-chats" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -714,6 +722,7 @@ export function FeedbackEntry() {
 /* ── COMMITMENT ─────────────────────────────────────────────────────── */
 export function CommitmentEntry() {
   const em = useEntryModule('commitment', 'commitment-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const r = {
     title: useRef<HTMLInputElement>(null), type: useRef<HTMLSelectElement>(null),
     area: useRef<HTMLSelectElement>(null), village: useRef<HTMLInputElement>(null),
@@ -736,10 +745,10 @@ export function CommitmentEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Commitments List" icon="ph ph-push-pin" count={em.records.length} onAddNew={em.openForm} addLabel="Add Commitment" />
+        <EntryListHeader title="Commitments List" icon="ph ph-push-pin" count={em.records.length} onAddNew={canAdd('commitment') ? em.openForm : undefined} addLabel="Add Commitment" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search commitments..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Commitments')} onPrint={() => printModule(em.records,'Commitments')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No commitments logged yet. Click "Add Commitment" to begin.' icon="ph ph-push-pin" iconBg="#fff3e0" iconColor="#e07010" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No commitments logged yet. Click "Add Commitment" to begin.' icon="ph ph-push-pin" iconBg="#fff3e0" iconColor="#e07010" onEdit={canEdit('commitment') ? handleEdit : undefined} onDelete={canDelete('commitment') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="commitment-form" title="Commitment" icon="ph ph-push-pin" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -773,6 +782,7 @@ export function CommitmentEntry() {
 /* ── GRIEVANCE ──────────────────────────────────────────────────────── */
 export function GrievanceEntry() {
   const em = useEntryModule('grievance', 'grievance-form')
+  const { canAdd, canEdit, canDelete } = usePermissions()
   const r = {
     name: useRef<HTMLInputElement>(null), phone: useRef<HTMLInputElement>(null),
     area: useRef<HTMLSelectElement>(null), village: useRef<HTMLInputElement>(null),
@@ -796,10 +806,10 @@ export function GrievanceEntry() {
   return (
     <div className="page-enter">
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
-        <EntryListHeader title="Grievance Records" icon="ph ph-warning" count={em.records.length} badgeVariant="br" onAddNew={em.openForm} addLabel="Add Grievance" />
+        <EntryListHeader title="Grievance Records" icon="ph ph-warning" count={em.records.length} badgeVariant="br" onAddNew={canAdd('grievance') ? em.openForm : undefined} addLabel="Add Grievance" />
         <div className="px-[18px] py-[14px]">
           <EntrySearchToolbar placeholder="Search grievances..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Grievances')} onPrint={() => printModule(em.records,'Grievances')} />
-          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No grievances logged yet. Click "Add Grievance" to begin.' icon="ph ph-warning" iconBg="#fee2e2" iconColor="#dc2626" onEdit={handleEdit} onDelete={em.deleteRecord} />
+          <RecordList records={em.filtered} editingId={em.editingId} emptyMsg='No grievances logged yet. Click "Add Grievance" to begin.' icon="ph ph-warning" iconBg="#fee2e2" iconColor="#dc2626" onEdit={canEdit('grievance') ? handleEdit : undefined} onDelete={canDelete('grievance') ? em.deleteRecord : undefined} />
         </div>
       </div>
       <EntryFormPanel id="grievance-form" title="Grievance" icon="ph ph-warning" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>

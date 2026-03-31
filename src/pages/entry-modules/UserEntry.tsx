@@ -1,13 +1,33 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import apiClient from '../../utils/api'
 import { useUserAPI } from '../../hooks/usePollAPI'
-import type { UserRecord, PagePermission } from '../../hooks/usePollAPI'
+import type { UserRecord } from '../../hooks/usePollAPI'
+import { useMasterAPI } from '../../hooks/useMasterAPI'
+import type { Booth, Union, Panchayat } from '../../hooks/useMasterAPI'
 import { useAuthContext } from '../../context/AuthContext'
+import { usePermissions } from '../../context/PermissionContext'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
 import EntryFormPanel from '../../components/entry/EntryFormPanel'
 import FormRow from '../../components/entry/FormRow'
-import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
+import { FormGroup, inputCls, selectCls } from '../../components/entry/FormGroup'
 import FormActions from '../../components/entry/FormActions'
+
+let _userBlocksCache: { id: number; name: string }[] | null = null
+let _userBlocksFetch: Promise<{ id: number; name: string }[]> | null = null
+function useBlocks() {
+  const [blocks, setBlocks] = useState<{ id: number; name: string }[]>(_userBlocksCache ?? [])
+  useEffect(() => {
+    if (_userBlocksCache) { setBlocks(_userBlocksCache); return }
+    if (!_userBlocksFetch) {
+      _userBlocksFetch = apiClient.get('/masters/areas/', { params: { limit: 200 } })
+        .then(r => { _userBlocksCache = r.data.results ?? []; return _userBlocksCache! })
+        .catch(() => { _userBlocksFetch = null; return [] })
+    }
+    _userBlocksFetch.then(d => setBlocks(d))
+  }, [])
+  return blocks
+}
 
 const ROLES = [
   { value: 'admin',            label: 'System Administrator' },
@@ -21,63 +41,40 @@ const ROLES = [
 ]
 
 const ROLE_BADGE: Record<string, { bg: string; color: string }> = {
-  admin:            { bg: '#fee2e2', color: '#dc2626' },
-  district_head:    { bg: '#dbeafe', color: '#1d4ed8' },
-  constituency_mgr: { bg: '#e0e7ff', color: '#4338ca' },
-  booth_agent:      { bg: '#dcfce7', color: '#15803d' },
-  volunteer:        { bg: '#fef3c7', color: '#d97706' },
-  voter:            { bg: '#f0fdf4', color: '#166534' },
-  analyst:          { bg: '#f5f3ff', color: '#7c3aed' },
-  observer:         { bg: '#f8fafc', color: '#64748b' },
+  admin:            { bg: '#fee2e2', color: '#991b1b' },
+  district_head:    { bg: '#ffedd5', color: '#9a3412' },
+  constituency_mgr: { bg: '#fef3c7', color: '#92400e' },
+  booth_agent:      { bg: '#dcfce7', color: '#166534' },
+  volunteer:        { bg: '#dbeafe', color: '#1d4ed8' },
+  voter:            { bg: '#e0e7ff', color: '#3730a3' },
+  analyst:          { bg: '#ede9fe', color: '#6d28d9' },
+  observer:         { bg: '#f1f5f9', color: '#475569' },
 }
 
-// Pages + entry modules shown in the permission matrix
-const PAGES = [
-  { id: 'dashboard',     label: 'Dashboard' },
-  { id: 'master',        label: 'Overview' },
-  { id: 'entry',         label: 'Entry (page)' },
-  { id: 'masters-config',label: 'Masters Config' },
-  { id: 'report',        label: 'Reports' },
-  { id: 'opinion-poll',  label: 'Opinion Poll' },
-]
-const ENTRY_MODULES = [
-  { id: 'voter',               label: 'Voter Details' },
-  { id: 'booth',               label: 'Booth Info' },
-  { id: 'volunteer',           label: 'Volunteers' },
-  { id: 'event',               label: 'Event Mgmt' },
-  { id: 'campaign',            label: 'Campaign' },
-  { id: 'user',                label: 'User Mgmt' },
-  { id: 'warroom',             label: 'War Room' },
-  { id: 'alliance',            label: 'Alliance' },
-  { id: 'keypeople',           label: 'Key People' },
-  { id: 'feedback',            label: 'Feedback' },
-  { id: 'commitment',          label: 'Commitments' },
-  { id: 'grievance',           label: 'Grievance' },
-  { id: 'agent-activity',      label: 'Agent Log' },
-  { id: 'field-activity',      label: 'Field Log' },
-  { id: 'volunteer-activity',  label: 'Vol. Log' },
-  { id: 'voter-survey',        label: 'Survey' },
-]
-
-type TabId = 'users' | 'permissions'
 
 export default function UserEntryPage() {
   const { user: currentUser } = useAuthContext()
   const {
     fetchUsers, createUser, updateUser, deactivateUser,
-    fetchPermissions, updatePermission,
     loading,
   } = useUserAPI()
-
-  const isAdmin = currentUser?.role === 'admin'
+  const masterApi = useMasterAPI()
+  const { canAdd, canEdit, canDelete } = usePermissions()
 
   const PAGE_SIZE = 10
 
-  const [activeTab, setActiveTab] = useState<TabId>('users')
+  const blocks = useBlocks()
+  const [booths,     setBooths]     = useState<Booth[]>([])
+  const [unions,     setUnions]     = useState<Union[]>([])
+  const [panchayats, setPanchayats] = useState<Panchayat[]>([])
+
   const [users, setUsers] = useState<UserRecord[]>([])
-  const [permissions, setPermissions] = useState<PagePermission[]>([])
   const [search, setSearch] = useState('')
-  const [filterRole, setFilterRole] = useState('')
+  const [filterRole,      setFilterRole]      = useState('')
+  const [blockFilter,     setBlockFilter]     = useState('')
+  const [unionFilter,     setUnionFilter]     = useState('')
+  const [panchayatFilter, setPanchayatFilter] = useState('')
+  const [boothFilter,     setBoothFilter]     = useState<number | ''>('')
   const [page, setPage] = useState(1)
   const [isFormOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -102,10 +99,10 @@ export default function UserEntryPage() {
   }, [])
 
   useEffect(() => {
-    if (activeTab === 'permissions' && isAdmin && permissions.length === 0) {
-      fetchPermissions().then(res => { if (res) setPermissions(res) })
-    }
-  }, [activeTab, isAdmin])
+    masterApi.fetchBooths().then(d => d && setBooths(d))
+    masterApi.fetchUnions().then(d => d && setUnions(d))
+    masterApi.fetchPanchayats().then(d => d && setPanchayats(d))
+  }, [])
 
   useEffect(() => {
     if (isFormOpen && pendingFill.current) {
@@ -191,12 +188,41 @@ export default function UserEntryPage() {
     setConfirmDeleteId(null)
   }
 
-  const handlePermToggle = async (perm: PagePermission) => {
-    const updated = await updatePermission(perm.id, !perm.can_access)
-    if (updated) {
-      setPermissions(prev => prev.map(p => p.id === updated.id ? updated : p))
+  // Booth dropdown narrows by selected Panchayat; Block/Union/Panchayat are independent
+  const filteredBooths = useMemo(() => {
+    if (!panchayatFilter) return booths
+    const panchayatId = panchayats.find(p => p.name === panchayatFilter)?.id
+    return panchayatId ? booths.filter(b => b.panchayat === panchayatId) : booths
+  }, [booths, panchayats, panchayatFilter])
+
+  // Build valid booth-name sets for each location filter to match against u.booth_name
+  const validBoothNamesForFilters = useMemo(() => {
+    if (!blockFilter && !unionFilter && !panchayatFilter && !boothFilter) return null
+    let filteredPanchayatIds: Set<number> | null = null
+    if (panchayatFilter) {
+      const id = panchayats.find(p => p.name === panchayatFilter)?.id
+      filteredPanchayatIds = id ? new Set([id]) : new Set()
+    } else if (unionFilter) {
+      const unionId = unions.find(u => u.name === unionFilter)?.id
+      filteredPanchayatIds = unionId
+        ? new Set(panchayats.filter(p => p.union === unionId).map(p => p.id))
+        : new Set()
+    } else if (blockFilter) {
+      const blockId = blocks.find(b => b.name === blockFilter)?.id
+      const blockUnionIds = blockId ? new Set(unions.filter(u => u.block === blockId).map(u => u.id)) : null
+      filteredPanchayatIds = blockUnionIds
+        ? new Set(panchayats.filter(p => p.union != null && blockUnionIds.has(p.union)).map(p => p.id))
+        : new Set()
     }
-  }
+    if (boothFilter) {
+      const booth = booths.find(b => b.id === boothFilter)
+      return booth ? new Set([booth.name]) : new Set<string>()
+    }
+    if (filteredPanchayatIds) {
+      return new Set(booths.filter(b => b.panchayat != null && filteredPanchayatIds!.has(b.panchayat)).map(b => b.name))
+    }
+    return null
+  }, [blocks, unions, panchayats, booths, blockFilter, unionFilter, panchayatFilter, boothFilter])
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
@@ -206,50 +232,22 @@ export default function UserEntryPage() {
       u.role?.toLowerCase().includes(q) ||
       u.email?.toLowerCase().includes(q)
     )
-    const matchRole = !filterRole || u.role === filterRole
-    return matchSearch && matchRole
+    const matchRole     = !filterRole || u.role === filterRole
+    const matchLocation = !validBoothNamesForFilters || (!!u.booth_name && validBoothNamesForFilters.has(u.booth_name))
+    return matchSearch && matchRole && matchLocation
   })
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage   = Math.min(page, totalPages)
   const paged      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
-  // Build permission matrix: role → page_id → permission
-  const permMatrix: Record<string, Record<string, PagePermission>> = {}
-  permissions.forEach(p => {
-    if (!permMatrix[p.role]) permMatrix[p.role] = {}
-    permMatrix[p.role][p.page_id] = p
-  })
-
-  const allPageIds = [...PAGES.map(p => p.id), ...ENTRY_MODULES.map(m => m.id)]
-
   return (
     <div className="page-enter">
-      {/* ── Tab switcher ── */}
-      <div className="flex gap-2 mb-4">
-        {(['users', 'permissions'] as TabId[]).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition-all duration-150 capitalize
-              ${activeTab === tab
-                ? 'bg-navy text-white border-navy shadow-sm'
-                : 'bg-white text-muted border-border hover:border-navy hover:text-navy'
-              }`}
-          >
-            <i className={`${tab === 'users' ? 'ph ph-users' : 'ph ph-lock-key'} mr-1`} />
-            {tab === 'users' ? 'Users' : 'Permissions'}
-          </button>
-        ))}
-      </div>
-
-      {/* ── USERS TAB ── */}
-      {activeTab === 'users' && (
-        <>
+      <>
           <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
             <EntryListHeader
               title="Users" icon="ph ph-user-gear" count={users.length}
-              onAddNew={() => { if (!isAdmin) return; setEditingId(null); clear(); setFormOpen(true) }}
+              onAddNew={canAdd('user') ? () => { setEditingId(null); clear(); setFormOpen(true) } : undefined}
               addLabel="Add User"
             />
             <div className="px-[18px] py-[14px]">
@@ -259,7 +257,7 @@ export default function UserEntryPage() {
                 onExport={() => {}} onPrint={() => {}}
               />
               {/* Role filter */}
-              <div className="flex flex-wrap items-center gap-2 mt-2 pb-3 border-b border-border">
+              <div className="flex flex-wrap items-center gap-2 mt-2 mb-1">
                 <span className="text-[10px] font-bold text-muted uppercase tracking-[0.6px]">Filter:</span>
                 <select
                   value={filterRole}
@@ -269,10 +267,52 @@ export default function UserEntryPage() {
                   <option value="">All Roles</option>
                   {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
-                {filterRole && (
-                  <button onClick={() => { setFilterRole(''); setPage(1) }}
+              </div>
+
+              {/* Location filters: Block / Union / Panchayat / Booth — independent */}
+              <div className="flex items-center gap-2 mb-2 mt-1 flex-wrap pb-3 border-b border-border">
+                <i className="ph ph-map-pin text-saffron text-[13px]" />
+
+                <select
+                  value={blockFilter}
+                  onChange={e => { setBlockFilter(e.target.value); setPage(1) }}
+                  className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${blockFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+                >
+                  <option value="">All Block</option>
+                  {blocks.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                </select>
+
+                <select
+                  value={unionFilter}
+                  onChange={e => { setUnionFilter(e.target.value); setPage(1) }}
+                  className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${unionFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+                >
+                  <option value="">All Union</option>
+                  {unions.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
+
+                <select
+                  value={panchayatFilter}
+                  onChange={e => { setPanchayatFilter(e.target.value); setBoothFilter(''); setPage(1) }}
+                  className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${panchayatFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+                >
+                  <option value="">All Panchayat</option>
+                  {panchayats.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                </select>
+
+                <select
+                  value={boothFilter}
+                  onChange={e => { setBoothFilter(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
+                  className={`form-input text-[11px] py-[4px] pr-7 min-w-[180px] w-auto ${boothFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+                >
+                  <option value="">All Booths</option>
+                  {filteredBooths.map(b => <option key={b.id} value={b.id}>{b.number} — {b.name}</option>)}
+                </select>
+
+                {(filterRole || blockFilter || unionFilter || panchayatFilter || boothFilter) && (
+                  <button onClick={() => { setFilterRole(''); setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilter(''); setPage(1) }}
                     className="text-[10px] font-bold text-kampr flex items-center gap-1">
-                    <i className="ph ph-x-circle" /> Clear
+                    <i className="ph ph-x-circle" /> Clear Filters
                   </button>
                 )}
                 <span className="ml-auto text-[10px] text-muted">{filtered.length} users</span>
@@ -305,23 +345,27 @@ export default function UserEntryPage() {
                             <p className="text-[11px] text-muted">@{u.username}{u.phone ? ` · ${u.phone}` : ''}{u.email ? ` · ${u.email}` : ''}</p>
                           </div>
                         </div>
-                        {isAdmin && (
+                        {(canEdit('user') || canDelete('user')) && (
                           <div className="flex gap-2">
-                            <button onClick={() => handleEdit(u.id)} className="p-[7px] rounded-lg hover:bg-[#f0f4ff] text-navy transition-colors">
-                              <i className="ph ph-pencil text-[14px]" />
-                            </button>
-                            <button
-                              onClick={() => handleDeactivateRequest(u)}
-                              disabled={u.id === currentUser?.id || u.role === 'admin'}
-                              title={
-                                u.id === currentUser?.id ? 'You cannot delete yourself'
-                                : u.role === 'admin' ? 'Admin users cannot be deleted'
-                                : 'Delete user'
-                              }
-                              className="p-[7px] rounded-lg hover:bg-[#fff0f0] text-kampr transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                              <i className="ph ph-user-minus text-[14px]" />
-                            </button>
+                            {canEdit('user') && (
+                              <button onClick={() => handleEdit(u.id)} className="p-[7px] rounded-lg hover:bg-[#f0f4ff] text-navy transition-colors">
+                                <i className="ph ph-pencil text-[14px]" />
+                              </button>
+                            )}
+                            {canDelete('user') && (
+                              <button
+                                onClick={() => handleDeactivateRequest(u)}
+                                disabled={u.id === currentUser?.id || u.role === 'admin'}
+                                title={
+                                  u.id === currentUser?.id ? 'You cannot delete yourself'
+                                  : u.role === 'admin' ? 'Admin users cannot be deleted'
+                                  : 'Delete user'
+                                }
+                                className="p-[7px] rounded-lg hover:bg-[#fff0f0] text-kampr transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                <i className="ph ph-user-minus text-[14px]" />
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -424,8 +468,6 @@ export default function UserEntryPage() {
 
             <FormActions onSave={handleSave} onClear={clear} saveLabel={editingId ? 'Update User' : 'Create User'} isEditing={editingId !== null} />
           </EntryFormPanel>
-        </>
-      )}
 
       {/* ── Delete Confirmation Modal ── */}
       {confirmDeleteId !== null && (() => {
@@ -464,120 +506,7 @@ export default function UserEntryPage() {
           </div>
         )
       })()}
-
-      {/* ── PERMISSIONS TAB ── */}
-      {activeTab === 'permissions' && (
-        <div className="bg-surface rounded-card shadow-card overflow-hidden">
-          <div className="px-[18px] py-[14px] border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <i className="ph ph-lock-key text-navy text-[18px]" />
-              <div>
-                <h3 className="text-[13px] font-bold text-navy">Page Access Control</h3>
-                <p className="text-[11px] text-muted">Admin can toggle access for each role</p>
-              </div>
-            </div>
-            {!isAdmin && (
-              <span className="text-[11px] text-muted italic">View only — admin access required to edit</span>
-            )}
-          </div>
-
-          {permissions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted gap-2">
-              <i className="ph ph-circle-notch animate-spin text-[24px]" />
-              <p className="text-[13px]">Loading permissions...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead>
-                  <tr className="bg-[#f8fafc]">
-                    <th className="text-left px-4 py-3 font-bold text-navy border-b border-border sticky left-0 bg-[#f8fafc] min-w-[160px]">
-                      Page / Module
-                    </th>
-                    {ROLES.map(role => (
-                      <th key={role.value} className="px-3 py-3 font-bold text-navy border-b border-border text-center min-w-[90px]">
-                        <div style={ROLE_BADGE[role.value]}
-                          className="px-2 py-1 rounded-full text-[9px] font-semibold">
-                          {role.label.split(' ')[0]}
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Pages section header */}
-                  <tr className="bg-[#0d2455] text-white">
-                    <td colSpan={ROLES.length + 1} className="px-4 py-[6px] text-[10px] font-bold uppercase tracking-[1px]">
-                      Top-Level Pages
-                    </td>
-                  </tr>
-                  {PAGES.map((page, idx) => (
-                    <tr key={page.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#fafbfc]'}>
-                      <td className="px-4 py-[10px] font-medium text-navy border-b border-[#f0f0f0] sticky left-0 bg-inherit">
-                        {page.label}
-                      </td>
-                      {ROLES.map(role => {
-                        const perm = permMatrix[role.value]?.[page.id]
-                        const enabled = perm?.can_access ?? false
-                        return (
-                          <td key={role.value} className="px-3 py-[10px] text-center border-b border-[#f0f0f0]">
-                            <button
-                              onClick={() => isAdmin && perm && handlePermToggle(perm)}
-                              disabled={!isAdmin || !perm}
-                              className={`w-5 h-5 rounded-md flex items-center justify-center mx-auto transition-all
-                                ${enabled
-                                  ? 'bg-kampgreen text-white'
-                                  : 'bg-[#f1f5f9] text-[#cbd5e1]'
-                                }
-                                ${isAdmin && perm ? 'cursor-pointer hover:scale-110' : 'cursor-default opacity-60'}`}
-                            >
-                              <i className={`ph ph-${enabled ? 'check' : 'x'} text-[10px]`} />
-                            </button>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-
-                  {/* Entry modules section header */}
-                  <tr className="bg-[#e07010] text-white">
-                    <td colSpan={ROLES.length + 1} className="px-4 py-[6px] text-[10px] font-bold uppercase tracking-[1px]">
-                      Entry Sub-Modules
-                    </td>
-                  </tr>
-                  {ENTRY_MODULES.map((mod, idx) => (
-                    <tr key={mod.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#fafbfc]'}>
-                      <td className="px-4 py-[10px] text-muted border-b border-[#f0f0f0] sticky left-0 bg-inherit">
-                        {mod.label}
-                      </td>
-                      {ROLES.map(role => {
-                        const perm = permMatrix[role.value]?.[mod.id]
-                        const enabled = perm?.can_access ?? false
-                        return (
-                          <td key={role.value} className="px-3 py-[10px] text-center border-b border-[#f0f0f0]">
-                            <button
-                              onClick={() => isAdmin && perm && handlePermToggle(perm)}
-                              disabled={!isAdmin || !perm}
-                              className={`w-5 h-5 rounded-md flex items-center justify-center mx-auto transition-all
-                                ${enabled
-                                  ? 'bg-kampgreen text-white'
-                                  : 'bg-[#f1f5f9] text-[#cbd5e1]'
-                                }
-                                ${isAdmin && perm ? 'cursor-pointer hover:scale-110' : 'cursor-default opacity-60'}`}
-                            >
-                              <i className={`ph ph-${enabled ? 'check' : 'x'} text-[10px]`} />
-                            </button>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+      </>
     </div>
   )
 }

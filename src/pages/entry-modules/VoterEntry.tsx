@@ -543,6 +543,13 @@ export default function VoterEntry() {
     [voters]
   )
 
+  const filteredWards = useMemo(() => {
+    if (!boothFilter) return wards
+    const booth = booths.find(b => b.id === boothFilter)
+    if (!booth) return wards
+    return booth.ward ? wards.filter(w => w.id === booth.ward) : []
+  }, [wards, booths, boothFilter])
+
   const voterFilterConfig = useMemo(() => [
     { key: 'gender', label: 'Gender', options: [
       { value: 'm', label: 'Male' },
@@ -722,7 +729,7 @@ export default function VoterEntry() {
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${wardFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
               <option value="">All Wards</option>
-              {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {filteredWards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
 
             {/* Pincode */}

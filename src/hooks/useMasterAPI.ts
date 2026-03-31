@@ -24,6 +24,7 @@ interface Ward {
 
 interface Booth {
   id: number; number: string; name: string; code: string
+  ward?: number | null; ward_name?: string | null
   panchayat?: number | null; panchayat_name?: string; constituency_name?: string
   total_voters: number; male_voters?: number; female_voters?: number
   status?: string; sentiment?: string; address?: string

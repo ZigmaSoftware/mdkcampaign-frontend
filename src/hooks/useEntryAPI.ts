@@ -61,6 +61,7 @@ interface VolunteerRecord {
   booths?: number[]
   booth_names?: string[]
   ward: number | null
+  panchayat?: number | null
   status?: string
   role?: string
   age?: number | null
@@ -111,6 +112,8 @@ interface BoothRecord {
   id: number
   number: string
   name: string
+  ward?: number | null
+  ward_name?: string | null
   panchayat?: number | null
   constituency_name?: string
   total_voters: number
@@ -138,6 +141,7 @@ interface ActivityLogRecord {
   notes?: string
   username?: string
   user_role?: string
+  assigned_to?: string
   created_at?: string
 }
 
@@ -162,6 +166,7 @@ interface FieldSurveyRecord {
   remarks?: string
   response_status?: string
   surveyed_by?: string
+  assigned_volunteer?: string   // volunteer assigned for field visit
   created_at?: string
 }
 

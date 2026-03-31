@@ -24,7 +24,7 @@ export const ENTRY_TABS: { id: EntryModuleId; label: string; icon: string }[] = 
   { id: 'commitment',         label: 'Commitments', icon: 'ph ph-push-pin'            },
   { id: 'grievance',          label: 'Grievance',   icon: 'ph ph-warning'             },
   { id: 'agent-activity',     label: 'Agent Log',   icon: 'ph ph-identification-card' },
-  { id: 'field-activity',     label: 'Field Log',   icon: 'ph ph-map-trifold'         },
+  { id: 'field-activity',     label: 'Field Survey', icon: 'ph ph-map-trifold'         },
   { id: 'volunteer-activity', label: 'Vol. Log',    icon: 'ph ph-clipboard-text'      },
   { id: 'voter-survey',       label: 'Feedback',    icon: 'ph ph-notepad'             },
   { id: 'attendance',         label: 'Attendance',      icon: 'ph ph-clock'               },

@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import apiClient from '../../utils/api'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Booth, Ward, VolunteerRole, VolunteerType, Panchayat } from '../../hooks/useMasterAPI'
+import type { Booth, Ward, VolunteerRole, VolunteerType, Panchayat, Union } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
@@ -16,6 +16,7 @@ import { exportRecordsToCsv } from '../../utils/exportCsv'
 import { printModule } from '../../utils/printModule'
 import { todayISO } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
+import { usePermissions } from '../../context/PermissionContext'
 import type { EntryRecord } from '../../types/entry.types'
 
 const FORM_ID = 'volunteer-form'
@@ -176,10 +177,12 @@ export default function VolunteerEntry() {
   const api = useEntryAPI()
   const masterApi = useMasterAPI()
   const { showToast } = useToast()
+  const { canAdd, canEdit, canDelete } = usePermissions()
 
   const [volunteers, setVolunteers]         = useState<VolunteerRecord[]>([])
   const [booths, setBooths]                 = useState<Booth[]>([])
   const [wards, setWards]                   = useState<Ward[]>([])
+  const [unions, setUnions]                 = useState<Union[]>([])
   const [panchayats, setPanchayats]         = useState<Panchayat[]>([])
   const [volunteerRoles, setVolunteerRoles] = useState<VolunteerRole[]>([])
   const [volunteerTypes, setVolunteerTypes] = useState<VolunteerType[]>([])
@@ -187,20 +190,25 @@ export default function VolunteerEntry() {
   const [isFormOpen, setFormOpen]           = useState(false)
   const [showImport, setShowImport]         = useState(false)
   const [search, setSearch]                 = useState('')
-  const [boothFilter, setBoothFilter]       = useState<number | undefined>(undefined)
+  const [blockFilter, setBlockFilter]           = useState('')
+  const [unionFilter, setUnionFilter]           = useState('')
+  const [panchayatFilter, setPanchayatFilter]   = useState('')
+  const [boothFilterLocal, setBoothFilterLocal] = useState<number | ''>('')
+  const [wardFilter, setWardFilter]             = useState<number | ''>('')
   const [selectedBoothIds, setSelectedBoothIds] = useState<number[]>([])
 
   useEffect(() => {
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchWards().then(d => d && setWards(d))
+    masterApi.fetchUnions().then(d => d && setUnions(d))
     masterApi.fetchPanchayats().then(d => d && setPanchayats(d))
     masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))
     masterApi.fetchVolunteerTypes().then(d => d && setVolunteerTypes(d))
   }, [])
 
   useEffect(() => {
-    api.fetchVolunteers(boothFilter).then(d => d && setVolunteers(d))
-  }, [boothFilter])
+    api.fetchVolunteers().then(d => d && setVolunteers(d))
+  }, [])
 
   const blocks = useBlocks()
 
@@ -386,7 +394,33 @@ export default function VolunteerEntry() {
     }
   }
 
-  const filtered = volunteers
+  // Block / Union / Panchayat are fully independent; Booth narrows by Panchayat; Ward narrows by Booth
+  const filteredUnions     = unions
+  const filteredPanchayats = panchayats
+  const filteredBooths = useMemo(() => {
+    if (!panchayatFilter) return booths
+    const panchayatId = panchayats.find(p => p.name === panchayatFilter)?.id
+    return panchayatId ? booths.filter(b => b.panchayat === panchayatId) : booths
+  }, [booths, panchayats, panchayatFilter])
+
+  const filteredWards = useMemo(() => {
+    if (!boothFilterLocal) return wards
+    const booth = booths.find(b => b.id === boothFilterLocal)
+    if (!booth) return wards
+    return booth.ward ? wards.filter(w => w.id === booth.ward) : []
+  }, [wards, booths, boothFilterLocal])
+
+  const cascadeFilteredVolunteers = useMemo(() =>
+    volunteers
+      .filter(v => !blockFilter     || v.block === blockFilter)
+      .filter(v => !unionFilter     || v.union_name === unionFilter)
+      .filter(v => !panchayatFilter || v.panchayat_name === panchayatFilter)
+      .filter(v => !boothFilterLocal || v.booths?.includes(boothFilterLocal as number) || v.booth === boothFilterLocal)
+      .filter(v => !wardFilter      || v.ward === wardFilter),
+    [volunteers, blockFilter, unionFilter, panchayatFilter, boothFilterLocal, wardFilter]
+  )
+
+  const filtered = cascadeFilteredVolunteers
     .filter(v => {
       if (!search.trim()) return true
       const q = search.toLowerCase()
@@ -408,7 +442,7 @@ export default function VolunteerEntry() {
     })
     .map<EntryRecord>(mapVolunteer)
 
-  const allVolunteerRecords = volunteers.map<EntryRecord>(mapVolunteer)
+  const allVolunteerRecords = cascadeFilteredVolunteers.map<EntryRecord>(mapVolunteer)
 
   return (
     <div className="page-enter">
@@ -417,7 +451,7 @@ export default function VolunteerEntry() {
           title="Volunteer Records"
           icon="ph ph-users-three"
           count={volunteers.length}
-          onAddNew={() => { setEditing(null); clear(); setFormOpen(true) }}
+          onAddNew={canAdd('volunteer') ? () => { setEditing(null); clear(); setFormOpen(true) } : undefined}
           addLabel="Add Volunteer"
           onImport={() => setShowImport(true)}
         />
@@ -456,24 +490,63 @@ export default function VolunteerEntry() {
             onExport={() => exportRecordsToCsv(allVolunteerRecords, 'Volunteers')}
             onPrint={() => printModule(allVolunteerRecords, 'Volunteers')}
           />
-          <div className="flex items-center gap-2 mt-2 mb-1">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-muted whitespace-nowrap">Filter by Booth</label>
+          {/* Location filters: Block / Union / Panchayat / Booth — all independent */}
+          <div className="flex items-center gap-2 mb-2 mt-1 flex-wrap">
+            <i className="ph ph-map-pin text-saffron text-[13px]" />
+
             <select
-              value={boothFilter ?? ''}
-              onChange={e => setBoothFilter(e.target.value ? Number(e.target.value) : undefined)}
-              className={`${selectCls} w-[220px]`}
+              value={blockFilter}
+              onChange={e => setBlockFilter(e.target.value)}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${blockFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Block</option>
+              {blocks.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+            </select>
+
+            <select
+              value={unionFilter}
+              onChange={e => setUnionFilter(e.target.value)}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${unionFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Union</option>
+              {filteredUnions.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+            </select>
+
+            <select
+              value={panchayatFilter}
+              onChange={e => setPanchayatFilter(e.target.value)}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${panchayatFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Panchayat</option>
+              {filteredPanchayats.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+
+            <select
+              value={boothFilterLocal}
+              onChange={e => setBoothFilterLocal(e.target.value ? Number(e.target.value) : '')}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[180px] w-auto ${boothFilterLocal ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
               <option value="">All Booths</option>
-              {booths.map(b => (
+              {filteredBooths.map(b => (
                 <option key={b.id} value={b.id}>{b.number} — {b.name}</option>
               ))}
             </select>
-            {boothFilter && (
+
+            <select
+              value={wardFilter}
+              onChange={e => setWardFilter(e.target.value ? Number(e.target.value) : '')}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${wardFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Wards</option>
+              {filteredWards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+
+            {(blockFilter || unionFilter || panchayatFilter || boothFilterLocal || wardFilter) && (
               <button
-                onClick={() => setBoothFilter(undefined)}
-                className="text-[11px] text-rose-500 hover:underline"
+                onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilterLocal(''); setWardFilter('') }}
+                className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
-                Clear
+                <i className="ph ph-x-circle" /> Clear Filters
               </button>
             )}
           </div>
@@ -484,8 +557,8 @@ export default function VolunteerEntry() {
             icon="ph ph-users-three"
             iconBg="#dcfce7"
             iconColor="#0d6606"
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            onEdit={canEdit('volunteer') ? handleEdit : undefined}
+            onDelete={canDelete('volunteer') ? handleDelete : undefined}
             filterConfig={[
               { key: 'status', label: 'Status', options: [
                 { value: 'Active',     label: 'Active' },
@@ -503,22 +576,6 @@ export default function VolunteerEntry() {
                 { value: 'Female', label: 'Female' },
                 { value: 'Other',  label: 'Other' },
               ]},
-              { key: 'ward', label: 'Ward', options:
-                wards.map(w => ({ value: w.name, label: w.name }))
-              },
-              { key: 'block', label: 'Block', options:
-                blocks.map(b => ({ value: b.name, label: b.name }))
-              },
-              { key: 'union_name', label: 'Union', options:
-                [...new Set(volunteers.map(v => v.union_name).filter(Boolean))]
-                  .sort()
-                  .map(n => ({ value: n!, label: n! }))
-              },
-              { key: 'panchayat_name', label: 'Panchayat', options:
-                [...new Set(volunteers.map(v => v.panchayat_name).filter(Boolean))]
-                  .sort()
-                  .map(n => ({ value: n!, label: n! }))
-              },
               { key: 'source', label: 'Source', options: [
                 { value: 'WhatsApp Drive',       label: 'WhatsApp Drive' },
                 { value: 'Door-to-door',         label: 'Door-to-door' },

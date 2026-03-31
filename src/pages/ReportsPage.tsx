@@ -522,30 +522,44 @@ export default function ReportsPage() {
     )
   })
 
-  // Unique values for dropdown filters (from full boothData, not filtered)
-  const uniquePanchayats = useMemo(
-    () => [...new Set(boothData.map(b => b.panchayat_name).filter(Boolean))].sort(),
-    [boothData]
-  )
-  const uniqueUnions = useMemo(
-    () => [...new Set(boothData.map(b => b.union_name).filter(Boolean))].sort(),
-    [boothData]
-  )
+  // ── Cascading filter options: Block → Union → Panchayat → Booth ──
+  // Each level shows all values when no parent is selected (independent),
+  // or narrows to matching values when a parent IS selected.
+
   const uniqueBlocks = useMemo(
     () => [...new Set(boothData.map(b => b.block_name).filter(Boolean))].sort(),
     [boothData]
   )
 
-  // Booths available after panchayat/union/block filters (for booth dropdown)
-  const availableBooths = useMemo(() =>
-    boothData.filter(b => {
-      if (panchayatFilter && b.panchayat_name !== panchayatFilter) return false
-      if (unionFilter     && b.union_name     !== unionFilter)     return false
-      if (blockFilter     && b.block_name     !== blockFilter)     return false
-      return true
-    }).sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')),
-    [boothData, panchayatFilter, unionFilter, blockFilter]
-  )
+  // Unions: narrowed by block if set, else all
+  const uniqueUnions = useMemo(() => {
+    const pool = blockFilter
+      ? boothData.filter(b => b.block_name === blockFilter)
+      : boothData
+    return [...new Set(pool.map(b => b.union_name).filter(Boolean))].sort()
+  }, [boothData, blockFilter])
+
+  // Panchayats: narrowed by union if set, else by block if set, else all
+  const uniquePanchayats = useMemo(() => {
+    const pool = unionFilter
+      ? boothData.filter(b => b.union_name === unionFilter)
+      : blockFilter
+        ? boothData.filter(b => b.block_name === blockFilter)
+        : boothData
+    return [...new Set(pool.map(b => b.panchayat_name).filter(Boolean))].sort()
+  }, [boothData, blockFilter, unionFilter])
+
+  // Booths: narrowed by panchayat if set, else union, else block, else all
+  const availableBooths = useMemo(() => {
+    const pool = panchayatFilter
+      ? boothData.filter(b => b.panchayat_name === panchayatFilter)
+      : unionFilter
+        ? boothData.filter(b => b.union_name === unionFilter)
+        : blockFilter
+          ? boothData.filter(b => b.block_name === blockFilter)
+          : boothData
+    return pool.sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0'))
+  }, [boothData, blockFilter, unionFilter, panchayatFilter])
 
   /* ── CSV exports ─────────────────────────────────────────────────── */
   const exportBooths = () => {
@@ -575,11 +589,20 @@ export default function ReportsPage() {
     showToast('<i class="ph ph-file-csv"></i> Village report exported!', '#138808')
   }
 
-  /* ── KPI totals (from booth data which is always populated) ─────── */
-  const totalVoters    = boothData.reduce((s, b) => s + (b.total_voters    || 0), 0)
-  const totalContacted = boothData.reduce((s, b) => s + (b.voters_contacted || 0), 0)
-  const totalBooths    = boothData.length
+  /* ── KPI totals — follow active filters so cards reflect current scope ── */
+  const kpiBase        = (blockFilter || unionFilter || panchayatFilter || boothFilter) ? filteredBooths : boothData
+  const totalVoters    = kpiBase.reduce((s, b) => s + (b.total_voters    || 0), 0)
+  const totalContacted = kpiBase.reduce((s, b) => s + (b.voters_contacted || 0), 0)
+  const totalBooths    = kpiBase.length
   const overallPct     = totalVoters > 0 ? Math.round(totalContacted * 100 / totalVoters) : 0
+
+  // Breadcrumb trail for KPI scope label
+  const filterTrail = [
+    blockFilter     && { icon: 'ph-buildings',  label: blockFilter },
+    unionFilter     && { icon: 'ph-intersect',  label: unionFilter },
+    panchayatFilter && { icon: 'ph-tree',       label: panchayatFilter },
+    boothFilter     && { icon: 'ph-map-pin',    label: availableBooths.find(b => String(b.id) === boothFilter)?.name || `Booth ${boothFilter}` },
+  ].filter(Boolean) as { icon: string; label: string }[]
 
   return (
     <div className="max-w-[1440px] mx-auto px-6 py-5 md:px-[10px] sm:px-2 page-enter">
@@ -607,6 +630,28 @@ export default function ReportsPage() {
           </button>
         </div> */}
       </div>
+
+      {/* KPI scope breadcrumb */}
+      {filterTrail.length > 0 && (
+        <div className="flex items-center gap-[6px] mb-3 flex-wrap">
+          <span className="text-[9px] font-bold uppercase tracking-[0.7px] text-muted">Showing:</span>
+          {filterTrail.map((f, i) => (
+            <span key={i} className="inline-flex items-center gap-1">
+              {i > 0 && <i className="ph ph-caret-right text-[9px] text-muted" />}
+              <span className="inline-flex items-center gap-[4px] bg-saffron/10 text-navy border border-saffron/30 rounded-full px-[8px] py-[2px] text-[10px] font-semibold">
+                <i className={`ph ${f.icon} text-[10px] text-saffron`} />
+                {f.label}
+              </span>
+            </span>
+          ))}
+          <button
+            onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilter('') }}
+            className="ml-1 text-[9px] text-kampr hover:underline flex items-center gap-[3px]"
+          >
+            <i className="ph ph-x-circle" /> Reset
+          </button>
+        </div>
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-[10px] mb-5">
@@ -645,43 +690,67 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="px-[18px] py-[14px]">
-          {/* Filter row */}
+          {/* Filter row — Block → Union → Panchayat → Booth (cascade + independent) */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            {/* Panchayat filter */}
+
+            {/* 1. Block */}
+            <select
+              value={blockFilter}
+              onChange={e => {
+                setBlockFilter(e.target.value)
+                setUnionFilter('')      // reset children
+                setPanchayatFilter('')
+                setBoothFilter('')
+              }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${blockFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Block</option>
+              {uniqueBlocks.map(bl => <option key={bl} value={bl}>{bl}</option>)}
+            </select>
+
+            {/* 2. Union — narrows when block is set, independent otherwise */}
+            <select
+              value={unionFilter}
+              onChange={e => {
+                setUnionFilter(e.target.value)
+                setPanchayatFilter('')  // reset children
+                setBoothFilter('')
+              }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${unionFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Union</option>
+              {uniqueUnions.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+
+            {/* 3. Panchayat — narrows when union/block is set, independent otherwise */}
             <select
               value={panchayatFilter}
-              onChange={e => { setPanchayatFilter(e.target.value); setUnionFilter(''); setBlockFilter(''); setBoothFilter('') }}
+              onChange={e => {
+                setPanchayatFilter(e.target.value)
+                setBoothFilter('')      // reset children
+              }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${panchayatFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
               <option value="">All Panchayat</option>
               {uniquePanchayats.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-            {/* Union filter */}
+
+            {/* 4. Booth — narrows based on deepest active ancestor */}
             <select
-              value={unionFilter}
-              onChange={e => { setUnionFilter(e.target.value); setBlockFilter(''); setBoothFilter('') }}
-              className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${unionFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+              value={boothFilter}
+              onChange={e => setBoothFilter(e.target.value)}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[160px] w-auto ${boothFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
-              <option value="">All Union</option>
-              {(panchayatFilter
-                ? [...new Set(boothData.filter(b => b.panchayat_name === panchayatFilter).map(b => b.union_name).filter(Boolean))].sort()
-                : uniqueUnions
-              ).map(u => <option key={u} value={u}>{u}</option>)}
+              <option value="">All Booths</option>
+              {availableBooths.map(b => (
+                <option key={b.id} value={String(b.id)}>
+                  {b.number ? `#${b.number} — ` : ''}{b.name || `Booth ${b.id}`}
+                </option>
+              ))}
             </select>
-            {/* Block filter */}
-            <select
-              value={blockFilter}
-              onChange={e => { setBlockFilter(e.target.value); setBoothFilter('') }}
-              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${blockFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
-            >
-              <option value="">All Block</option>
-              {(unionFilter
-                ? [...new Set(boothData.filter(b => b.union_name === unionFilter).map(b => b.block_name).filter(Boolean))].sort()
-                : uniqueBlocks
-              ).map(bl => <option key={bl} value={bl}>{bl}</option>)}
-            </select>
+
             {/* Search */}
-            <div className="relative flex-1 min-w-[200px] max-w-[320px]">
+            <div className="relative flex-1 min-w-[200px] max-w-[300px]">
               <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-[13px] pointer-events-none" />
               <input
                 type="text" value={boothSearch}
@@ -696,23 +765,11 @@ export default function ReportsPage() {
                 </button>
               )}
             </div>
-            {/* Booth filter */}
-            <select
-              value={boothFilter}
-              onChange={e => setBoothFilter(e.target.value)}
-              className={`form-input text-[11px] py-[4px] pr-7 min-w-[160px] w-auto ${boothFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
-            >
-              <option value="">All Booths</option>
-              {availableBooths.map(b => (
-                <option key={b.id} value={String(b.id)}>
-                  {b.number ? `#${b.number} — ` : ''}{b.name || `Booth ${b.id}`}
-                </option>
-              ))}
-            </select>
+
             {/* Clear all filters */}
-            {(panchayatFilter || unionFilter || blockFilter || boothFilter || boothSearch) && (
+            {(blockFilter || unionFilter || panchayatFilter || boothFilter || boothSearch) && (
               <button
-                onClick={() => { setPanchayatFilter(''); setUnionFilter(''); setBlockFilter(''); setBoothFilter(''); setBoothSearch('') }}
+                onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilter(''); setBoothSearch('') }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
                 <i className="ph ph-x-circle" /> Clear

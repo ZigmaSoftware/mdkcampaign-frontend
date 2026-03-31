@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import bjpLogo      from '../assets/logo/bjp-seeklogo.png'
-import congressLogo from '../assets/logo/congress_logo.png'
+import dmkLogo from '../assets/logo/dmk-logo.png'
 import ntkLogo      from '../assets/logo/ntk_logo.png'
 import tvkLogo      from '../assets/logo/tvk_logo.png'
 import notaLogo     from '../assets/logo/nota-logo.png'
@@ -16,7 +16,7 @@ const api = axios.create({
 /* ── Static display config (matched to backend option key) ── */
 const Q1_STYLE: Record<string, { logo?: string; strip: string; border: string }> = {
   bjp:   { logo: bjpLogo,      strip: '#FF9933', border: '#FF9933' },
-  dmk:   { logo: congressLogo, strip: '#dc0000', border: '#dc0000' },
+  dmk:   { logo: dmkLogo, strip: '#dc0000', border: '#dc0000' },
   ntk:   { logo: ntkLogo,      strip: '#ff6400', border: '#ff6400' },
   tvk:   { logo: tvkLogo,      strip: '#ffc800', border: '#d4a800' },
   other: {                     strip: '#aaa',    border: '#ccc'    },

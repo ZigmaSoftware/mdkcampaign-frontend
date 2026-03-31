@@ -210,7 +210,7 @@ interface UseEntryAPIReturn {
   loading: boolean
   error: string | null
   // Voters
-  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number) => Promise<{ results: VoterRecord[]; count: number } | null>
+  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number) => Promise<{ results: VoterRecord[]; count: number } | null>
   fetchVoter: (voterId: number) => Promise<VoterRecord | null>
   createVoter: (voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
@@ -267,7 +267,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOTERS ====================
 
   const fetchVoters = useCallback(
-    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number): Promise<{ results: VoterRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number): Promise<{ results: VoterRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
@@ -279,6 +279,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
             ...(pincode     ? { pincode }                : {}),
             ...(panchayatId ? { panchayat: panchayatId } : {}),
             ...(unionId     ? { union:     unionId     } : {}),
+            ...(blockId     ? { block:     blockId     } : {}),
             limit:  pageSize,
             offset: (page - 1) * pageSize,
           },

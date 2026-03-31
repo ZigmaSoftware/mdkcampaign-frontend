@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import bjpLogo      from '../assets/logo/bjp-seeklogo.png'
-import congressLogo from '../assets/logo/congress_logo.png'
+import dmkLogo from '../assets/logo/dmk-logo.png'
 import ntkLogo      from '../assets/logo/ntk_logo.png'
 import tvkLogo      from '../assets/logo/tvk_logo.png'
 import notaLogo     from '../assets/logo/nota-logo.png'
@@ -18,8 +18,8 @@ const PARTY_CONFIG: Record<string, {
   label: string
 }> = {
   bjp:   { logo: bjpLogo,      border: '#FF9933', label: 'BJP'  },
-  dmk:   { logo: congressLogo, border: '#dc0000', label: 'DMK'  },
-  inc:   { logo: congressLogo, border: '#dc0000', label: 'INC'  },
+  dmk:   { logo: dmkLogo, border: '#dc0000', label: 'DMK'  },
+  inc:   { logo: dmkLogo, border: '#dc0000', label: 'INC'  },
   tvk:   { logo: tvkLogo,      border: '#d4a800', label: 'TVK'  },
   ntk:   { logo: ntkLogo,      border: '#ff6400', label: 'NTK'  },
   nota:  { logo: notaLogo,     border: '#666',    label: 'NOTA' },

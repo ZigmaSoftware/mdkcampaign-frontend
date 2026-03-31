@@ -33,8 +33,9 @@ const TAB_GROUPS: TabGroup[] = [
     label: 'People',
     icon:  'ph ph-users-three',
     tabs: [
-      { id: 'volunteer', label: 'Volunteers', icon: 'ph ph-users-three' },
-      { id: 'user',      label: 'User Mgmt',  icon: 'ph ph-user-gear'  },
+      { id: 'volunteer',   label: 'Volunteers',  icon: 'ph ph-users-three' },
+      { id: 'beneficiary', label: 'Beneficiary', icon: 'ph ph-hand-heart'  },
+      { id: 'user',        label: 'User Mgmt',   icon: 'ph ph-user-gear'   },
     ],
   },
   {

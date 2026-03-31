@@ -13,6 +13,7 @@ export const ENTRY_TABS: { id: EntryModuleId; label: string; icon: string }[] = 
   { id: 'voter',      label: 'Voter Details', icon: 'ph ph-user'           },
   { id: 'booth',      label: 'Booth Info',    icon: 'ph ph-map-pin'        },
   { id: 'volunteer',  label: 'Volunteers',    icon: 'ph ph-users-three'    },
+  { id: 'beneficiary', label: 'Beneficiary', icon: 'ph ph-hand-heart' },
   { id: 'event',      label: 'Task Mgmt',     icon: 'ph ph-clipboard-text' },
   { id: 'campaign',   label: 'Campaign',      icon: 'ph ph-megaphone'      },
   { id: 'warroom',    label: 'War Room',      icon: 'ph ph-castle-turret'  },

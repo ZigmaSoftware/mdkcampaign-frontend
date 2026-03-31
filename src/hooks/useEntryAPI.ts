@@ -77,6 +77,36 @@ interface VolunteerRecord {
   created_at?: string
 }
 
+interface BeneficiaryRecord {
+  id: number
+  name: string
+  voter_id?: string
+  phone?: string
+  phone2?: string
+  age?: number | null
+  gender?: string
+  address?: string
+  pincode?: string
+  booth: number | null
+  booth_name?: string
+  booth_number?: string
+  ward: number | null
+  ward_name?: string
+  block?: string
+  panchayat_name?: string
+  union_name?: string
+  scheme: number | null
+  scheme_display?: string
+  scheme_name?: string
+  benefit_type?: string
+  benefit_status?: string
+  benefit_amount?: string
+  source?: string
+  is_contacted?: boolean
+  notes?: string
+  created_at?: string
+}
+
 interface BoothRecord {
   id: number
   number: string
@@ -180,7 +210,7 @@ interface UseEntryAPIReturn {
   loading: boolean
   error: string | null
   // Voters
-  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string) => Promise<{ results: VoterRecord[]; count: number } | null>
+  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number) => Promise<{ results: VoterRecord[]; count: number } | null>
   fetchVoter: (voterId: number) => Promise<VoterRecord | null>
   createVoter: (voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
@@ -211,6 +241,11 @@ interface UseEntryAPIReturn {
   createFieldSurvey: (data: Partial<FieldSurveyRecord>) => Promise<FieldSurveyRecord | null>
   updateFieldSurvey: (id: number, data: Partial<FieldSurveyRecord>) => Promise<FieldSurveyRecord | null>
   deleteFieldSurvey: (id: number) => Promise<boolean>
+  // Beneficiaries
+  fetchBeneficiaries: (boothId?: number, search?: string, wardId?: number) => Promise<BeneficiaryRecord[] | null>
+  createBeneficiary: (data: Partial<BeneficiaryRecord>) => Promise<BeneficiaryRecord | null>
+  updateBeneficiary: (id: number, data: Partial<BeneficiaryRecord>) => Promise<BeneficiaryRecord | null>
+  deleteBeneficiary: (id: number) => Promise<boolean>
   // Bulk upload
   bulkUpload: (endpoint: string, file: File) => Promise<{ created: number; skipped: number; errors: { row: number; reason: string }[] } | null>
 }
@@ -232,16 +267,18 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOTERS ====================
 
   const fetchVoters = useCallback(
-    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string): Promise<{ results: VoterRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number): Promise<{ results: VoterRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
         const { data } = await apiClient.get<ApiResponse<VoterRecord>>('/voters/voters/', {
           params: {
-            ...(boothId ? { booth: boothId } : {}),
-            ...(search  ? { search }         : {}),
-            ...(wardId  ? { ward: wardId }   : {}),
-            ...(pincode ? { pincode }        : {}),
+            ...(boothId     ? { booth:     boothId     } : {}),
+            ...(search      ? { search }                 : {}),
+            ...(wardId      ? { ward:      wardId      } : {}),
+            ...(pincode     ? { pincode }                : {}),
+            ...(panchayatId ? { panchayat: panchayatId } : {}),
+            ...(unionId     ? { union:     unionId     } : {}),
             limit:  pageSize,
             offset: (page - 1) * pageSize,
           },
@@ -586,6 +623,83 @@ export function useEntryAPI(): UseEntryAPIReturn {
     }
   }, [])
 
+  // ==================== BENEFICIARIES ====================
+
+  const fetchBeneficiaries = useCallback(
+    async (boothId?: number, search?: string, wardId?: number): Promise<BeneficiaryRecord[] | null> => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await apiClient.get<ApiResponse<BeneficiaryRecord>>('/beneficiaries/beneficiaries/', {
+          params: {
+            limit: 1000,
+            ...(boothId ? { booth: boothId } : {}),
+            ...(search  ? { search }         : {}),
+            ...(wardId  ? { ward: wardId }   : {}),
+          },
+        })
+        return data.results || []
+      } catch (err) {
+        handleError(err, 'fetch beneficiaries')
+        return null
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
+  const createBeneficiary = useCallback(
+    async (beneficiaryData: Partial<BeneficiaryRecord>): Promise<BeneficiaryRecord | null> => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await apiClient.post<BeneficiaryRecord>('/beneficiaries/beneficiaries/', beneficiaryData)
+        return data
+      } catch (err) {
+        handleError(err, 'create beneficiary')
+        return null
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
+  const updateBeneficiary = useCallback(
+    async (id: number, beneficiaryData: Partial<BeneficiaryRecord>): Promise<BeneficiaryRecord | null> => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await apiClient.patch<BeneficiaryRecord>(
+          `/beneficiaries/beneficiaries/${id}/`,
+          beneficiaryData
+        )
+        return data
+      } catch (err) {
+        handleError(err, 'update beneficiary')
+        return null
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
+  const deleteBeneficiary = useCallback(async (id: number): Promise<boolean> => {
+    setLoading(true)
+    setError(null)
+    try {
+      await apiClient.delete(`/beneficiaries/beneficiaries/${id}/`)
+      return true
+    } catch (err) {
+      handleError(err, 'delete beneficiary')
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   // ==================== BULK UPLOAD ====================
 
   const bulkUpload = useCallback(
@@ -706,8 +820,12 @@ export function useEntryAPI(): UseEntryAPIReturn {
     createFieldSurvey,
     updateFieldSurvey,
     deleteFieldSurvey,
+    fetchBeneficiaries,
+    createBeneficiary,
+    updateBeneficiary,
+    deleteBeneficiary,
     bulkUpload,
   }
 }
 
-export type { VoterRecord, VolunteerRecord, BoothRecord, CampaignEventRecord, TaskRecord, ActivityLogRecord, FieldSurveyRecord }
+export type { VoterRecord, VolunteerRecord, BoothRecord, CampaignEventRecord, TaskRecord, ActivityLogRecord, FieldSurveyRecord, BeneficiaryRecord }

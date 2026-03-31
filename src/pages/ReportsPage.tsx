@@ -466,6 +466,7 @@ export default function ReportsPage() {
   const [panchayatFilter, setPanchayatFilter] = useState('')
   const [unionFilter,     setUnionFilter]     = useState('')
   const [blockFilter,     setBlockFilter]     = useState('')
+  const [boothFilter,     setBoothFilter]     = useState('')
 
   const reload = () => {
     setLoad(true)
@@ -508,6 +509,7 @@ export default function ReportsPage() {
     if (panchayatFilter && b.panchayat_name !== panchayatFilter) return false
     if (unionFilter     && b.union_name     !== unionFilter)     return false
     if (blockFilter     && b.block_name     !== blockFilter)     return false
+    if (boothFilter     && String(b.id)     !== boothFilter)     return false
     if (!boothSearch.trim()) return true
     const q = boothSearch.toLowerCase()
     return (
@@ -534,15 +536,27 @@ export default function ReportsPage() {
     [boothData]
   )
 
+  // Booths available after panchayat/union/block filters (for booth dropdown)
+  const availableBooths = useMemo(() =>
+    boothData.filter(b => {
+      if (panchayatFilter && b.panchayat_name !== panchayatFilter) return false
+      if (unionFilter     && b.union_name     !== unionFilter)     return false
+      if (blockFilter     && b.block_name     !== blockFilter)     return false
+      return true
+    }).sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0')),
+    [boothData, panchayatFilter, unionFilter, blockFilter]
+  )
+
   /* ── CSV exports ─────────────────────────────────────────────────── */
   const exportBooths = () => {
-    if (!boothData.length) return
+    if (!filteredBooths.length) return
     const rows = [
-      ['#', 'Booth No', 'Booth Name', 'Panchayat', 'Union', 'Block', 'Total Voters', 'Contacted', 'Coverage %'],
-      ...boothData.map((b, i) => [
+      ['#', 'Booth No', 'Booth Name', 'Panchayat', 'Union', 'Block', 'Total Voters', 'Contacted', 'Coverage %', 'Volunteers'],
+      ...filteredBooths.map((b, i) => [
         String(i + 1), b.number || '', b.name || '',
         b.panchayat_name || '', b.union_name || '', b.block_name || '',
-        String(b.total_voters), String(b.voters_contacted), String(b.coverage_percentage),
+        String(b.total_voters || 0), String(b.voters_contacted || 0),
+        String(b.coverage_percentage || 0), String(b.volunteer_count || 0),
       ]),
     ]
     downloadCsv(rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n'),
@@ -572,7 +586,7 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-[14px] flex-wrap gap-2">
         <SectionHeader title="Campaign Reports" subtitle="Village-wise voter data" />
-        <div className="flex gap-2">
+        {/* <div className="flex gap-2">
           <button
             onClick={exportVillages}
             className="inline-flex items-center gap-[6px] px-[14px] py-[6px]
@@ -591,7 +605,7 @@ export default function ReportsPage() {
           >
             <i className="ph ph-printer" /> Print
           </button>
-        </div>
+        </div> */}
       </div>
 
       {/* KPI strip */}
@@ -636,7 +650,7 @@ export default function ReportsPage() {
             {/* Panchayat filter */}
             <select
               value={panchayatFilter}
-              onChange={e => { setPanchayatFilter(e.target.value); setUnionFilter(''); setBlockFilter('') }}
+              onChange={e => { setPanchayatFilter(e.target.value); setUnionFilter(''); setBlockFilter(''); setBoothFilter('') }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${panchayatFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
               <option value="">All Panchayat</option>
@@ -645,7 +659,7 @@ export default function ReportsPage() {
             {/* Union filter */}
             <select
               value={unionFilter}
-              onChange={e => { setUnionFilter(e.target.value); setBlockFilter('') }}
+              onChange={e => { setUnionFilter(e.target.value); setBlockFilter(''); setBoothFilter('') }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${unionFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
               <option value="">All Union</option>
@@ -657,7 +671,7 @@ export default function ReportsPage() {
             {/* Block filter */}
             <select
               value={blockFilter}
-              onChange={e => setBlockFilter(e.target.value)}
+              onChange={e => { setBlockFilter(e.target.value); setBoothFilter('') }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${blockFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
               <option value="">All Block</option>
@@ -682,10 +696,23 @@ export default function ReportsPage() {
                 </button>
               )}
             </div>
+            {/* Booth filter */}
+            <select
+              value={boothFilter}
+              onChange={e => setBoothFilter(e.target.value)}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[160px] w-auto ${boothFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Booths</option>
+              {availableBooths.map(b => (
+                <option key={b.id} value={String(b.id)}>
+                  {b.number ? `#${b.number} — ` : ''}{b.name || `Booth ${b.id}`}
+                </option>
+              ))}
+            </select>
             {/* Clear all filters */}
-            {(panchayatFilter || unionFilter || blockFilter || boothSearch) && (
+            {(panchayatFilter || unionFilter || blockFilter || boothFilter || boothSearch) && (
               <button
-                onClick={() => { setPanchayatFilter(''); setUnionFilter(''); setBlockFilter(''); setBoothSearch('') }}
+                onClick={() => { setPanchayatFilter(''); setUnionFilter(''); setBlockFilter(''); setBoothFilter(''); setBoothSearch('') }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
                 <i className="ph ph-x-circle" /> Clear

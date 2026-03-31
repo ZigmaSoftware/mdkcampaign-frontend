@@ -16,6 +16,7 @@ import AttendanceEntry from './entry-modules/AttendanceEntry'
 import AssignTelecalling from './entry-modules/AssignTelecalling'
 import TelecallingAssigned from './entry-modules/TelecallingAssigned'
 import FeedbackReview from './entry-modules/FeedbackReview'
+import BeneficiaryEntry from './entry-modules/BeneficiaryEntry'
 import {
   CampaignEntry,
   WarRoomEntry,
@@ -56,6 +57,7 @@ export default function EntryPage({ activeTab, onTabChange }: EntryPageProps) {
       case 'assign-telecalling':   return <AssignTelecalling />
       case 'telecalling-assigned': return <TelecallingAssigned />
       case 'feedback-review':      return <FeedbackReview />
+      case 'beneficiary':          return <BeneficiaryEntry />
       default:                   return <VoterEntry />
     }
   }
@@ -65,7 +67,7 @@ export default function EntryPage({ activeTab, onTabChange }: EntryPageProps) {
       <SectionHeader
         title="Data Entry Modules"
         icon="ph ph-pencil-simple"
-        subtitle="20 modules · Enter, update and manage all campaign data"
+        subtitle="21 modules · Enter, update and manage all campaign data"
       />
       {/* Tab bar */}
       <EntryTabBar active={activeTab} onChange={onTabChange} />

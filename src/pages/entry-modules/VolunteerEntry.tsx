@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import apiClient from '../../utils/api'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
@@ -180,6 +180,9 @@ export default function VolunteerEntry() {
   const { canAdd, canEdit, canDelete } = usePermissions()
 
   const [volunteers, setVolunteers]         = useState<VolunteerRecord[]>([])
+  const [totalCount, setTotalCount]         = useState(0)
+  const [page, setPage]                     = useState(1)
+  const PAGE_SIZE = 10
   const [booths, setBooths]                 = useState<Booth[]>([])
   const [wards, setWards]                   = useState<Ward[]>([])
   const [unions, setUnions]                 = useState<Union[]>([])
@@ -197,18 +200,34 @@ export default function VolunteerEntry() {
   const [wardFilter, setWardFilter]             = useState<number | ''>('')
   const [selectedBoothIds, setSelectedBoothIds] = useState<number[]>([])
 
+  const apiRef = useRef(api)
+  apiRef.current = api
+
+  const loadVolunteers = useCallback((p: number, q: string, boothId?: number, wardId?: number, blk?: string, uni?: string, pan?: string) => {
+    apiRef.current.fetchVolunteers(
+      boothId, q || undefined, wardId, p, PAGE_SIZE, blk || undefined, uni || undefined, pan || undefined
+    ).then(d => { setVolunteers(d?.results ?? []); setTotalCount(d?.count ?? 0) })
+  }, [PAGE_SIZE])
+
   useEffect(() => {
+    loadVolunteers(1, '')
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchWards().then(d => d && setWards(d))
     masterApi.fetchUnions().then(d => d && setUnions(d))
     masterApi.fetchPanchayats().then(d => d && setPanchayats(d))
     masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))
     masterApi.fetchVolunteerTypes().then(d => d && setVolunteerTypes(d))
-  }, [])
+  }, [loadVolunteers])
 
+  const isFirstFilterRender = useRef(true)
   useEffect(() => {
-    api.fetchVolunteers().then(d => d && setVolunteers(d))
-  }, [])
+    if (isFirstFilterRender.current) { isFirstFilterRender.current = false; return }
+    const t = setTimeout(() => {
+      setPage(1)
+      loadVolunteers(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [search, boothFilterLocal, wardFilter, blockFilter, unionFilter, panchayatFilter, loadVolunteers])
 
   const blocks = useBlocks()
 
@@ -313,10 +332,11 @@ export default function VolunteerEntry() {
     } else {
       const created = await api.createVolunteer({ ...commonFields } as any)
       if (created) {
-        setVolunteers(prev => [...prev, created])
         showToast('<i class="ph ph-check-circle"></i> Volunteer saved!', '#138808')
         setFormOpen(false)
         clear()
+        setPage(1)
+        loadVolunteers(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
       } else {
         showToast('<i class="ph ph-x-circle"></i> Failed to save volunteer. Please check all required fields.', '#dc2626')
       }
@@ -336,8 +356,8 @@ export default function VolunteerEntry() {
     if (!vol) return
     const updated = await api.updateVolunteer(vol.id, { status: 'inactive' } as any)
     if (updated) {
-      setVolunteers(prev => prev.filter(v => v.id !== vol.id))
       showToast('<i class="ph ph-trash"></i> Volunteer deactivated.', '#dc2626')
+      loadVolunteers(page, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
     }
   }
 
@@ -394,55 +414,13 @@ export default function VolunteerEntry() {
     }
   }
 
-  // Block / Union / Panchayat are fully independent; Booth narrows by Panchayat; Ward narrows by Booth
   const filteredUnions     = unions
   const filteredPanchayats = panchayats
-  const filteredBooths = useMemo(() => {
-    if (!panchayatFilter) return booths
-    const panchayatId = panchayats.find(p => p.name === panchayatFilter)?.id
-    return panchayatId ? booths.filter(b => b.panchayat === panchayatId) : booths
-  }, [booths, panchayats, panchayatFilter])
+  const filteredBooths     = booths
+  const filteredWards      = wards
 
-  const filteredWards = useMemo(() => {
-    if (!boothFilterLocal) return wards
-    const booth = booths.find(b => b.id === boothFilterLocal)
-    if (!booth) return wards
-    return booth.ward ? wards.filter(w => w.id === booth.ward) : []
-  }, [wards, booths, boothFilterLocal])
-
-  const cascadeFilteredVolunteers = useMemo(() =>
-    volunteers
-      .filter(v => !blockFilter     || v.block === blockFilter)
-      .filter(v => !unionFilter     || v.union_name === unionFilter)
-      .filter(v => !panchayatFilter || v.panchayat_name === panchayatFilter)
-      .filter(v => !boothFilterLocal || v.booths?.includes(boothFilterLocal as number) || v.booth === boothFilterLocal)
-      .filter(v => !wardFilter      || v.ward === wardFilter),
-    [volunteers, blockFilter, unionFilter, panchayatFilter, boothFilterLocal, wardFilter]
-  )
-
-  const filtered = cascadeFilteredVolunteers
-    .filter(v => {
-      if (!search.trim()) return true
-      const q = search.toLowerCase()
-      return [
-        v.voter_id,
-        getVolName(v),
-        v.phone,
-        v.phone2,
-        v.role,
-        v.volunteer_type,
-        v.status,
-        v.block,
-        v.panchayat_name,
-        v.union_name,
-        v.skills,
-        v.source,
-        ...(v.booth_names ?? []),
-      ].some(field => field?.toLowerCase().includes(q))
-    })
-    .map<EntryRecord>(mapVolunteer)
-
-  const allVolunteerRecords = cascadeFilteredVolunteers.map<EntryRecord>(mapVolunteer)
+  const filtered = volunteers.map<EntryRecord>(mapVolunteer)
+  const allVolunteerRecords = filtered
 
   return (
     <div className="page-enter">
@@ -450,7 +428,7 @@ export default function VolunteerEntry() {
         <EntryListHeader
           title="Volunteer Records"
           icon="ph ph-users-three"
-          count={volunteers.length}
+          count={totalCount}
           onAddNew={canAdd('volunteer') ? () => { setEditing(null); clear(); setFormOpen(true) } : undefined}
           addLabel="Add Volunteer"
           onImport={() => setShowImport(true)}
@@ -477,7 +455,7 @@ export default function VolunteerEntry() {
                 volunteer_type: 'paid_volunteer / social_media_volunteer / alliance_volunteer',
                 status: 'active / inactive / on_leave',
               },
-              onSuccess: () => { api.fetchVolunteers().then(d => d && setVolunteers(d)) },
+              onSuccess: () => { setPage(1); loadVolunteers(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter) },
             }}
             onClose={() => setShowImport(false)}
           />
@@ -559,6 +537,9 @@ export default function VolunteerEntry() {
             iconColor="#0d6606"
             onEdit={canEdit('volunteer') ? handleEdit : undefined}
             onDelete={canDelete('volunteer') ? handleDelete : undefined}
+            itemsPerPage={PAGE_SIZE}
+            serverTotal={totalCount}
+            startIndex={(page - 1) * PAGE_SIZE}
             filterConfig={[
               { key: 'status', label: 'Status', options: [
                 { value: 'Active',     label: 'Active' },
@@ -586,6 +567,26 @@ export default function VolunteerEntry() {
               ]},
             ]}
           />
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-3 px-1">
+              <span className="text-[11px] text-muted">
+                Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString('en-IN')}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={page === 1}
+                  onClick={() => { const p = page - 1; setPage(p); loadVolunteers(p, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter) }}
+                  className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
+                >← Prev</button>
+                <span className="text-[11px] text-muted py-1">Page {page} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
+                <button
+                  disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
+                  onClick={() => { const p = page + 1; setPage(p); loadVolunteers(p, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter) }}
+                  className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
+                >Next →</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

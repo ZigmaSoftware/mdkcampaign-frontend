@@ -35,7 +35,22 @@ interface Booth {
 }
 
 interface VolunteerName {
-  id: number; user_name: string; phone: string
+  id: number; user_id?: number | null; user_name: string; phone: string; role?: string
+}
+
+interface TaskType {
+  id: number; name: string; status?: 'active' | 'inactive'; description?: string; order: number
+}
+
+interface AssignableUser {
+  id: number
+  username: string
+  first_name?: string
+  last_name?: string
+  full_name?: string
+  role: string
+  phone?: string
+  email?: string
 }
 
 interface Area {
@@ -65,6 +80,7 @@ interface Achievement {
 
 interface TaskCategory {
   id: number; name: string; description?: string; color?: string; icon?: string; priority?: number
+  task_type?: number | null; task_type_name?: string
 }
 
 interface CampaignActivityType {
@@ -237,9 +253,19 @@ export function useMasterAPI() {
   const deleteAchievement  = useCallback((id: number) =>
     deleteOne(`/masters/achievements/${id}/`), [deleteOne])
 
+  // ── Task Types ────────────────────────────────────────────────
+  const fetchTaskTypes = useCallback(() =>
+    getList<TaskType>('/masters/task-types/'), [getList])
+  const createTaskType = useCallback((d: Partial<TaskType>) =>
+    createOne<TaskType>('/masters/task-types/', d), [createOne])
+  const updateTaskType = useCallback((id: number, d: Partial<TaskType>) =>
+    updateOne<TaskType>(`/masters/task-types/${id}/`, d), [updateOne])
+  const deleteTaskType = useCallback((id: number) =>
+    deleteOne(`/masters/task-types/${id}/`), [deleteOne])
+
   // ── Task Categories ───────────────────────────────────────────
-  const fetchTaskCategories = useCallback(() =>
-    getList<TaskCategory>('/masters/task-categories/'), [getList])
+  const fetchTaskCategories = useCallback((taskTypeId?: number) =>
+    getList<TaskCategory>('/masters/task-categories/', taskTypeId ? { task_type: taskTypeId } : undefined), [getList])
   const createTaskCategory  = useCallback((d: Partial<TaskCategory>) =>
     createOne<TaskCategory>('/masters/task-categories/', d), [createOne])
   const updateTaskCategory  = useCallback((id: number, d: Partial<TaskCategory>) =>
@@ -315,14 +341,20 @@ export function useMasterAPI() {
   }, [])
 
   // ── Volunteers (names for agent multiselect) ─────────────────
-  const fetchVolunteerNames = useCallback(async (): Promise<VolunteerName[] | null> => {
+  const fetchVolunteerNames = useCallback(async (role?: string): Promise<VolunteerName[] | null> => {
     setLoading(true); setError(null)
     try {
-      const { data } = await apiClient.get<VolunteerName[]>('/volunteers/volunteers/names/')
+      const params: Record<string, string> = {}
+      if (role) params.role = role
+      const { data } = await apiClient.get<VolunteerName[]>('/volunteers/volunteers/names/', { params })
       return data
     } catch (err) { handleError(err, 'fetch volunteer names'); return null }
     finally { setLoading(false) }
   }, [])
+
+  // ── Users (role-filtered assignee dropdowns) ────────────────
+  const fetchAssignableUsers = useCallback((role?: string) =>
+    getList<AssignableUser>('/auth/users/', role ? { role } : undefined), [getList])
 
   return {
     loading, error,
@@ -335,9 +367,11 @@ export function useMasterAPI() {
     fetchCandidates, createCandidate, updateCandidate, deleteCandidate,
     fetchSchemes, createScheme, updateScheme, deleteScheme,
     fetchAchievements, createAchievement, updateAchievement, deleteAchievement,
+    fetchTaskTypes, createTaskType, updateTaskType, deleteTaskType,
     fetchTaskCategories, createTaskCategory, updateTaskCategory, deleteTaskCategory,
     fetchCampaignActivityTypes, createCampaignActivityType, updateCampaignActivityType, deleteCampaignActivityType,
     fetchVolunteerNames,
+    fetchAssignableUsers,
     fetchVolunteerTypes, createVolunteerType, updateVolunteerType, deleteVolunteerType,
     fetchVolunteerRoles, createVolunteerRole, updateVolunteerRole, deleteVolunteerRole,
     fetchPanchayats, createPanchayat, updatePanchayat, deletePanchayat,
@@ -347,5 +381,5 @@ export function useMasterAPI() {
 }
 
 export type Village = Ward
-export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, TaskCategory, CampaignActivityType, VolunteerName, VolunteerRole, VolunteerType, Panchayat, Union }
+export type { Country, State, District, Constituency, Ward, Booth, Area, Party, Candidate, Scheme, Achievement, TaskType, TaskCategory, CampaignActivityType, VolunteerName, AssignableUser, VolunteerRole, VolunteerType, Panchayat, Union }
 export type UseMasterAPIReturn = ReturnType<typeof useMasterAPI>

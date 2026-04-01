@@ -34,7 +34,7 @@ function AppShell() {
   const [showSignup,       setShowSignup]       = useState(false)
 
   // ── Public poll (no auth needed) ────────────────────────
-  if (window.location.hash === '#poll' || window.location.hash === '#mkpoll') return <PublicPollPage />
+  if (window.location.hash === '#modakurichi' || window.location.hash === '#poll' || window.location.hash === '#mkpoll') return <PublicPollPage />
 
   // ── Not logged in → show login or signup ────────────────
   if (!isAuthenticated) {

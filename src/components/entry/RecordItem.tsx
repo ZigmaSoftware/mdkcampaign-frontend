@@ -15,6 +15,7 @@ interface RecordItemProps {
   sub:         string
   isEditing?:  boolean
   tag?:        RecordTag
+  tag2?:       RecordTag
   onTagClick?: () => void
   onView?:             () => void
   onViewVolunteers?:   () => void
@@ -31,6 +32,7 @@ export default function RecordItem({
   sub,
   isEditing,
   tag,
+  tag2,
   onTagClick,
   onView,
   onViewVolunteers,
@@ -74,6 +76,14 @@ export default function RecordItem({
                 {tag.label}
               </span>
             )
+          )}
+          {tag2 && (
+            <span
+              className="inline-flex items-center text-[9px] font-bold px-[6px] py-[2px] rounded-[10px] tracking-[0.4px] ml-[4px]"
+              style={{ background: tag2.bg, color: tag2.color }}
+            >
+              {tag2.label}
+            </span>
           )}
           {isEditing && (
             <span

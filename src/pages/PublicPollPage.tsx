@@ -104,7 +104,7 @@ export default function PublicPollPage() {
   }, [selId, poll, busy, voted, deviceId])
 
   /* ── Share — prefer is.gd short URL from backend (no IP exposed) ── */
-  const shareUrl = `${window.location.origin}/#poll`
+  const shareUrl = `${window.location.origin}/#modakurichi`
   const share = (p: 'wa'|'fb'|'copy') => {
     const text = `🏵 மக்கள் கருத்து கணிப்பு 2026\nமொடக்குறிச்சி தொகுதி 100 — யார் வெல்வார்கள்?\n\n${shareUrl}\n\nவாக்களித்து நண்பர்களுக்கும் அனுப்புங்கள்!`
     if (p === 'wa') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')

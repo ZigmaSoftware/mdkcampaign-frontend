@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
-import type { VoterRecord, VolunteerRecord, BoothRecord, FieldSurveyRecord } from '../../hooks/useEntryAPI'
+import type { VoterRecord, VolunteerRecord, BeneficiaryRecord, BoothRecord, FieldSurveyRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Village, Party, Scheme, Ward, Panchayat, Union, Area } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
@@ -133,6 +133,8 @@ export default function VoterEntry() {
   const PAGE_SIZE = 10
 
   const [volunteers,      setVolunteers]      = useState<VolunteerRecord[]>([])
+  const [beneficiaries,   setBeneficiaries]   = useState<BeneficiaryRecord[]>([])
+  const [voterTypeFilter, setVoterTypeFilter] = useState<'' | 'volunteer' | 'beneficiary'>('')
   const [boothVolModal,   setBoothVolModal]   = useState<number | null>(null)       // boothId being viewed
   const [volDetailModal,  setVolDetailModal]  = useState<VolunteerRecord | null>(null) // volunteer badge click
 
@@ -169,7 +171,8 @@ export default function VoterEntry() {
     masterApiRef.current.fetchParties().then(d => d && setParties(d))
     masterApiRef.current.fetchSchemes().then(d => d && setSchemes(d))
     apiRef.current.fetchFieldSurveys().then(d => d && setSurveys(d))
-    apiRef.current.fetchVolunteers().then(d => d && setVolunteers(d))
+    apiRef.current.fetchVolunteers(undefined, undefined, undefined, 1, 1000).then(d => d && setVolunteers(d.results))
+    apiRef.current.fetchBeneficiaries(undefined, undefined, undefined, 1, 1000).then(d => d && setBeneficiaries(d.results))
   }, [loadVoters])
 
   // Debounced server-side search — skip the initial mount run (handled above)
@@ -445,12 +448,17 @@ export default function VoterEntry() {
     () => new Map(volunteers.filter(v => v.voter_id).map(v => [v.voter_id!, v])),
     [volunteers]
   )
+  const beneficiaryByVoterId = useMemo(
+    () => new Map(beneficiaries.filter(b => b.voter_id).map(b => [b.voter_id!, b])),
+    [beneficiaries]
+  )
 
   const mapVoter = useMemo(() => (v: VoterRecord): EntryRecord => {
-    const booth     = boothMap.get(v.booth)
-    const party     = v.preferred_party ? partyMap.get(v.preferred_party)   : undefined
-    const village   = v.village         ? villageMap.get(v.village)          : undefined
-    const matchedVol = v.voter_id ? volunteerByVoterId.get(v.voter_id) : undefined
+    const booth      = boothMap.get(v.booth)
+    const party      = v.preferred_party ? partyMap.get(v.preferred_party) : undefined
+    const village    = v.village         ? villageMap.get(v.village)        : undefined
+    const matchedVol = v.voter_id ? volunteerByVoterId.get(v.voter_id)   : undefined
+    const matchedBen = v.voter_id ? beneficiaryByVoterId.get(v.voter_id) : undefined
     const phones = [
       v.phone        ? `Aadhar:${v.phone}`        : '',
       v.phone2       ? `AC-100:${v.phone2}`        : '',
@@ -505,14 +513,17 @@ export default function VoterEntry() {
         is_contacted:      v.is_contacted        ? 'Yes' : '',
         has_attended_event: v.has_attended_event ? 'Yes' : '',
         is_volunteer:      v.is_volunteer        ? 'Yes' : '',
-        volunteer_match:       matchedVol              ? 'yes' : '',
-        volunteer_role:        matchedVol?.role         || '',
+        volunteer_match:       matchedVol ? 'yes' : '',
+        volunteer_role:        matchedVol?.role           || '',
         volunteer_designation: matchedVol?.volunteer_type || '',
+        beneficiary_match:     matchedBen ? 'yes' : '',
+        beneficiary_scheme:    matchedBen?.scheme_display || matchedBen?.scheme_name || '',
+        beneficiary_status:    matchedBen?.benefit_status || '',
       },
       createdAt: v.created_at || '',
       backendId: v.id,
     }
-  }, [boothMap, partyMap, villageMap, volunteerByVoterId])
+  }, [boothMap, partyMap, villageMap, volunteerByVoterId, beneficiaryByVoterId])
 
   const allVoterRecords = useMemo(() => (voters ?? []).map(mapVoter), [voters, mapVoter])
 
@@ -536,7 +547,12 @@ export default function VoterEntry() {
     }
   }
 
-  const filtered = useMemo(() => (voters ?? []).map(mapVoter), [voters, mapVoter])
+  const filtered = useMemo(() => {
+    const mapped = (voters ?? []).map(mapVoter)
+    if (voterTypeFilter === 'volunteer')   return mapped.filter(r => r.data.volunteer_match   === 'yes')
+    if (voterTypeFilter === 'beneficiary') return mapped.filter(r => r.data.beneficiary_match === 'yes')
+    return mapped
+  }, [voters, mapVoter, voterTypeFilter])
 
   const usedSubCastes = useMemo(
     () => [...new Set((voters ?? []).map(v => v.sub_caste).filter(Boolean))].sort() as string[],
@@ -743,12 +759,24 @@ export default function VoterEntry() {
               className={`form-input text-[11px] py-[4px] w-[100px] ${pincodeFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             />
 
-            {(blockFilter || unionFilter || panchayatFilter || boothFilter || wardFilter || pincodeFilter) && (
+            {/* Voter Type filter */}
+            <select
+              value={voterTypeFilter}
+              onChange={e => setVoterTypeFilter(e.target.value as '' | 'volunteer' | 'beneficiary')}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${voterTypeFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Voter Types</option>
+              <option value="volunteer">Volunteer</option>
+              <option value="beneficiary">Beneficiary</option>
+            </select>
+
+            {(blockFilter || unionFilter || panchayatFilter || boothFilter || wardFilter || pincodeFilter || voterTypeFilter) && (
               <button
                 onClick={() => {
                   setBlockFilter(undefined); setUnionFilter(undefined)
                   setPanchayatFilter(undefined); setBoothFilter(undefined)
                   setWardFilter(undefined); setPincodeFilter('')
+                  setVoterTypeFilter('')
                   setPage(1); loadVoters(1, search, undefined, undefined, '')
                 }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
@@ -775,6 +803,15 @@ export default function VoterEntry() {
               ].filter(Boolean)
               const label = parts.length ? `Volunteer · ${parts.join(' · ')}` : 'Volunteer'
               return { label, bg: '#dcfce7', color: '#166534' }
+            }}
+            getTag2={rec => {
+              if (rec.data.beneficiary_match !== 'yes') return undefined
+              const parts = [
+                rec.data.beneficiary_scheme,
+                rec.data.beneficiary_status,
+              ].filter(Boolean)
+              const label = parts.length ? `Beneficiary · ${parts.join(' · ')}` : 'Beneficiary'
+              return { label, bg: '#fef3c7', color: '#92400e' }
             }}
             onTagClick={id => {
               const voter = voters.find(v => String(v.id) === id)

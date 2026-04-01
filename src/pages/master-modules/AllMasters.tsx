@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import BulkImportModal from '../../components/entry/BulkImportModal'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskCategory, CampaignActivityType, VolunteerRole, VolunteerType, Panchayat, Union } from '../../hooks/useMasterAPI'
+import type { Area, Booth, Ward, Scheme, Achievement, Constituency, District, State, Party, TaskType, TaskCategory, CampaignActivityType, VolunteerRole, VolunteerType, Panchayat, Union } from '../../hooks/useMasterAPI'
 import type { MasterRecord } from '../../types/master.types'
 import MasterListCard from '../../components/masters/MasterListCard'
 import FormRow from '../../components/entry/FormRow'
@@ -1277,19 +1277,85 @@ export function PartyMaster() {
 export function TaskCategoryMaster() {
   const api = useMasterAPI()
   const { showToast } = useToast()
-  const nameRef  = useRef<HTMLInputElement>(null)
-  const descRef  = useRef<HTMLTextAreaElement>(null)
-  const colorRef = useRef<HTMLInputElement>(null)
-  const iconRef  = useRef<HTMLInputElement>(null)
-  const prioRef  = useRef<HTMLInputElement>(null)
+  const typeNameRef   = useRef<HTMLInputElement>(null)
+  const typeDescRef   = useRef<HTMLInputElement>(null)
+  const typeOrderRef  = useRef<HTMLInputElement>(null)
+  const typeStatusRef = useRef<HTMLSelectElement>(null)
+
+  const catTypeRef = useRef<HTMLSelectElement>(null)
+  const nameRef    = useRef<HTMLInputElement>(null)
+  const descRef    = useRef<HTMLTextAreaElement>(null)
+  const colorRef   = useRef<HTMLInputElement>(null)
+  const iconRef    = useRef<HTMLInputElement>(null)
+  const prioRef    = useRef<HTMLInputElement>(null)
+
+  const [taskTypes, setTaskTypes]   = useState<TaskType[]>([])
   const [categories, setCategories] = useState<TaskCategory[]>([])
+  const [editingType, setEditingType] = useState<TaskType | null>(null)
   const [editing, setEditing]       = useState<TaskCategory | null>(null)
 
   useEffect(() => {
+    api.fetchTaskTypes().then(d => d && setTaskTypes(d))
     api.fetchTaskCategories().then(d => d && setCategories(d))
   }, [])
 
+  const clearTypeFields = () => {
+    if (typeNameRef.current)   typeNameRef.current.value = ''
+    if (typeDescRef.current)   typeDescRef.current.value = ''
+    if (typeOrderRef.current)  typeOrderRef.current.value = '0'
+    if (typeStatusRef.current) typeStatusRef.current.value = 'active'
+    setEditingType(null)
+  }
+
+  const handleSaveType = async () => {
+    const name = typeNameRef.current?.value.trim() ?? ''
+    if (!name) { showToast('<i class="ph ph-warning"></i> Task type name is required!', '#dc2626'); return }
+    const payload: Partial<TaskType> = {
+      name,
+      description: typeDescRef.current?.value.trim() || undefined,
+      order: typeOrderRef.current?.value ? parseInt(typeOrderRef.current.value) : 0,
+      status: (typeStatusRef.current?.value as 'active' | 'inactive') || 'active',
+    }
+    if (editingType) {
+      const updated = await api.updateTaskType(editingType.id, payload)
+      if (updated) {
+        setTaskTypes(prev => prev.map(t => t.id === editingType.id ? { ...t, ...updated } : t))
+        showToast('<i class="ph ph-check-circle"></i> Task type updated!', '#138808')
+      }
+    } else {
+      const created = await api.createTaskType(payload)
+      if (created) {
+        setTaskTypes(prev => [...prev, created].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)))
+        showToast('<i class="ph ph-check-circle"></i> Task type saved!', '#138808')
+      }
+    }
+    clearTypeFields()
+  }
+
+  const handleEditType = (id: string) => {
+    const t = taskTypes.find(x => String(x.id) === id)
+    if (!t) return
+    setEditingType(t)
+    if (typeNameRef.current)   typeNameRef.current.value = t.name
+    if (typeDescRef.current)   typeDescRef.current.value = t.description || ''
+    if (typeOrderRef.current)  typeOrderRef.current.value = String(t.order ?? 0)
+    if (typeStatusRef.current) typeStatusRef.current.value = t.status || 'active'
+  }
+
+  const handleDeleteType = (id: string) => {
+    const t = taskTypes.find(x => String(x.id) === id)
+    if (!t || !window.confirm('Delete this task type?')) return
+    api.deleteTaskType(t.id).then(ok => {
+      if (ok) {
+        setTaskTypes(prev => prev.filter(x => x.id !== t.id))
+        setCategories(prev => prev.filter(c => c.task_type !== t.id))
+        showToast('<i class="ph ph-trash"></i> Task type deleted.', '#dc2626')
+      }
+    })
+  }
+
   const clearFields = () => {
+    if (catTypeRef.current) catTypeRef.current.value = ''
     ;[nameRef, colorRef, iconRef, prioRef].forEach(r => { if (r.current) r.current.value = '' })
     if (descRef.current) descRef.current.value = ''
     setEditing(null)
@@ -1298,7 +1364,9 @@ export function TaskCategoryMaster() {
   const handleSave = async () => {
     const name = nameRef.current?.value.trim() ?? ''
     if (!name) { showToast('<i class="ph ph-warning"></i> Category name is required!', '#dc2626'); return }
+    const taskTypeId = catTypeRef.current?.value ? Number(catTypeRef.current.value) : null
     const payload: Partial<TaskCategory> = {
+      task_type: taskTypeId,
       name,
       description: descRef.current?.value.trim() || undefined,
       color:    colorRef.current?.value.trim() || undefined,
@@ -1331,6 +1399,7 @@ export function TaskCategoryMaster() {
     if (colorRef.current) colorRef.current.value = c.color || ''
     if (iconRef.current)  iconRef.current.value  = c.icon  || ''
     if (prioRef.current)  prioRef.current.value  = String(c.priority ?? 0)
+    if (catTypeRef.current) catTypeRef.current.value = c.task_type ? String(c.task_type) : ''
   }
 
   const handleDelete = (id: string) => {
@@ -1344,64 +1413,142 @@ export function TaskCategoryMaster() {
     })
   }
 
+  const typeRecs: MasterRecord[] = taskTypes.map(t => ({
+    id: String(t.id),
+    key: t.name,
+    meta: [`Order ${t.order ?? 0}`, (t.status || 'active').toUpperCase()].join(' · '),
+    extra: {
+      Status: t.status || 'active',
+      Description: t.description || '',
+    },
+    backendId: t.id,
+  }))
+
   const recs: MasterRecord[] = categories.map(c => ({
     id:       String(c.id),
     key:      c.name,
-    meta:     [c.description, c.color].filter(Boolean).join(' · '),
+    meta:     [c.task_type_name, c.description, c.color].filter(Boolean).join(' · '),
+    extra: {
+      'Task Type': c.task_type_name || '',
+      'Color': c.color || '',
+      'Icon': c.icon || '',
+      'Priority': c.priority != null ? String(c.priority) : '',
+      'Description': c.description || '',
+    },
     backendId: c.id,
   }))
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 page-enter">
-      <FormSection
-        title={editing ? 'Edit Task Category' : 'Add Task Category'}
-        icon="ph ph-tag"
-        badge={editing ? (
-          <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
-            + New
-          </button>
-        ) : undefined}
-      >
-        <FormRow cols={2}>
-          <FormGroup label="Category Name" required>
-            <input ref={nameRef} className={inputCls} placeholder="e.g. Logistics" />
-          </FormGroup>
-          <FormGroup label="Priority (lower = first)">
-            <input ref={prioRef} type="number" className={inputCls} placeholder="0" defaultValue="0" min="0" />
-          </FormGroup>
-        </FormRow>
-        <FormRow cols={2}>
-          <FormGroup label="Colour (hex)" >
-            <input ref={colorRef} className={inputCls} placeholder="#FF9933" maxLength={7} />
-          </FormGroup>
-          <FormGroup label="Icon (Phosphor class)">
-            <input ref={iconRef} className={inputCls} placeholder="ph-truck" />
-          </FormGroup>
-        </FormRow>
-        <FormRow cols={1}>
-          <FormGroup label="Description">
-            <textarea ref={descRef} className={textareaCls} placeholder="Short description of this category..." />
-          </FormGroup>
-        </FormRow>
-        <FormActions
-          onSave={handleSave}
-          onClear={clearFields}
-          saveLabel={editing ? 'Update Category' : 'Save Category'}
-          isEditing={!!editing}
-        />
-      </FormSection>
+    <div className="space-y-5 page-enter">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <FormSection
+          title={editingType ? 'Edit Task Type' : 'Add Task Type'}
+          icon="ph ph-list-checks"
+          badge={editingType ? (
+            <button onClick={clearTypeFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+              + New
+            </button>
+          ) : undefined}
+        >
+          <FormRow cols={2}>
+            <FormGroup label="Task Type Name" required>
+              <input ref={typeNameRef} className={inputCls} placeholder="e.g. Outreach" />
+            </FormGroup>
+            <FormGroup label="Display Order">
+              <input ref={typeOrderRef} type="number" className={inputCls} placeholder="0" defaultValue="0" min="0" />
+            </FormGroup>
+          </FormRow>
+          <FormRow cols={2}>
+            <FormGroup label="Status">
+              <select ref={typeStatusRef} className={selectCls} defaultValue="active">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </FormGroup>
+            <FormGroup label="Description">
+              <input ref={typeDescRef} className={inputCls} placeholder="Optional description" />
+            </FormGroup>
+          </FormRow>
+          <FormActions
+            onSave={handleSaveType}
+            onClear={clearTypeFields}
+            saveLabel={editingType ? 'Update Task Type' : 'Save Task Type'}
+            isEditing={!!editingType}
+          />
+        </FormSection>
 
-      <FormSection title="Task Categories" icon="ph ph-list-bullets" badge={
-        <span className="text-[9px] font-bold text-white/70">{categories.length} categories</span>
-      }>
-        <MasterListCard
-          title="Task Categories"
+        <FormSection title="Task Types" icon="ph ph-list-bullets" badge={
+          <span className="text-[9px] font-bold text-white/70">{taskTypes.length} task types</span>
+        }>
+          <MasterListCard
+            title="Task Types"
+            icon="ph ph-list-checks"
+            records={typeRecs}
+            onEdit={handleEditType}
+            onDelete={handleDeleteType}
+          />
+        </FormSection>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <FormSection
+          title={editing ? 'Edit Task Category' : 'Add Task Category'}
           icon="ph ph-tag"
-          records={recs}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-        />
-      </FormSection>
+          badge={editing ? (
+            <button onClick={clearFields} className="text-[9px] text-saffron border border-saffron/40 px-2 py-[2px] rounded hover:bg-saffron hover:text-navy">
+              + New
+            </button>
+          ) : undefined}
+        >
+          <FormRow cols={2}>
+            <FormGroup label="Task Type">
+              <select ref={catTypeRef} className={selectCls}>
+                <option value="">Select Task Type</option>
+                {taskTypes.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </FormGroup>
+            <FormGroup label="Category Name" required>
+              <input ref={nameRef} className={inputCls} placeholder="e.g. Logistics" />
+            </FormGroup>
+          </FormRow>
+          <FormRow cols={2}>
+            <FormGroup label="Priority (lower = first)">
+              <input ref={prioRef} type="number" className={inputCls} placeholder="0" defaultValue="0" min="0" />
+            </FormGroup>
+            <FormGroup label="Colour (hex)">
+              <input ref={colorRef} className={inputCls} placeholder="#FF9933" maxLength={7} />
+            </FormGroup>
+          </FormRow>
+          <FormRow cols={2}>
+            <FormGroup label="Icon (Phosphor class)">
+              <input ref={iconRef} className={inputCls} placeholder="ph-truck" />
+            </FormGroup>
+            <FormGroup label="Description">
+              <textarea ref={descRef} className={textareaCls} placeholder="Short description..." />
+            </FormGroup>
+          </FormRow>
+          <FormActions
+            onSave={handleSave}
+            onClear={clearFields}
+            saveLabel={editing ? 'Update Category' : 'Save Category'}
+            isEditing={!!editing}
+          />
+        </FormSection>
+
+        <FormSection title="Task Categories" icon="ph ph-list-bullets" badge={
+          <span className="text-[9px] font-bold text-white/70">{categories.length} categories</span>
+        }>
+          <MasterListCard
+            title="Task Categories"
+            icon="ph ph-tag"
+            records={recs}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
+        </FormSection>
+      </div>
     </div>
   )
 }

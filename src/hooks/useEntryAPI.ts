@@ -191,6 +191,8 @@ interface CampaignEventRecord {
 
 interface TaskRecord {
   id: number
+  task_type?: number | null
+  task_type_name?: string
   title: string
   category: string
   task_category?: number | null
@@ -199,6 +201,18 @@ interface TaskRecord {
   details?: string
   expected_datetime: string
   venue?: string
+  block?: number | null
+  block_name?: string
+  union?: number | null
+  union_name?: string
+  panchayat?: number | null
+  panchayat_name?: string
+  booth?: number | null
+  booth_name?: string
+  ward?: number | null
+  ward_name?: string
+  volunteer_role?: number | null
+  volunteer_role_name?: string
   delivery_incharge?: number | null
   delivery_incharge_name?: string
   coordinator?: number | null
@@ -221,7 +235,7 @@ interface UseEntryAPIReturn {
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   deleteVoter: (voterId: number) => Promise<boolean>
   // Volunteers
-  fetchVolunteers: (boothId?: number, search?: string, wardId?: number) => Promise<VolunteerRecord[] | null>
+  fetchVolunteers: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string) => Promise<{ results: VolunteerRecord[]; count: number } | null>
   createVolunteer: (volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   updateVolunteer: (volunteerId: number, volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   // Booths
@@ -232,7 +246,7 @@ interface UseEntryAPIReturn {
   createCampaignEvent: (eventData: Partial<CampaignEventRecord>) => Promise<CampaignEventRecord | null>
   updateCampaignEvent: (eventId: number, eventData: Partial<CampaignEventRecord>) => Promise<CampaignEventRecord | null>
   // Tasks
-  fetchTasks: (filters?: { date_from?: string; date_to?: string; task_category?: number }) => Promise<TaskRecord[] | null>
+  fetchTasks: (filters?: Record<string, string | number>) => Promise<TaskRecord[] | null>
   createTask: (data: Partial<TaskRecord>) => Promise<TaskRecord | null>
   updateTask: (id: number, data: Partial<TaskRecord>) => Promise<TaskRecord | null>
   deleteTask: (id: number) => Promise<boolean>
@@ -247,7 +261,7 @@ interface UseEntryAPIReturn {
   updateFieldSurvey: (id: number, data: Partial<FieldSurveyRecord>) => Promise<FieldSurveyRecord | null>
   deleteFieldSurvey: (id: number) => Promise<boolean>
   // Beneficiaries
-  fetchBeneficiaries: (boothId?: number, search?: string, wardId?: number) => Promise<BeneficiaryRecord[] | null>
+  fetchBeneficiaries: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string) => Promise<{ results: BeneficiaryRecord[]; count: number } | null>
   createBeneficiary: (data: Partial<BeneficiaryRecord>) => Promise<BeneficiaryRecord | null>
   updateBeneficiary: (id: number, data: Partial<BeneficiaryRecord>) => Promise<BeneficiaryRecord | null>
   deleteBeneficiary: (id: number) => Promise<boolean>
@@ -364,19 +378,23 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOLUNTEERS ====================
 
   const fetchVolunteers = useCallback(
-    async (boothId?: number, search?: string, wardId?: number): Promise<VolunteerRecord[] | null> => {
+    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string): Promise<{ results: VolunteerRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
         const { data } = await apiClient.get<ApiResponse<VolunteerRecord>>('/volunteers/volunteers/', {
           params: {
-            limit: 1000,
-            ...(boothId ? { booth: boothId } : {}),
-            ...(search  ? { search }         : {}),
-            ...(wardId  ? { ward: wardId }   : {}),
+            limit:  pageSize,
+            offset: (page - 1) * pageSize,
+            ...(boothId   ? { booth:     boothId   } : {}),
+            ...(search    ? { search }               : {}),
+            ...(wardId    ? { ward:      wardId    } : {}),
+            ...(block     ? { block }                : {}),
+            ...(union     ? { union }                : {}),
+            ...(panchayat ? { panchayat }            : {}),
           },
         })
-        return data.results || []
+        return { results: data.results || [], count: data.count || 0 }
       } catch (err) {
         handleError(err, 'fetch volunteers')
         return null
@@ -523,7 +541,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== TASKS ====================
 
   const fetchTasks = useCallback(async (
-    filters?: { date_from?: string; date_to?: string; task_category?: number }
+    filters?: Record<string, string | number>
   ): Promise<TaskRecord[] | null> => {
     setLoading(true); setError(null)
     try {
@@ -632,19 +650,23 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== BENEFICIARIES ====================
 
   const fetchBeneficiaries = useCallback(
-    async (boothId?: number, search?: string, wardId?: number): Promise<BeneficiaryRecord[] | null> => {
+    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string): Promise<{ results: BeneficiaryRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
         const { data } = await apiClient.get<ApiResponse<BeneficiaryRecord>>('/beneficiaries/beneficiaries/', {
           params: {
-            limit: 25000,
-            ...(boothId ? { booth: boothId } : {}),
-            ...(search  ? { search }         : {}),
-            ...(wardId  ? { ward: wardId }   : {}),
+            limit:  pageSize,
+            offset: (page - 1) * pageSize,
+            ...(boothId   ? { booth:     boothId   } : {}),
+            ...(search    ? { search }               : {}),
+            ...(wardId    ? { ward:      wardId    } : {}),
+            ...(block     ? { block }                : {}),
+            ...(union     ? { union }                : {}),
+            ...(panchayat ? { panchayat }            : {}),
           },
         })
-        return data.results || []
+        return { results: data.results || [], count: data.count || 0 }
       } catch (err) {
         handleError(err, 'fetch beneficiaries')
         return null

@@ -68,7 +68,7 @@ export function CampaignEntry() {
   useEffect(() => {
     masterApi.fetchWards().then(d => d && setWards(d))
     masterApi.fetchBooths().then(d => d && setBooths(d))
-    entryApi.fetchVolunteers().then(d => d && setVolunteers(d))
+    entryApi.fetchVolunteers().then(d => d && setVolunteers(d.results))
     masterApi.fetchConstituencies().then(d => d && setConstituencies(d))
     masterApi.fetchCampaignActivityTypes().then(d => d && setActivityTypes(d))
   }, [])

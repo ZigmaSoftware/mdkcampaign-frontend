@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import apiClient from '../../utils/api'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { BeneficiaryRecord } from '../../hooks/useEntryAPI'
@@ -56,6 +56,9 @@ export default function BeneficiaryEntry() {
   const { canAdd, canEdit, canDelete } = usePermissions()
 
   const [beneficiaries, setBeneficiaries]   = useState<BeneficiaryRecord[]>([])
+  const [totalCount,    setTotalCount]      = useState(0)
+  const [page,          setPage]            = useState(1)
+  const PAGE_SIZE = 10
   const [booths,        setBooths]          = useState<Booth[]>([])
   const [wards,         setWards]           = useState<Ward[]>([])
   const [unions,        setUnions]          = useState<Union[]>([])
@@ -72,19 +75,35 @@ export default function BeneficiaryEntry() {
   const [wardFilter,    setWardFilter]       = useState<number | ''>('')
   const [isContacted,   setIsContacted]     = useState(false)
 
+  const apiRef = useRef(api)
+  apiRef.current = api
+
   const blocks = useBlocks()
 
-  useEffect(() => {
-    api.fetchBeneficiaries().then(d => d && setBeneficiaries(d))
-  }, [])
+  const loadBeneficiaries = useCallback((p: number, q?: string, boothId?: number, wardId?: number, blk?: string, uni?: string, pan?: string) => {
+    apiRef.current.fetchBeneficiaries(
+      boothId, q || undefined, wardId, p, PAGE_SIZE, blk || undefined, uni || undefined, pan || undefined
+    ).then(d => { setBeneficiaries(d?.results ?? []); setTotalCount(d?.count ?? 0) })
+  }, [PAGE_SIZE])
 
   useEffect(() => {
+    loadBeneficiaries(1)
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchWards().then(d => d && setWards(d))
     masterApi.fetchUnions().then(d => d && setUnions(d))
     masterApi.fetchPanchayats().then(d => d && setPanchayats(d))
     masterApi.fetchSchemes().then(d => d && setSchemes(d))
-  }, [])
+  }, [loadBeneficiaries])
+
+  const isFirstFilterRender = useRef(true)
+  useEffect(() => {
+    if (isFirstFilterRender.current) { isFirstFilterRender.current = false; return }
+    const t = setTimeout(() => {
+      setPage(1)
+      loadBeneficiaries(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [search, boothFilterLocal, wardFilter, blockFilter, unionFilter, panchayatFilter, loadBeneficiaries])
 
   const r = {
     name:           useRef<HTMLInputElement>(null),
@@ -149,8 +168,8 @@ export default function BeneficiaryEntry() {
     if (!b) return
     const ok = await api.deleteBeneficiary(b.id)
     if (ok) {
-      setBeneficiaries(prev => prev.filter(v => v.id !== b.id))
       showToast('<i class="ph ph-trash"></i> Beneficiary removed.', '#dc2626')
+      loadBeneficiaries(page, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
     }
   }
 
@@ -203,18 +222,19 @@ export default function BeneficiaryEntry() {
     if (editing) {
       const updated = await api.updateBeneficiary(editing.id, payload)
       if (updated) {
-        setBeneficiaries(prev => prev.map(v => v.id === editing.id ? { ...v, ...updated } : v))
         showToast('<i class="ph ph-check-circle"></i> Beneficiary updated!', '#138808')
         setEditing(null); setFormOpen(false); clear()
+        loadBeneficiaries(page, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
       } else {
         showToast('<i class="ph ph-x-circle"></i> Failed to update.', '#dc2626')
       }
     } else {
       const created = await api.createBeneficiary(payload)
       if (created) {
-        setBeneficiaries(prev => [...prev, created])
         showToast('<i class="ph ph-check-circle"></i> Beneficiary saved!', '#138808')
         setFormOpen(false); clear()
+        setPage(1)
+        loadBeneficiaries(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
       } else {
         showToast('<i class="ph ph-x-circle"></i> Failed to save.', '#dc2626')
       }
@@ -274,46 +294,13 @@ export default function BeneficiaryEntry() {
     }
   }
 
-  // Block / Union / Panchayat are fully independent; Booth narrows by Panchayat; Ward narrows by Booth
   const filteredUnions     = unions
   const filteredPanchayats = panchayats
-  const filteredBooths = useMemo(() => {
-    if (!panchayatFilter) return booths
-    const panchayatId = panchayats.find(p => p.name === panchayatFilter)?.id
-    return panchayatId ? booths.filter(b => b.panchayat === panchayatId) : booths
-  }, [booths, panchayats, panchayatFilter])
+  const filteredBooths     = booths
+  const filteredWards      = wards
 
-  const filteredWards = useMemo(() => {
-    if (!boothFilterLocal) return wards
-    const booth = booths.find(b => b.id === boothFilterLocal)
-    if (!booth) return wards
-    return booth.ward ? wards.filter(w => w.id === booth.ward) : []
-  }, [wards, booths, boothFilterLocal])
-
-  const cascadeFiltered = useMemo(() =>
-    beneficiaries
-      .filter(v => !blockFilter     || v.block === blockFilter)
-      .filter(v => !unionFilter     || v.union_name === unionFilter)
-      .filter(v => !panchayatFilter || v.panchayat_name === panchayatFilter)
-      .filter(v => !boothFilterLocal || v.booth === boothFilterLocal)
-      .filter(v => !wardFilter      || v.ward === wardFilter),
-    [beneficiaries, blockFilter, unionFilter, panchayatFilter, boothFilterLocal, wardFilter]
-  )
-
-  const filtered = cascadeFiltered
-    .filter(v => {
-      if (!search.trim()) return true
-      const q = search.toLowerCase()
-      return [
-        v.voter_id, getBenName(v), v.phone, v.phone2,
-        v.scheme_name, v.scheme_display, v.benefit_type,
-        v.benefit_status, v.block, v.panchayat_name, v.union_name,
-        v.source, v.address,
-      ].some(f => f?.toLowerCase().includes(q))
-    })
-    .map<EntryRecord>(mapBeneficiary)
-
-  const allRecords = cascadeFiltered.map<EntryRecord>(mapBeneficiary)
+  const filtered   = beneficiaries.map<EntryRecord>(mapBeneficiary)
+  const allRecords = filtered
 
   const checkCls = 'flex items-center gap-2 cursor-pointer select-none text-[11px] text-body font-medium'
   const checkBoxCls = 'w-4 h-4 rounded border-2 border-border cursor-pointer accent-navy'
@@ -324,7 +311,7 @@ export default function BeneficiaryEntry() {
         <EntryListHeader
           title="Beneficiary Info"
           icon="ph ph-hand-heart"
-          count={beneficiaries.length}
+          count={totalCount}
           onAddNew={canAdd('beneficiary') ? () => { setEditing(null); clear(); setFormOpen(true) } : undefined}
           addLabel="Add Beneficiary"
           onImport={() => setShowImport(true)}
@@ -355,7 +342,7 @@ export default function BeneficiaryEntry() {
                 benefit_amount: 'Amount (text)',
                 source: 'How info was collected',
               },
-              onSuccess: () => { api.fetchBeneficiaries().then(d => d && setBeneficiaries(d)) },
+              onSuccess: () => { setPage(1); loadBeneficiaries(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter) },
             }}
             onClose={() => setShowImport(false)}
           />
@@ -439,6 +426,9 @@ export default function BeneficiaryEntry() {
             iconColor="#b45309"
             onEdit={canEdit('beneficiary') ? handleEdit : undefined}
             onDelete={canDelete('beneficiary') ? handleDelete : undefined}
+            itemsPerPage={PAGE_SIZE}
+            serverTotal={totalCount}
+            startIndex={(page - 1) * PAGE_SIZE}
             filterConfig={[
               { key: 'benefit_status', label: 'Status', options: [
                 { value: 'Pending',  label: 'Pending' },
@@ -464,6 +454,26 @@ export default function BeneficiaryEntry() {
               ]},
             ]}
           />
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-3 px-1">
+              <span className="text-[11px] text-muted">
+                Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString('en-IN')}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={page === 1}
+                  onClick={() => { const p = page - 1; setPage(p); loadBeneficiaries(p, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter) }}
+                  className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
+                >← Prev</button>
+                <span className="text-[11px] text-muted py-1">Page {page} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
+                <button
+                  disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
+                  onClick={() => { const p = page + 1; setPage(p); loadBeneficiaries(p, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter) }}
+                  className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
+                >Next →</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

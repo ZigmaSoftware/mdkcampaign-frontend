@@ -25,6 +25,7 @@ interface RecordListProps {
   startIndex?:    number
   disableView?:   boolean
   getTag?:        (rec: EntryRecord) => RecordTag | undefined
+  getTag2?:       (rec: EntryRecord) => RecordTag | undefined
   onTagClick?:    (id: string) => void
 }
 
@@ -44,6 +45,7 @@ export default function RecordList({
   startIndex = 0,
   disableView = false,
   getTag,
+  getTag2,
   onTagClick,
 }: RecordListProps) {
   const [page,       setPage]       = useState(1)
@@ -124,6 +126,7 @@ export default function RecordList({
               sub={rec.sub}
               isEditing={rec.id === editingId}
               tag={getTag?.(rec)}
+              tag2={getTag2?.(rec)}
               onTagClick={onTagClick ? () => onTagClick(rec.id) : undefined}
               onView={disableView ? undefined : () => setViewingRec(rec)}
               onViewVolunteers={onViewVolunteers ? () => onViewVolunteers(rec.id) : undefined}

@@ -115,7 +115,7 @@ export default function GlobalSearch() {
     ]).then(([vRes, volRes]) => {
       setVoters(vRes?.results ?? [])
       setVoterCount(vRes?.count ?? 0)
-      setVolunteers(volRes ?? [])
+      setVolunteers(volRes?.results ?? [])
     }).finally(() => setLoading(false))
   }, [])
 

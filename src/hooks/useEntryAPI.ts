@@ -370,7 +370,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
       try {
         const { data } = await apiClient.get<ApiResponse<VolunteerRecord>>('/volunteers/volunteers/', {
           params: {
-            limit: 1000,
+            limit: 25000,
             ...(boothId ? { booth: boothId } : {}),
             ...(search  ? { search }         : {}),
             ...(wardId  ? { ward: wardId }   : {}),

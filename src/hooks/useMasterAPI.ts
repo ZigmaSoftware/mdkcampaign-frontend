@@ -75,7 +75,10 @@ interface Scheme {
 }
 
 interface Achievement {
-  id: number; name: string; description?: string; ward?: number; ward_name?: string; booth?: number; booth_name?: string
+  id: number; name: string; description?: string
+  panchayat?: number; panchayat_name?: string
+  booth?: number; booth_name?: string
+  feed_amount?: number | string | null
 }
 
 interface TaskCategory {

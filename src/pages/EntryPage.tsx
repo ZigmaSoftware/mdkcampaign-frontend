@@ -17,6 +17,7 @@ import AssignTelecalling from './entry-modules/AssignTelecalling'
 import TelecallingAssigned from './entry-modules/TelecallingAssigned'
 import FeedbackReview from './entry-modules/FeedbackReview'
 import BeneficiaryEntry from './entry-modules/BeneficiaryEntry'
+import FamilyMapping from './entry-modules/FamilyMapping'
 import {
   CampaignEntry,
   WarRoomEntry,
@@ -58,6 +59,7 @@ export default function EntryPage({ activeTab, onTabChange }: EntryPageProps) {
       case 'telecalling-assigned': return <TelecallingAssigned />
       case 'feedback-review':      return <FeedbackReview />
       case 'beneficiary':          return <BeneficiaryEntry />
+      case 'family-mapping':       return <FamilyMapping />
       default:                   return <VoterEntry />
     }
   }

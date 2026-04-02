@@ -24,8 +24,9 @@ const TAB_GROUPS: TabGroup[] = [
     label: 'Field Data',
     icon:  'ph ph-database',
     tabs: [
-      { id: 'voter', label: 'Voter Details', icon: 'ph ph-user'    },
-      { id: 'booth', label: 'Booth Info',    icon: 'ph ph-map-pin' },
+      { id: 'voter',          label: 'Voter Details',  icon: 'ph ph-user'       },
+      { id: 'booth',          label: 'Booth Info',     icon: 'ph ph-map-pin'    },
+      { id: 'family-mapping', label: 'Family Mapping', icon: 'ph ph-house-line' },
     ],
   },
   {

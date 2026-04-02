@@ -985,26 +985,28 @@ export function SchemeMaster() {
 export function AchievementMaster() {
   const api = useMasterAPI()
   const { showToast } = useToast()
-  const nameRef  = useRef<HTMLInputElement>(null)
-  const descRef  = useRef<HTMLTextAreaElement>(null)
-  const wardRef  = useRef<HTMLSelectElement>(null)
-  const boothRef = useRef<HTMLSelectElement>(null)
+  const nameRef       = useRef<HTMLInputElement>(null)
+  const descRef       = useRef<HTMLTextAreaElement>(null)
+  const panchayatRef  = useRef<HTMLSelectElement>(null)
+  const boothRef      = useRef<HTMLSelectElement>(null)
+  const feedAmountRef = useRef<HTMLInputElement>(null)
   const [achievements, setAchievements] = useState<Achievement[]>([])
-  const [wards,  setWards]  = useState<Ward[]>([])
+  const [panchayats, setPanchayats] = useState<Panchayat[]>([])
   const [booths, setBooths] = useState<Booth[]>([])
   const [editing, setEditing] = useState<Achievement | null>(null)
 
   useEffect(() => {
     api.fetchAchievements().then(d => d && setAchievements(d))
-    api.fetchWards().then(d => d && setWards(d))
+    api.fetchPanchayats().then(d => d && setPanchayats(d))
     api.fetchBooths().then(d => d && setBooths(d))
   }, [])
 
   const clearFields = () => {
-    if (nameRef.current)  nameRef.current.value  = ''
-    if (descRef.current)  descRef.current.value  = ''
-    if (wardRef.current)  wardRef.current.value  = ''
-    if (boothRef.current) boothRef.current.value = ''
+    if (nameRef.current)       nameRef.current.value       = ''
+    if (descRef.current)       descRef.current.value       = ''
+    if (panchayatRef.current)  panchayatRef.current.value  = ''
+    if (boothRef.current)      boothRef.current.value      = ''
+    if (feedAmountRef.current) feedAmountRef.current.value = ''
   }
 
   const handleSave = async () => {
@@ -1012,9 +1014,10 @@ export function AchievementMaster() {
     if (!name) return
     const payload = {
       name,
-      description: descRef.current?.value.trim() || '',
-      ward:  wardRef.current?.value  ? Number(wardRef.current.value)  : undefined,
-      booth: boothRef.current?.value ? Number(boothRef.current.value) : undefined,
+      description:  descRef.current?.value.trim() || '',
+      panchayat:    panchayatRef.current?.value  ? Number(panchayatRef.current.value)  : undefined,
+      booth:        boothRef.current?.value       ? Number(boothRef.current.value)      : undefined,
+      feed_amount:  feedAmountRef.current?.value  ? Number(feedAmountRef.current.value) : null,
     }
 
     if (editing) {
@@ -1038,10 +1041,11 @@ export function AchievementMaster() {
     const a = achievements.find(x => String(x.id) === id)
     if (!a) return
     setEditing(a)
-    if (nameRef.current)  nameRef.current.value  = a.name
-    if (descRef.current)  descRef.current.value  = a.description || ''
-    if (wardRef.current)  wardRef.current.value  = String(a.ward  ?? '')
-    if (boothRef.current) boothRef.current.value = String(a.booth ?? '')
+    if (nameRef.current)       nameRef.current.value       = a.name
+    if (descRef.current)       descRef.current.value       = a.description || ''
+    if (panchayatRef.current)  panchayatRef.current.value  = String(a.panchayat ?? '')
+    if (boothRef.current)      boothRef.current.value      = String(a.booth ?? '')
+    if (feedAmountRef.current) feedAmountRef.current.value = a.feed_amount != null ? String(a.feed_amount) : ''
   }
 
   const handleDelete = async (id: string) => {
@@ -1063,10 +1067,10 @@ export function AchievementMaster() {
           </FormGroup>
         </FormRow>
         <FormRow cols={2}>
-          <FormGroup label="Ward">
-            <select ref={wardRef} className={selectCls}>
-              <option value="">Select Ward</option>
-              {wards.map(w => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
+          <FormGroup label="Panchayat">
+            <select ref={panchayatRef} className={selectCls}>
+              <option value="">Select Panchayat</option>
+              {panchayats.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
             </select>
           </FormGroup>
           <FormGroup label="Booth">
@@ -1076,7 +1080,10 @@ export function AchievementMaster() {
             </select>
           </FormGroup>
         </FormRow>
-        <FormRow cols={1}>
+        <FormRow cols={2}>
+          <FormGroup label="Feed Amount">
+            <input ref={feedAmountRef} type="number" step="0.01" min="0" className={inputCls} placeholder="e.g. 5000.00" />
+          </FormGroup>
           <FormGroup label="Description">
             <textarea ref={descRef} className={textareaCls} placeholder="Describe the achievement and its impact..." />
           </FormGroup>
@@ -1092,15 +1099,18 @@ export function AchievementMaster() {
         title="Achievements"
         icon="ph ph-list"
         records={toRecs(achievements, a => {
-          const wardName  = wards.find(w => w.id === a.ward)?.name   || a.ward_name  || ''
-          const boothName = booths.find(b => b.id === a.booth)?.name || a.booth_name || ''
-          return [wardName && `Ward: ${wardName}`, boothName && `Booth: ${boothName}`].filter(Boolean).join(' · ')
+          const panName   = panchayats.find(p => p.id === a.panchayat)?.name || a.panchayat_name || ''
+          const boothName = booths.find(b => b.id === a.booth)?.name         || a.booth_name     || ''
+          const parts = [panName && `Panchayat: ${panName}`, boothName && `Booth: ${boothName}`]
+          if (a.feed_amount != null) parts.push(`Feed: ${Number(a.feed_amount).toLocaleString('en-IN')}`)
+          return parts.filter(Boolean).join(' · ')
         }, a => {
-          const wardName  = wards.find(w => w.id === a.ward)?.name   || a.ward_name  || ''
-          const boothName = booths.find(b => b.id === a.booth)?.name || a.booth_name || ''
+          const panName   = panchayats.find(p => p.id === a.panchayat)?.name || a.panchayat_name || ''
+          const boothName = booths.find(b => b.id === a.booth)?.name         || a.booth_name     || ''
           return {
-            'Ward':        wardName,
+            'Panchayat':   panName,
             'Booth':       boothName,
+            'Feed Amount': a.feed_amount != null ? Number(a.feed_amount).toLocaleString('en-IN') : '',
             'Description': a.description || '',
           }
         })}

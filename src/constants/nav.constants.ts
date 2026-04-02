@@ -31,6 +31,7 @@ export const ENTRY_TABS: { id: EntryModuleId; label: string; icon: string }[] = 
   { id: 'assign-telecalling',   label: 'Assign Telecalling',   icon: 'ph ph-phone-outgoing'  },
   { id: 'telecalling-assigned', label: 'Telecalling Assigned', icon: 'ph ph-clipboard-text'  },
   { id: 'feedback-review',      label: 'Feedback Review',      icon: 'ph ph-git-branch'      },
+  { id: 'family-mapping',       label: 'Family Mapping',       icon: 'ph ph-house-line'      },
 ]
 
 export const MASTER_TABS: { id: MasterModuleId; label: string; icon: string }[] = [

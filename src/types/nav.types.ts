@@ -31,6 +31,7 @@ export type EntryModuleId =
   | 'feedback-review'
   | 'global-search'
   | 'beneficiary'
+  | 'family-mapping'
 
 export type MasterModuleId =
   | 'district'

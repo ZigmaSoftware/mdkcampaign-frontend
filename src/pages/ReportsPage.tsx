@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import SectionHeader from '../components/ui/SectionHeader'
 import Badge from '../components/ui/Badge'
 import { useAnalyticsAPI } from '../hooks/useAnalyticsAPI'
@@ -273,26 +273,75 @@ function VoterPopup({
 }) {
   const [search,       setSearch]       = useState('')
   const [activeWard,   setActiveWard]   = useState<string | null>(null)
+  const [activeType,   setActiveType]   = useState<'all' | 'volunteer' | 'beneficiary' | 'both' | 'unassigned'>('all')
+  const [activeVolunteerType, setActiveVolunteerType] = useState<string>('all')
+
+  const matchType = useCallback(
+    (v: VoterBasicInfo, t: 'all' | 'volunteer' | 'beneficiary' | 'both' | 'unassigned') => {
+      const isVol = !!v.is_volunteer_type
+      const isBen = !!v.is_beneficiary_type
+      if (t === 'all') return true
+      if (t === 'volunteer') return isVol && !isBen
+      if (t === 'beneficiary') return isBen && !isVol
+      if (t === 'both') return isVol && isBen
+      return !isVol && !isBen
+    },
+    []
+  )
+
+  const typeCounts = useMemo(() => ({
+    volunteer: voters.filter(v => matchType(v, 'volunteer')).length,
+    beneficiary: voters.filter(v => matchType(v, 'beneficiary')).length,
+    both: voters.filter(v => matchType(v, 'both')).length,
+    unassigned: voters.filter(v => matchType(v, 'unassigned')).length,
+  }), [voters, matchType])
+
+  const typedVoters = useMemo(
+    () => voters.filter(v => matchType(v, activeType)),
+    [voters, activeType, matchType]
+  )
+
+  const volunteerTypeCounts = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const v of typedVoters) {
+      if (!v.is_volunteer_type) continue
+      const vt = (v.volunteer_type || '').trim() || 'Unspecified'
+      map.set(vt, (map.get(vt) || 0) + 1)
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [typedVoters])
+  const volunteerTypeTabs = useMemo(() => volunteerTypeCounts.slice(0, 2), [volunteerTypeCounts])
+
+  const volunteerTypedVoters = useMemo(() => {
+    if (!(activeType === 'volunteer' || activeType === 'both')) return typedVoters
+    if (activeVolunteerType === 'all') return typedVoters
+    return typedVoters.filter(v => ((v.volunteer_type || '').trim() || 'Unspecified') === activeVolunteerType)
+  }, [typedVoters, activeType, activeVolunteerType])
 
   // Build ward list preserving order of first appearance
   const wards = useMemo(() => {
     const seen = new Set<string>()
     const list: string[] = []
-    for (const v of voters) {
+    for (const v of volunteerTypedVoters) {
       const w = v.ward_name || 'Unassigned'
       if (!seen.has(w)) { seen.add(w); list.push(w) }
     }
     return list.sort((a, b) => a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b))
-  }, [voters])
+  }, [volunteerTypedVoters])
 
   // Set first ward as default once data loads
   useEffect(() => {
     if (!loading && wards.length > 0 && activeWard === null) setActiveWard(wards[0])
   }, [loading, wards, activeWard])
 
+  useEffect(() => {
+    setActiveWard(null)
+    setSearch('')
+  }, [activeType, activeVolunteerType])
+
   const wardVoters = useMemo(() =>
-    voters.filter(v => (v.ward_name || 'Unassigned') === activeWard),
-    [voters, activeWard]
+    volunteerTypedVoters.filter(v => (v.ward_name || 'Unassigned') === activeWard),
+    [volunteerTypedVoters, activeWard]
   )
 
   const filtered = useMemo(() => {
@@ -300,6 +349,7 @@ function VoterPopup({
     if (!q) return wardVoters
     return wardVoters.filter(v =>
       (v.name || '').toLowerCase().includes(q) ||
+      (v.voter_type || '').toLowerCase().includes(q) ||
       (v.voter_id || '').toLowerCase().includes(q) ||
       (v.phone || '').includes(q)
     )
@@ -307,8 +357,12 @@ function VoterPopup({
 
   const handleSearch = (v: string) => setSearch(v)
   const handleWardChange = (w: string) => { setActiveWard(w); setSearch('') }
+  const handleTypeChange = (t: 'all' | 'volunteer' | 'beneficiary' | 'both' | 'unassigned') => {
+    setActiveType(t)
+    setActiveVolunteerType('all')
+  }
 
-  const wardCount = (w: string) => voters.filter(v => (v.ward_name || 'Unassigned') === w).length
+  const wardCount = (w: string) => volunteerTypedVoters.filter(v => (v.ward_name || 'Unassigned') === w).length
 
   return (
     <div
@@ -336,9 +390,65 @@ function VoterPopup({
           </button>
         </div>
 
+        {/* Type tabs */}
+        {!loading && voters.length > 0 && (
+          <div className="flex gap-1 px-4 pt-3 pb-0 flex-shrink-0 flex-wrap border-b border-border bg-[#f7f9fc]">
+            {([
+              { key: 'all', label: 'All', count: voters.length },
+              { key: 'volunteer', label: 'Volunteer', count: typeCounts.volunteer },
+              { key: 'beneficiary', label: 'Beneficiary', count: typeCounts.beneficiary },
+              { key: 'both', label: 'Both', count: typeCounts.both },
+              { key: 'unassigned', label: 'Unassigned', count: typeCounts.unassigned },
+            ] as const).map(t => (
+              <button
+                key={t.key}
+                onClick={() => handleTypeChange(t.key)}
+                className={`
+                  px-3 py-[5px] text-[10px] font-bold rounded-t-md border-b-2 transition-all whitespace-nowrap
+                  ${activeType === t.key
+                    ? 'border-saffron text-navy bg-white'
+                    : 'border-transparent text-muted hover:text-navy hover:border-border'
+                  }
+                `}
+              >
+                {t.label}
+                <span className={`ml-1 text-[9px] px-[5px] py-[1px] rounded-full font-bold
+                  ${activeType === t.key ? 'bg-saffron/20 text-saffron-dark' : 'bg-border/60 text-muted'}`}>
+                  {t.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Volunteer type tabs */}
+        {!loading && (activeType === 'volunteer' || activeType === 'both') && volunteerTypeTabs.length > 0 && (
+          <div className="flex gap-1 px-4 pt-2 pb-0 flex-shrink-0 flex-wrap border-b border-border bg-[#f7f9fc]">
+            {volunteerTypeTabs.map(([vt, cnt]) => (
+              <button
+                key={vt}
+                onClick={() => setActiveVolunteerType(prev => (prev === vt ? 'all' : vt))}
+                className={`
+                  px-3 py-[5px] text-[10px] font-bold rounded-t-md border-b-2 transition-all whitespace-nowrap
+                  ${activeVolunteerType === vt
+                    ? 'border-[#0e6aad] text-[#0e6aad] bg-white'
+                    : 'border-transparent text-muted hover:text-[#0e6aad] hover:border-border'
+                  }
+                `}
+              >
+                {vt}
+                <span className={`ml-1 text-[9px] px-[5px] py-[1px] rounded-full font-bold
+                  ${activeVolunteerType === vt ? 'bg-[#e8f4fd] text-[#0e6aad]' : 'bg-border/60 text-muted'}`}>
+                  {cnt}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Ward tabs */}
         {!loading && wards.length > 1 && (
-          <div className="flex gap-1 px-4 pt-3 pb-0 flex-shrink-0 flex-wrap border-b border-border bg-[#f7f9fc]">
+          <div className="flex gap-1 px-4 pt-2 pb-0 flex-shrink-0 flex-wrap border-b border-border bg-[#f7f9fc]">
             {wards.map(w => (
               <button
                 key={w}
@@ -369,7 +479,7 @@ function VoterPopup({
               <input
                 type="text" value={search}
                 onChange={e => handleSearch(e.target.value)}
-                placeholder="Search by name, voter ID or phone…"
+                placeholder="Search by name, voter type, voter ID or phone…"
                 className="form-input pl-8 py-[5px] text-[11px] w-full"
               />
               {search && (
@@ -388,7 +498,7 @@ function VoterPopup({
             <p className="text-muted text-[11px] text-center py-10 italic">Loading voters…</p>
           ) : filtered.length === 0 ? (
             <p className="text-muted text-[11px] text-center py-10 italic">
-              {search ? 'No voters match your search.' : 'No voters in this ward.'}
+              {search ? 'No voters match your search.' : 'No voters in this selection.'}
             </p>
           ) : (
             <table className="data-table w-full text-[11px]">
@@ -397,6 +507,7 @@ function VoterPopup({
                   <th className="w-8">#</th>
                   <th>Voter ID</th>
                   <th>Name</th>
+                  <th>Voter Type</th>
                   <th className="text-center">Age</th>
                   <th className="text-center">Gender</th>
                   <th>Sentiment</th>
@@ -409,6 +520,11 @@ function VoterPopup({
                     <td className="text-muted">{i + 1}</td>
                     <td className="font-mono text-[10px] text-muted">{v.voter_id || '—'}</td>
                     <td className="font-semibold text-textMain">{v.name || '—'}</td>
+                    <td className="text-muted">
+                      {v.is_volunteer_type && v.is_beneficiary_type
+                        ? 'Volunteer + Beneficiary'
+                        : v.voter_type || '—'}
+                    </td>
                     <td className="text-center">{v.age ?? '—'}</td>
                     <td className="text-center text-muted">{GENDER_LABEL[v.gender || ''] || v.gender || '—'}</td>
                     <td>
@@ -828,10 +944,17 @@ function BoothTable({
 
   const openVoterPopup = (b: BoothStat) => {
     const title = `${b.number ? `#${b.number} — ` : ''}${b.name || 'Booth'}`
+    console.log('[BoothTable] Voter list request payload:', {
+      booth_id: b.id,
+      booth_no: b.number,
+    })
     setVoterPopup({ id: b.id, title })
     setVoterLoad(true)
     setVoterList([])
-    fetchVoters(b.id).then(v => { setVoterList(v); setVoterLoad(false) })
+    fetchVoters(b.id)
+      .then(v => setVoterList(Array.isArray(v) ? v : []))
+      .catch(() => setVoterList([]))
+      .finally(() => setVoterLoad(false))
   }
 
   const sorted = useMemo(() => {

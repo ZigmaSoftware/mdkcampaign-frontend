@@ -72,6 +72,10 @@ export interface VoterBasicInfo {
   id: number
   voter_id: string | null
   name: string | null
+  voter_type: string | null
+  is_volunteer_type?: boolean
+  is_beneficiary_type?: boolean
+  volunteer_type?: string | null
   age: number | null
   gender: string | null
   sentiment: string | null
@@ -190,9 +194,21 @@ export function useAnalyticsAPI(): UseAnalyticsAPIReturn {
 
   const fetchBoothVoters = useCallback(async (boothId: number): Promise<VoterBasicInfo[]> => {
     try {
-      const { data } = await apiClient.get<VoterBasicInfo[]>(`/analytics/booth-voters/${boothId}/`)
-      return data
+      console.log('[fetchBoothVoters] Payload:', { booth_id: boothId })
+      const { data } = await apiClient.get<VoterBasicInfo[] | { results?: VoterBasicInfo[] }>(
+        `/analytics/booth-voters/${boothId}/`,
+        { timeout: 90000 }
+      )
+      if (Array.isArray(data)) return data
+      if (data && Array.isArray(data.results)) return data.results
+      return []
     } catch (err) {
+      const axiosErr = err as AxiosError<any>
+      console.error('[fetchBoothVoters] Request failed:', {
+        booth_id: boothId,
+        status: axiosErr.response?.status,
+        data: axiosErr.response?.data,
+      })
       handleError(err, 'fetch booth voters')
       return []
     }

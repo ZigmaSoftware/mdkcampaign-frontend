@@ -3,7 +3,7 @@ import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { TaskRecord } from '../../hooks/useEntryAPI'
 import type { RecordTag } from '../../components/entry/RecordItem'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { TaskType, TaskCategory, VolunteerRole, AssignableUser, Area, Union, Panchayat, Booth, Ward } from '../../hooks/useMasterAPI'
+import type { TaskType, TaskCategory, VolunteerRole, VolunteerName, Area, Union, Panchayat, Booth, Ward } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
 import EntrySearchToolbar from '../../components/entry/EntrySearchToolbar'
 import RecordList from '../../components/entry/RecordList'
@@ -45,8 +45,8 @@ export default function EventEntry() {
   const [taskTypes,       setTaskTypes]       = useState<TaskType[]>([])
   const [allCategories,   setAllCategories]   = useState<TaskCategory[]>([])
   const [volunteerRoles,  setVolunteerRoles]  = useState<VolunteerRole[]>([])
-  const [deliveryUsers,   setDeliveryUsers]   = useState<AssignableUser[]>([])
-  const [coordinatorUsers, setCoordinatorUsers] = useState<AssignableUser[]>([])
+  const [deliveryUsers,   setDeliveryUsers]   = useState<VolunteerName[]>([])
+  const [coordinatorUsers, setCoordinatorUsers] = useState<VolunteerName[]>([])
   const [blocks,          setBlocks]          = useState<Area[]>([])
   const [allUnions,       setAllUnions]       = useState<Union[]>([])
   const [allPanchayats,   setAllPanchayats]   = useState<Panchayat[]>([])
@@ -59,8 +59,8 @@ export default function EventEntry() {
   const [taskCatId,       setTaskCatId]       = useState('')   // FK string
   const [deliveryRoleId,  setDeliveryRoleId]  = useState('')   // FK string
   const [coordRoleId,     setCoordRoleId]     = useState('')   // FK string
-  const [inchargeUserId,  setInchargeUserId]  = useState('')   // User FK
-  const [coordUserId,     setCoordUserId]     = useState('')   // User FK
+  const [inchargeUserId,  setInchargeUserId]  = useState('')   // Volunteer FK
+  const [coordUserId,     setCoordUserId]     = useState('')   // Volunteer FK
   const [selBlock,        setSelBlock]        = useState('')
   const [selUnion,        setSelUnion]        = useState('')
   const [selPanchayat,    setSelPanchayat]    = useState('')
@@ -132,7 +132,7 @@ export default function EventEntry() {
       setDeliveryUsers([])
       return
     }
-    masterApi.fetchAssignableUsers(roleName).then(d => {
+    masterApi.fetchVolunteerNames(roleName).then(d => {
       if (d) setDeliveryUsers(d)
     })
   }, [deliveryRoleId, volunteerRoles])
@@ -148,7 +148,7 @@ export default function EventEntry() {
       setCoordinatorUsers([])
       return
     }
-    masterApi.fetchAssignableUsers(roleName).then(d => {
+    masterApi.fetchVolunteerNames(roleName).then(d => {
       if (d) setCoordinatorUsers(d)
     })
   }, [coordRoleId, volunteerRoles])
@@ -414,12 +414,12 @@ export default function EventEntry() {
   const taskTypeOpts     = taskTypes.map(tt => ({ value: String(tt.id), label: tt.name }))
   const taskCatOpts      = filteredCategories.map(c => ({ value: String(c.id), label: c.name }))
   const volRoleOpts      = volunteerRoles.map(vr => ({ value: String(vr.id), label: vr.name }))
-  const toUserOpts = (users: AssignableUser[]) => users.map(u => {
-    const name = (u.full_name?.trim() || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username)
-    return { value: String(u.id), label: `${name}${u.phone ? ` · ${u.phone}` : ''}` }
-  })
-  const inchargeOpts = toUserOpts(deliveryUsers)
-  const coordinatorOpts = toUserOpts(coordinatorUsers)
+  const toVolOpts = (vols: VolunteerName[]) => vols.map(v => ({
+    value: String(v.id),
+    label: `${v.user_name}${v.phone ? ` · ${v.phone}` : ''}`
+  }))
+  const inchargeOpts = toVolOpts(deliveryUsers)
+  const coordinatorOpts = toVolOpts(coordinatorUsers)
 
   const blockOpts        = blocks.map(b => ({ value: String(b.id), label: b.name }))
   const unionOpts        = formUnions.map(u => ({ value: String(u.id), label: u.name }))

@@ -12,6 +12,12 @@ import { usePermissions } from '../../context/PermissionContext'
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 
+interface FeedbackDecision {
+  survey: number
+  action: 'followup_required' | 'followup_not_required'
+  followup_type?: 'telephonic' | 'field_survey'
+}
+
 /* ── Toggle group (Yes / No / Not Sure) ── */
 function ToggleGroup({ label, value, onChange }: {
   label: string; value: YNS; onChange: (v: YNS) => void
@@ -86,7 +92,8 @@ export default function FieldActivityEntry() {
 
   /* ── Data ── */
   const [records,   setRecords]   = useState<FieldSurveyRecord[]>([])
-  const [fieldIds,  setFieldIds]  = useState<Set<number>>(new Set())   // survey IDs flagged as field_survey
+  const [fieldIds,  setFieldIds]  = useState<Set<number>>(new Set())   // survey IDs tracked in field flow
+  const [decisionBySurvey, setDecisionBySurvey] = useState<Map<number, FeedbackDecision>>(new Map())
 
   /* ── Master data ── */
   const [masterBooths,     setMasterBooths]     = useState<{ id: number; number: string; name: string; panchayat_name?: string }[]>([])
@@ -98,30 +105,35 @@ export default function FieldActivityEntry() {
     // Fetch all surveys
     fetchFieldSurveys().then(res => { if (res) setRecords(res) })
 
-    // Build the set of survey IDs that need a field visit using TWO sources:
-    //   1. Activity logs with category=field containing [survey_id:X] in notes (primary)
-    //   2. Feedback decisions with followup_type=field_survey (fallback if backend supports it)
+    // Build field-flow survey IDs + latest decision map.
     Promise.allSettled([
       apiClient.get('/activities/logs/', { params: { limit: 1000, category: 'field' } }),
       apiClient.get('/telecalling/feedbacks/', { params: { limit: 1000 } }),
     ]).then(([logsRes, decisionsRes]) => {
       const ids = new Set<number>()
 
-      // Primary: parse [survey_id:N] tags embedded in activity log notes
       if (logsRes.status === 'fulfilled') {
-        const logs: { notes?: string; activity_type?: string }[] = logsRes.value.data.results ?? []
+        const logs: { notes?: string }[] = logsRes.value.data.results ?? []
         logs.forEach(log => {
           const match = log.notes?.match(/\[survey_id:(\d+)\]/)
           if (match) ids.add(parseInt(match[1]))
         })
       }
 
-      // Fallback: feedback decisions with followup_type saved by the backend
       if (decisionsRes.status === 'fulfilled') {
-        const decisions: { survey: number; followup_type?: string }[] = decisionsRes.value.data.results ?? []
-        decisions
-          .filter(d => d.followup_type === 'field_survey')
-          .forEach(d => ids.add(d.survey))
+        const raw: FeedbackDecision[] = decisionsRes.value.data.results ?? []
+        const latestBySurvey = new Map<number, FeedbackDecision>()
+
+        raw.forEach(d => {
+          if (!latestBySurvey.has(d.survey)) {
+            latestBySurvey.set(d.survey, d)
+          }
+          if (d.followup_type === 'field_survey') {
+            ids.add(d.survey)
+          }
+        })
+
+        setDecisionBySurvey(latestBySurvey)
       }
 
       setFieldIds(ids)
@@ -179,13 +191,17 @@ export default function FieldActivityEntry() {
     if (filterVolunteer) {
       list = list.filter(s => s.assigned_volunteer === filterVolunteer)
     }
-    if (filterStatus === 'pending') list = list.filter(s => !s.assigned_volunteer)
-    if (filterStatus === 'done')    list = list.filter(s =>  !!s.assigned_volunteer)
+    if (filterStatus === 'pending') {
+      list = list.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
+    }
+    if (filterStatus === 'done') {
+      list = list.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
+    }
     return list
-  }, [fieldSurveys, search, filterVolunteer, filterStatus])
+  }, [fieldSurveys, search, filterVolunteer, filterStatus, decisionBySurvey])
 
-  const pendingList   = filtered.filter(s => !s.assigned_volunteer)
-  const completedList = filtered.filter(s =>  !!s.assigned_volunteer)
+  const pendingList = filtered.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
+  const completedList = filtered.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
 
   const volunteerOptions = useMemo(() => {
     const seen = new Set<string>()
@@ -201,8 +217,8 @@ export default function FieldActivityEntry() {
   const activeList  = filterStatus === 'pending' ? pendingList : filterStatus === 'done' ? completedList : filtered
   const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
   const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const pagedPending   = pagedList.filter(s => !s.assigned_volunteer)
-  const pagedCompleted = pagedList.filter(s =>  !!s.assigned_volunteer)
+  const pagedPending = pagedList.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
+  const pagedCompleted = pagedList.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
 
   /* ── Form ── */
   const [isFormOpen,       setFormOpen]       = useState(false)
@@ -304,7 +320,7 @@ export default function FieldActivityEntry() {
   const SurveyRow = ({ survey }: { survey: FieldSurveyRecord }) => {
     const pan       = getPanchayat(survey)
     const uni       = getUnion(survey)
-    const completed = !!survey.assigned_volunteer
+    const completed = decisionBySurvey.get(survey.id)?.action === 'followup_not_required'
 
     return (
       <div className={`border-b border-border ${completed ? 'bg-green-50/30' : ''}`}>
@@ -390,10 +406,11 @@ export default function FieldActivityEntry() {
           {canEdit('field-activity') && (
             <button
               onClick={() => openForm(survey)}
-              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0"
+              disabled={completed}
+              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0 disabled:opacity-45 disabled:cursor-not-allowed"
             >
               <i className="ph ph-pencil text-[12px]" />
-              {completed ? 'Update' : 'Assign & Fill'}
+              {completed ? 'Completed' : 'Update'}
             </button>
           )}
         </div>
@@ -403,7 +420,7 @@ export default function FieldActivityEntry() {
           <div className="mx-5 mb-3 rounded-lg border border-green-200 bg-white overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border-b border-green-100 flex-wrap">
               <i className="ph ph-map-trifold text-[13px] text-green-600" />
-              <span className="text-[10px] font-bold text-green-700 uppercase tracking-wide">Field Visit Recorded</span>
+              <span className="text-[10px] font-bold text-green-700 uppercase tracking-wide">Action Taken</span>
               <span className="text-[10px] text-muted">{survey.survey_date}</span>
               {survey.assigned_volunteer && (
                 <span className="text-[10px] text-muted">
@@ -461,10 +478,10 @@ export default function FieldActivityEntry() {
             <h2 className="text-[14px] font-bold text-heading">Field Survey</h2>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
-                {fieldSurveys.filter(s => !s.assigned_volunteer).length} Pending Visit
+                {fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required').length} Not Yet Action Taken
               </span>
               <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
-                {fieldSurveys.filter(s => !!s.assigned_volunteer).length} Visit Recorded
+                {fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required').length} Action Taken
               </span>
               <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-semibold">
                 {fieldSurveys.length} Total Field Surveys
@@ -479,8 +496,8 @@ export default function FieldActivityEntry() {
           <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
             {([
               { key: 'all',     label: 'All',             count: fieldSurveys.length },
-              { key: 'pending', label: 'Pending Visit',   count: fieldSurveys.filter(s => !s.assigned_volunteer).length },
-              { key: 'done',    label: 'Visit Recorded',  count: fieldSurveys.filter(s => !!s.assigned_volunteer).length },
+              { key: 'pending', label: 'Not Yet Action Taken', count: fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required').length },
+              { key: 'done',    label: 'Action Taken',         count: fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required').length },
             ] as const).map(tab => (
               <button key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
@@ -547,7 +564,7 @@ export default function FieldActivityEntry() {
               <>
                 <SectionLabel
                   icon="ph ph-clock text-amber-500"
-                  label="Pending Field Visit"
+                  label="Not Yet Action Taken"
                   count={pendingList.length}
                   color="bg-amber-50 text-amber-700"
                 />
@@ -560,7 +577,7 @@ export default function FieldActivityEntry() {
               <>
                 <SectionLabel
                   icon="ph ph-check-circle text-green-600"
-                  label="Visit Recorded"
+                  label="Action Taken"
                   count={completedList.length}
                   color="bg-green-50 text-green-700"
                 />

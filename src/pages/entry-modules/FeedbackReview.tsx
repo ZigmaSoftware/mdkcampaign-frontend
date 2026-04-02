@@ -40,6 +40,21 @@ interface FeedbackDecision {
   date:            string
 }
 
+interface TimelineEvent {
+  event_type: string
+  timestamp?: string
+  date?: string
+  user?: string
+  remarks?: string
+}
+
+interface TimelinePayload {
+  survey: number
+  voter_name: string
+  final_status: string
+  events: TimelineEvent[]
+}
+
 /* ── Colour helpers ── */
 const supportColor = (s?: string) => {
   if (!s) return 'bg-gray-100 text-gray-500'
@@ -90,6 +105,9 @@ export default function FeedbackReview() {
   const [loading,     setLoading]     = useState(true)
   const [saving,      setSaving]      = useState<number | null>(null)
   const [expandedFollowup, setExpandedFollowup] = useState<number | null>(null)
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  const [timelineLoading, setTimelineLoading] = useState(false)
+  const [timelineData, setTimelineData] = useState<TimelinePayload | null>(null)
 
   /* ── Master data for filters ── */
   const [masterBooths,     setMasterBooths]     = useState<{ id: number; number: string; name: string; panchayat_name?: string }[]>([])
@@ -153,7 +171,11 @@ export default function FeedbackReview() {
 
   const decisionMap = useMemo(() => {
     const m = new Map<number, FeedbackDecision>()
-    decisions.forEach(d => m.set(d.survey, d))
+    decisions.forEach(d => {
+      if (!m.has(d.survey)) {
+        m.set(d.survey, d)
+      }
+    })
     return m
   }, [decisions])
 
@@ -321,14 +343,21 @@ export default function FeedbackReview() {
     const tc       = telecallerByVoterName.get(survey.voter_name?.toLowerCase() ?? '')
     const existing = decisionMap.get(survey.id)
     const today    = new Date().toISOString().slice(0, 10)
+    const resolvedFollowupType = action === 'followup_not_required'
+      ? (existing?.followup_type ?? followupType)
+      : followupType
 
     setSaving(survey.id)
     setExpandedFollowup(null)
     try {
       if (existing) {
-        const res = await apiClient.patch(`/telecalling/feedbacks/${existing.id}/`, { action, followup_type: followupType, date: today })
+        const res = await apiClient.patch(`/telecalling/feedbacks/${existing.id}/`, {
+          action,
+          followup_type: resolvedFollowupType,
+          date: today,
+        })
         setDecisions(prev => prev.map(d => d.id === existing.id
-          ? { ...res.data, followup_type: res.data.followup_type ?? followupType }
+          ? { ...res.data, followup_type: res.data.followup_type ?? resolvedFollowupType }
           : d
         ))
       } else {
@@ -337,10 +366,10 @@ export default function FeedbackReview() {
           voter_name:      survey.voter_name,
           telecaller_name: tc?.name ?? survey.surveyed_by ?? '—',
           action,
-          followup_type:   followupType,
+          followup_type:   resolvedFollowupType,
           date:            today,
         })
-        setDecisions(prev => [...prev, { ...res.data, followup_type: res.data.followup_type ?? followupType }])
+        setDecisions(prev => [{ ...res.data, followup_type: res.data.followup_type ?? resolvedFollowupType }, ...prev])
       }
 
       if (action === 'followup_required' && followupType === 'field_survey') {
@@ -357,7 +386,11 @@ export default function FeedbackReview() {
         }
       }
 
-      const typeLabel = followupType === 'telephonic' ? 'Telephonic' : followupType === 'field_survey' ? 'Field Survey' : ''
+      const typeLabel = resolvedFollowupType === 'telephonic'
+        ? 'Telephonic'
+        : resolvedFollowupType === 'field_survey'
+          ? 'Field Survey'
+          : ''
       showToast(
         `${action === 'followup_required' ? `Followup Required${typeLabel ? ' — ' + typeLabel : ''}` : 'No Followup'} marked for ${survey.voter_name}`,
         action === 'followup_required' ? 'warning' : 'success'
@@ -366,6 +399,23 @@ export default function FeedbackReview() {
       showToast('Failed to save decision — please try again', 'error')
     } finally {
       setSaving(null)
+    }
+  }
+
+  const openTimeline = async (survey: SurveyRecord) => {
+    setTimelineOpen(true)
+    setTimelineLoading(true)
+    setTimelineData(null)
+    try {
+      const res = await apiClient.get('/telecalling/feedbacks/timeline/', {
+        params: { survey: survey.id },
+      })
+      setTimelineData(res.data)
+    } catch {
+      setTimelineData(null)
+      showToast('Failed to load full timeline', 'error')
+    } finally {
+      setTimelineLoading(false)
     }
   }
 
@@ -458,6 +508,15 @@ export default function FeedbackReview() {
 
           {/* Action buttons */}
           <div className="flex flex-col gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => openTimeline(survey)}
+              className="flex items-center gap-1.5 px-3 py-[5px] rounded-lg text-[11px] font-semibold border bg-white text-navy border-navy/30 hover:bg-navy/5 transition-colors"
+              title="View full timeline"
+            >
+              <i className="ph ph-eye text-[12px]" />
+              View
+            </button>
+
             <div className="flex flex-col gap-1">
               <button
                 disabled={busy}
@@ -516,6 +575,20 @@ export default function FeedbackReview() {
   const telephonicReq    = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'telephonic'    })
   const followupReqOther = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && !d?.followup_type                   })
   const followupNotReq   = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
+  const timelineEventLabel = (eventType: string) => {
+    if (eventType === 'telephonic_assignment') return 'Telephonic Assignment'
+    if (eventType === 'telephonic_entry') return 'Telephonic Entry'
+    if (eventType === 'field_survey_entry') return 'Field Survey Entry'
+    if (eventType === 'followup_event') return 'Follow-up Event'
+    return 'Event'
+  }
+  const timelineEventIcon = (eventType: string) => {
+    if (eventType === 'telephonic_assignment') return 'ph ph-phone-outgoing'
+    if (eventType === 'telephonic_entry') return 'ph ph-headset'
+    if (eventType === 'field_survey_entry') return 'ph ph-map-trifold'
+    if (eventType === 'followup_event') return 'ph ph-arrow-clockwise'
+    return 'ph ph-dot-outline'
+  }
 
   /* ════════════════════════════════════════════════════════
      Render
@@ -767,6 +840,75 @@ export default function FeedbackReview() {
           </>
         )}
       </div>
+
+      {timelineOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/45 flex items-center justify-center p-4">
+          <div className="w-full max-w-[720px] max-h-[85vh] bg-white rounded-xl shadow-2xl border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border bg-surface-alt flex items-center gap-2">
+              <i className="ph ph-clock-counter-clockwise text-[16px] text-navy" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-heading truncate">Full Timeline</p>
+                {timelineData?.voter_name && (
+                  <p className="text-[11px] text-muted truncate">{timelineData.voter_name}</p>
+                )}
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                timelineData?.final_status === 'Completed'
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}>
+                {timelineData?.final_status ?? 'Pending'}
+              </span>
+              <button
+                onClick={() => setTimelineOpen(false)}
+                className="w-7 h-7 rounded-lg hover:bg-border text-muted hover:text-heading transition-colors"
+              >
+                <i className="ph ph-x text-[14px]" />
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto px-4 py-3">
+              {timelineLoading ? (
+                <div className="py-12 text-center text-muted">
+                  <i className="ph ph-spinner-gap animate-spin text-[24px] block mb-2" />
+                  Loading timeline…
+                </div>
+              ) : !timelineData || timelineData.events.length === 0 ? (
+                <div className="py-12 text-center text-muted">
+                  <i className="ph ph-clock text-[24px] block mb-2" />
+                  No timeline events found.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {timelineData.events.map((event, index) => (
+                    <div key={`${event.timestamp}-${index}`} className="rounded-lg border border-border bg-surface px-3 py-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <i className={`${timelineEventIcon(event.event_type)} text-[12px] text-navy`} />
+                        <span className="text-[11px] font-semibold text-heading">{timelineEventLabel(event.event_type)}</span>
+                        {event.date && (
+                          <span className="text-[10px] text-muted">
+                            <i className="ph ph-calendar mr-1" />
+                            {event.date}
+                          </span>
+                        )}
+                        {event.user && (
+                          <span className="text-[10px] text-muted">
+                            <i className="ph ph-user mr-1" />
+                            {event.user}
+                          </span>
+                        )}
+                      </div>
+                      {event.remarks && (
+                        <p className="text-[11px] text-muted mt-1 break-words">{event.remarks}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

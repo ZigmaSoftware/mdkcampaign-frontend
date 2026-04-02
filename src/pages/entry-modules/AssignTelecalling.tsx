@@ -31,9 +31,29 @@ interface BoothOption {
   name: string
 }
 
+type WorkflowStatus =
+  | 'assigned'
+  | 'pending_followup'
+  | 'pending_field_survey'
+  | 'reassigned'
+  | 'completed'
+
+interface WorkflowInfo {
+  status: WorkflowStatus
+  label: string
+  is_locked: boolean
+}
+
 /* ─── Constants ──────────────────────────────────────────── */
 const PAGE_SIZE = 30
 const genderLabel = (g?: string) => g === 'm' ? 'Male' : g === 'f' ? 'Female' : g === 'o' ? 'Other' : '—'
+const WORKFLOW_LABELS: Record<WorkflowStatus, string> = {
+  assigned: 'Assigned',
+  pending_followup: 'Pending Follow-up',
+  pending_field_survey: 'Pending Field Survey',
+  reassigned: 'Reassigned',
+  completed: 'Completed',
+}
 
 /* ─── Booth multi-select ─────────────────────────────────── */
 function BoothMultiSelect({
@@ -150,9 +170,9 @@ export default function AssignTelecalling() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [assignTo, setAssignTo] = useState('')
 
-  /* Already-assigned voter IDs — fetched from API on mount */
-  const assignedIdsRef = useRef<Set<number>>(new Set())
-  const [assignedVoterIds, setAssignedVoterIds] = useState<Set<number>>(new Set())
+  /* Workflow status by voter ID (from assignments API). */
+  const workflowByVoterRef = useRef<Map<number, WorkflowInfo>>(new Map())
+  const [workflowByVoterId, setWorkflowByVoterId] = useState<Map<number, WorkflowInfo>>(new Map())
 
   /* ── Fetch masters + already-assigned IDs ── */
   useEffect(() => {
@@ -171,17 +191,24 @@ export default function AssignTelecalling() {
       })
       .catch(() => {})
 
-    /* Load already-assigned voter IDs from backend */
+    /* Load assignment workflow state from backend */
     apiClient.get('/telecalling/assignments/', { params: { limit: 1000 } })
       .then(r => {
         const assignments = r.data.results ?? []
-        const ids = new Set<number>(
-          assignments.flatMap((a: any) =>
-            (a.voters ?? []).map((v: any) => v.voter).filter(Boolean)
-          )
-        )
-        assignedIdsRef.current = ids
-        setAssignedVoterIds(ids)
+        const nextMap = new Map<number, WorkflowInfo>()
+        assignments.forEach((a: any) => {
+          ;(a.voters ?? []).forEach((v: any) => {
+            if (!v?.voter || nextMap.has(v.voter)) return
+            const status = (v.workflow_status ?? 'assigned') as WorkflowStatus
+            nextMap.set(v.voter, {
+              status,
+              label: v.workflow_label ?? WORKFLOW_LABELS[status] ?? 'Assigned',
+              is_locked: !!v.is_locked,
+            })
+          })
+        })
+        workflowByVoterRef.current = nextMap
+        setWorkflowByVoterId(nextMap)
       })
       .catch(() => {})
   }, [])
@@ -236,12 +263,13 @@ export default function AssignTelecalling() {
     return () => controller.abort()
   }, [page, filterBooths, debouncedSearch])
 
-  const visibleVoters  = voters
-  const isAllSelected  = visibleVoters.length > 0 && visibleVoters.every(v => selected.has(v.id))
+  const visibleVoters = voters
+  const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
+  const isAllSelected  = selectableVoters.length > 0 && selectableVoters.every(v => selected.has(v.id))
   const toggleAll      = () => {
     const next = new Set(selected)
-    if (isAllSelected) visibleVoters.forEach(v => next.delete(v.id))
-    else               visibleVoters.forEach(v => next.add(v.id))
+    if (isAllSelected) selectableVoters.forEach(v => next.delete(v.id))
+    else               selectableVoters.forEach(v => next.add(v.id))
     setSelected(next)
   }
   const toggleOne = (id: number) => {
@@ -259,7 +287,10 @@ export default function AssignTelecalling() {
     if (!telecaller) { showToast('Telecaller not found — please re-select', 'error'); return }
 
     const date        = filterDate || new Date().toISOString().slice(0, 10)
-    const groupVoters = voters.filter(v => selected.has(v.id) && !assignedIdsRef.current.has(v.id))
+    const groupVoters = voters.filter(v => {
+      if (!selected.has(v.id)) return false
+      return !(workflowByVoterRef.current.get(v.id)?.is_locked ?? false)
+    })
 
     const payload = {
       telecaller_id:    telecaller.id,
@@ -285,14 +316,21 @@ export default function AssignTelecalling() {
     try {
       await apiClient.post('/telecalling/assignments/', payload)
 
-      /* Update local assigned-IDs so these voters are hidden immediately */
+      /* Update local status so the UI reflects this assignment immediately */
       const voterIds = groupVoters.map(v => v.id)
-      const next = new Set([...assignedIdsRef.current, ...voterIds])
-      assignedIdsRef.current = next
-      setAssignedVoterIds(next)
+      const nextMap = new Map(workflowByVoterRef.current)
+      voterIds.forEach(voterId => {
+        const prev = nextMap.get(voterId)
+        const nextStatus: WorkflowStatus = prev?.status === 'pending_followup' ? 'reassigned' : 'assigned'
+        nextMap.set(voterId, {
+          status: nextStatus,
+          label: WORKFLOW_LABELS[nextStatus],
+          is_locked: true,
+        })
+      })
+      workflowByVoterRef.current = nextMap
+      setWorkflowByVoterId(nextMap)
 
-      /* Remove them from the visible list */
-      setVoters(prev => prev.filter(v => !selected.has(v.id)))
       setSelected(new Set())
       showToast(`${groupVoters.length} voter(s) assigned to ${telecaller.name}`, 'success')
     } catch {
@@ -324,6 +362,13 @@ export default function AssignTelecalling() {
   const clearAll     = () => { setFilterBooths(new Set()); setFilterDate(''); setFilterTelecaller(''); setFilterSearch(''); setDebouncedSearch(''); setPage(1) }
   const hasFilters   = filterBooths.size > 0 || !!filterTelecaller || !!filterSearch
   const assignName   = telecallers.find(t => String(t.id) === assignTo)?.name ?? ''
+  const workflowCounts = [...workflowByVoterId.values()].reduce(
+    (acc, info) => {
+      acc[info.status] = (acc[info.status] ?? 0) + 1
+      return acc
+    },
+    {} as Partial<Record<WorkflowStatus, number>>
+  )
 
   /* ════════════════════════════════════════════════════════
      Render
@@ -345,7 +390,15 @@ export default function AssignTelecalling() {
               <p className="text-[11px] text-muted">
                 Select voters and assign to a telecalling volunteer
                 {rawCount > 0 && <span className="ml-1 font-semibold text-navy">· {rawCount.toLocaleString('en-IN')} voters</span>}
-                {assignedVoterIds.size > 0 && <span className="ml-1 text-rose-400 font-medium">· {assignedVoterIds.size} assigned</span>}
+                {(workflowCounts.pending_followup ?? 0) > 0 && (
+                  <span className="ml-1 text-orange-500 font-medium">· {workflowCounts.pending_followup} pending follow-up</span>
+                )}
+                {(workflowCounts.reassigned ?? 0) > 0 && (
+                  <span className="ml-1 text-blue-500 font-medium">· {workflowCounts.reassigned} reassigned</span>
+                )}
+                {(workflowCounts.completed ?? 0) > 0 && (
+                  <span className="ml-1 text-green-600 font-medium">· {workflowCounts.completed} completed</span>
+                )}
               </p>
             </div>
           </div>
@@ -438,6 +491,7 @@ export default function AssignTelecalling() {
               <tr className="bg-surface-alt border-b border-border text-left">
                 <th className="w-10 px-4 py-[10px]">
                   <input type="checkbox" className="w-4 h-4 rounded border-2 border-border cursor-pointer accent-navy"
+                    disabled={selectableVoters.length === 0}
                     checked={isAllSelected} onChange={toggleAll} />
                 </th>
                 {['#', 'Voter Name', 'Voter ID', 'Phone Numbers', 'Age / Gender', 'Booth', 'Address'].map(h => (
@@ -463,28 +517,39 @@ export default function AssignTelecalling() {
                 </td></tr>
               ) : (
                 visibleVoters.map((v, idx) => {
-                  const isAssigned = assignedVoterIds.has(v.id)
+                  const workflow = workflowByVoterId.get(v.id)
+                  const isLocked = workflow?.is_locked ?? false
                   const phones = [v.phone, v.phone2, v.alt_phoneno2, v.alt_phoneno3].filter(Boolean)
+                  const statusClasses =
+                    workflow?.status === 'completed'
+                      ? 'bg-green-100 text-green-700'
+                      : workflow?.status === 'pending_followup'
+                        ? 'bg-orange-100 text-orange-700'
+                        : workflow?.status === 'reassigned'
+                          ? 'bg-blue-100 text-blue-700'
+                          : workflow?.status === 'pending_field_survey'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-rose-100 text-rose-600'
                   return (
                     <tr key={v.id}
-                      onClick={() => { if (!isAssigned) toggleOne(v.id) }}
+                      onClick={() => { if (!isLocked) toggleOne(v.id) }}
                       className={`border-b border-border transition-colors
-                        ${isAssigned         ? 'bg-rose-50 opacity-60 cursor-not-allowed'
+                        ${isLocked           ? 'bg-surface-alt opacity-65 cursor-not-allowed'
                         : selected.has(v.id) ? 'bg-blue-50 cursor-pointer'
                         :                      'hover:bg-surface-alt cursor-pointer'}`}>
                       <td className="px-4 py-[9px]" onClick={e => e.stopPropagation()}>
                         <input type="checkbox"
-                          disabled={isAssigned}
+                          disabled={isLocked}
                           className="w-4 h-4 rounded border-2 border-border cursor-pointer accent-navy disabled:opacity-40"
-                          checked={selected.has(v.id)} onChange={() => { if (!isAssigned) toggleOne(v.id) }} />
+                          checked={selected.has(v.id)} onChange={() => { if (!isLocked) toggleOne(v.id) }} />
                       </td>
                       <td className="px-3 py-[9px] text-muted text-[11px]">{pageStart + idx}</td>
                       <td className="px-3 py-[9px]">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-heading">{v.name}</span>
-                          {isAssigned && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-600 whitespace-nowrap">
-                              Assigned
+                          {workflow && (
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap ${statusClasses}`}>
+                              {workflow.label}
                             </span>
                           )}
                         </div>

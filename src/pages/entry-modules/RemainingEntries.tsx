@@ -4,7 +4,6 @@ import { useEntryModule } from '../../hooks/useEntryModule'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Ward, Booth, Constituency, CampaignActivityType, VolunteerRole, VolunteerName } from '../../hooks/useMasterAPI'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
-import type { VolunteerRecord } from '../../hooks/useEntryAPI'
 import apiClient from '../../utils/api'
 import type { EntryRecord } from '../../types/entry.types'
 import EntryListHeader from '../../components/entry/EntryListHeader'
@@ -58,7 +57,6 @@ export function CampaignEntry() {
 
   const [wards,          setWards]          = useState<Ward[]>([])
   const [booths,         setBooths]         = useState<Booth[]>([])
-  const [volunteers,     setVolunteers]     = useState<VolunteerRecord[]>([])
   const [constituencies, setConstituencies] = useState<Constituency[]>([])
   const [selWardId,  setSelWardId]  = useState<number | null>(null)
   const [selBoothId, setSelBoothId] = useState<number | null>(null)
@@ -73,7 +71,6 @@ export function CampaignEntry() {
   useEffect(() => {
     masterApi.fetchWards().then(d => d && setWards(d))
     masterApi.fetchBooths().then(d => d && setBooths(d))
-    entryApi.fetchVolunteers().then(d => d && setVolunteers(d.results))
     masterApi.fetchConstituencies().then(d => d && setConstituencies(d))
     masterApi.fetchCampaignActivityTypes().then(d => d && setActivityTypes(d))
     masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))

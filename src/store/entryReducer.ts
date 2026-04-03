@@ -31,6 +31,15 @@ export function entryReducer(state: EntryState, action: EntryAction): EntryState
         editCtx: null,
       }
 
+    case 'SET_MODULE_RECORDS':
+      return {
+        ...state,
+        records: {
+          ...state.records,
+          [action.module]: action.records,
+        },
+      }
+
     case 'UPDATE_RECORD':
       return {
         ...state,

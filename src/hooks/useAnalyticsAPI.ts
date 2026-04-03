@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import apiClient from '../utils/api'
 import type { AxiosError } from 'axios'
 
@@ -53,6 +53,10 @@ interface BoothStat {
   positive_pct?: number
   neutral_pct?: number
   negative_pct?: number
+  survey_count?: number
+  survey_positive?: number
+  survey_negative?: number
+  survey_coverage_pct?: number
 }
 
 interface WardStat {

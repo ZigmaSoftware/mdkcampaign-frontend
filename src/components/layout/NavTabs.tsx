@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import { TOP_NAV_TABS } from '../../constants/nav.constants'
 import type { PageId } from '../../types/nav.types'
 import { usePermissions } from '../../context/PermissionContext'
 
@@ -8,10 +7,19 @@ interface NavTabsProps {
   onPageChange: (id: PageId) => void
 }
 
+const isPageId = (id: string): id is PageId => (
+  id === 'dashboard' ||
+  id === 'entry' ||
+  id === 'masters-config' ||
+  id === 'report' ||
+  id === 'opinion-poll' ||
+  id === 'user-settings'
+)
+
 export default function NavTabs({ activePage, onPageChange }: NavTabsProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { canAccess } = usePermissions()
-  const visibleTabs = TOP_NAV_TABS.filter(t => canAccess(t.id))
+  const { topTabs } = usePermissions()
+  const visibleTabs = topTabs.filter((tab): tab is (typeof tab & { id: PageId }) => isPageId(tab.id))
   const activeTab = visibleTabs.find(t => t.id === activePage)
 
   return (

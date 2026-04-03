@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ToastProvider } from './context/ToastContext'
 import { EntryStoreProvider } from './context/EntryStoreContext'
 import { MasterStoreProvider } from './context/MasterStoreContext'
@@ -22,16 +22,31 @@ import SignupPage from './pages/SignupPage'
 import PublicPollPage from './pages/PublicPollPage'
 
 import type { PageId, EntryModuleId, MasterModuleId } from './types/nav.types'
-import { TOP_NAV_TABS, ENTRY_TABS } from './constants/nav.constants'
 
 function AppShell() {
   const { user, isAuthenticated, logout } = useAuthContext()
-  const { canAccess } = usePermissions()
+  const { topTabs, loaded } = usePermissions()
 
   const [activePage,       setActivePage]       = useState<PageId>('dashboard')
   const [activeEntryTab,   setActiveEntryTab]   = useState<EntryModuleId>('voter')
   const [activeMasterTab,  setActiveMasterTab]  = useState<MasterModuleId>('area')
   const [showSignup,       setShowSignup]       = useState(false)
+  const visibleTopTabs = topTabs.filter(
+    (tab): tab is (typeof tab & { id: PageId }) =>
+      tab.id === 'dashboard' ||
+      tab.id === 'entry' ||
+      tab.id === 'masters-config' ||
+      tab.id === 'report' ||
+      tab.id === 'opinion-poll' ||
+      tab.id === 'user-settings'
+  )
+
+  useEffect(() => {
+    if (!loaded || visibleTopTabs.length === 0) return
+    if (!visibleTopTabs.some(tab => tab.id === activePage)) {
+      setActivePage(visibleTopTabs[0].id)
+    }
+  }, [loaded, visibleTopTabs, activePage])
 
   // ── Public poll (no auth needed) ────────────────────────
   if (window.location.hash === '#modakurichi' || window.location.hash === '#poll' || window.location.hash === '#mkpoll') return <PublicPollPage />
@@ -129,7 +144,9 @@ export default function App() {
       <ToastProvider>
         <EntryStoreProvider>
           <MasterStoreProvider>
-            <AppShell />
+            <PermissionProvider>
+              <AppShell />
+            </PermissionProvider>
           </MasterStoreProvider>
         </EntryStoreProvider>
       </ToastProvider>

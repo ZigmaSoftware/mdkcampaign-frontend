@@ -5,10 +5,11 @@ import dmkLogo from '../assets/logo/dmk-logo.png'
 import ntkLogo      from '../assets/logo/ntk_logo.png'
 import tvkLogo      from '../assets/logo/tvk_logo.png'
 import notaLogo     from '../assets/logo/nota-logo.png'
+import { API_BASE_URL } from '../utils/apiConfig'
 
 /* Plain axios — no auth interceptor (public page, no login needed) */
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_BASE_URL as string) || 'http://192.168.1.157:7904/api/v1',
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 })

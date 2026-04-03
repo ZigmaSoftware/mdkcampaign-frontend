@@ -184,6 +184,8 @@ interface CampaignEventRecord {
   actual_attendees?: number
   organized_by?: number
   organized_by_name?: string
+  materials_prepared?: string
+  outcome_notes?: string
   special_guest_name?: string
   attendees?: EventAttendeeRecord[]
   created_at?: string
@@ -229,7 +231,7 @@ interface UseEntryAPIReturn {
   loading: boolean
   error: string | null
   // Voters
-  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string) => Promise<{ results: VoterRecord[]; count: number } | null>
+  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string, contactStatus?: string) => Promise<{ results: VoterRecord[]; count: number } | null>
   fetchVoter: (voterId: number) => Promise<VoterRecord | null>
   createVoter: (voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
@@ -245,6 +247,7 @@ interface UseEntryAPIReturn {
   fetchCampaignEvents: (filter?: any) => Promise<CampaignEventRecord[] | null>
   createCampaignEvent: (eventData: Partial<CampaignEventRecord>) => Promise<CampaignEventRecord | null>
   updateCampaignEvent: (eventId: number, eventData: Partial<CampaignEventRecord>) => Promise<CampaignEventRecord | null>
+  deleteCampaignEvent: (eventId: number) => Promise<boolean>
   // Tasks
   fetchTasks: (filters?: Record<string, string | number>) => Promise<TaskRecord[] | null>
   createTask: (data: Partial<TaskRecord>) => Promise<TaskRecord | null>
@@ -286,7 +289,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOTERS ====================
 
   const fetchVoters = useCallback(
-    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string): Promise<{ results: VoterRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string, contactStatus?: string): Promise<{ results: VoterRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
@@ -300,6 +303,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
             ...(unionId     ? { union:     unionId     } : {}),
             ...(blockId     ? { block:     blockId     } : {}),
             ...(ageGroup    ? { age_group: ageGroup    } : {}),
+            ...(contactStatus ? { contact_status: contactStatus } : {}),
             limit:  pageSize,
             offset: (page - 1) * pageSize,
           },
@@ -533,6 +537,23 @@ export function useEntryAPI(): UseEntryAPIReturn {
       } catch (err) {
         handleError(err, 'update campaign event')
         return null
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
+  const deleteCampaignEvent = useCallback(
+    async (eventId: number): Promise<boolean> => {
+      setLoading(true)
+      setError(null)
+      try {
+        await apiClient.delete(`/campaigns/events/${eventId}/`)
+        return true
+      } catch (err) {
+        handleError(err, 'delete campaign event')
+        return false
       } finally {
         setLoading(false)
       }
@@ -839,6 +860,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
     fetchCampaignEvents,
     createCampaignEvent,
     updateCampaignEvent,
+    deleteCampaignEvent,
     fetchTasks,
     createTask,
     updateTask,

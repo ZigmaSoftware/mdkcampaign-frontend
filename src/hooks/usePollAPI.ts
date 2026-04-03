@@ -54,6 +54,8 @@ export interface UserRecord {
   full_name: string
   role: string
   role_display: string
+  volunteer_role?: number | null
+  volunteer_role_name?: string
   is_active: boolean
   is_verified: boolean
   date_joined: string

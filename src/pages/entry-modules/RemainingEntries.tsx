@@ -1,9 +1,11 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { usePermissions } from '../../context/PermissionContext'
+import { useEntryStore } from '../../context/EntryStoreContext'
 import { useEntryModule } from '../../hooks/useEntryModule'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Ward, Booth, Constituency, CampaignActivityType, VolunteerRole, VolunteerName } from '../../hooks/useMasterAPI'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
+import type { CampaignEventRecord } from '../../hooks/useEntryAPI'
 import apiClient from '../../utils/api'
 import type { EntryRecord } from '../../types/entry.types'
 import EntryListHeader from '../../components/entry/EntryListHeader'
@@ -51,9 +53,10 @@ function BlockOptions({ allLabel = 'Select' }: { allLabel?: string }) {
 /* ── CAMPAIGN ACTIVITY ──────────────────────────────────────────────── */
 export function CampaignEntry() {
   const em = useEntryModule('campaign', 'campaign-form')
+  const { dispatch } = useEntryStore()
   const { canAdd, canEdit, canDelete } = usePermissions()
   const masterApi = useMasterAPI()
-  const entryApi  = useEntryAPI()
+  const { fetchCampaignEvents, createCampaignEvent, updateCampaignEvent, deleteCampaignEvent } = useEntryAPI()
 
   const [wards,          setWards]          = useState<Ward[]>([])
   const [booths,         setBooths]         = useState<Booth[]>([])
@@ -76,8 +79,119 @@ export function CampaignEntry() {
     masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))
   }, [])
 
+  const parseStoredCampaignNotes = useCallback((notes?: string) => {
+    const details = {
+      outcome: '',
+      issues: '',
+      followup: '',
+      notes: '',
+      teamRole: '',
+      teamRoleLabel: '',
+      team: '',
+      teamLabel: '',
+    }
+
+    if (!notes) {
+      return details
+    }
+
+    const plainNotes: string[] = []
+    notes.split('\n').map(line => line.trim()).filter(Boolean).forEach(line => {
+      if (line.startsWith('Outcome: ')) details.outcome = line.slice(9).trim()
+      else if (line.startsWith('Issues: ')) details.issues = line.slice(8).trim()
+      else if (line.startsWith('Follow-up: ')) details.followup = line.slice(11).trim()
+      else if (line.startsWith('Notes: ')) plainNotes.push(line.slice(7).trim())
+      else if (line.startsWith('__meta_team_role_id:')) details.teamRole = line.slice(20).trim()
+      else if (line.startsWith('__meta_team_role_label:')) details.teamRoleLabel = line.slice(23).trim()
+      else if (line.startsWith('__meta_team_volunteer_id:')) details.team = line.slice(25).trim()
+      else if (line.startsWith('__meta_team_volunteer_label:')) details.teamLabel = line.slice(28).trim()
+      else plainNotes.push(line)
+    })
+    details.notes = plainNotes.join('\n').trim()
+    return details
+  }, [])
+
+  const normalizeTimeForInput = useCallback((value?: string) => {
+    if (!value) {
+      return ''
+    }
+    const trimmed = value.trim()
+    return trimmed.length >= 5 ? trimmed.slice(0, 5) : trimmed
+  }, [])
+
+  const resolveBoothFromLocation = useCallback((location?: string) => {
+    if (!location) {
+      return undefined
+    }
+    const locationParts = location.split('/').map(part => part.trim()).filter(Boolean)
+    const boothToken = locationParts[locationParts.length - 1]
+    if (!boothToken) {
+      return undefined
+    }
+    return booths.find(booth =>
+      booth.name === boothToken ||
+      booth.number === boothToken ||
+      `${booth.number} — ${booth.name}` === boothToken
+    )
+  }, [booths])
+
+  const mapCampaignEventToRecord = useCallback((event: CampaignEventRecord): EntryRecord => {
+    const locationParts = (event.location || '').split('/').map(part => part.trim()).filter(Boolean)
+    const parsedNotes = parseStoredCampaignNotes(event.outcome_notes)
+    const matchedBooth = resolveBoothFromLocation(event.location)
+
+    return {
+      id: `campaign-${event.id}`,
+      keyField: event.title || 'Campaign Activity',
+      sub: `${event.scheduled_date || '—'} · ${locationParts[0] || event.location || '—'} · ${event.location || '—'} · Reached: ${event.expected_attendees ?? 0}`,
+      data: {
+        type: event.title || '',
+        date: event.scheduled_date || '',
+        time: normalizeTimeForInput(event.scheduled_time),
+        area: locationParts[0] || '',
+        booth: matchedBooth ? String(matchedBooth.id) : '',
+        reach: event.expected_attendees != null ? String(event.expected_attendees) : '',
+        material: event.materials_prepared || '',
+        guest: event.special_guest_name || '',
+        outcome: parsedNotes.outcome || 'Pending',
+        issues: parsedNotes.issues,
+        followup: parsedNotes.followup,
+        notes: parsedNotes.notes || event.description || '',
+        wardId: matchedBooth?.ward != null ? String(matchedBooth.ward) : '',
+        boothId: matchedBooth ? String(matchedBooth.id) : '',
+        teamRole: parsedNotes.teamRole,
+        teamRoleLabel: parsedNotes.teamRoleLabel,
+        team: parsedNotes.team,
+        teamLabel: parsedNotes.teamLabel,
+        location: event.location || '',
+        status: event.status || '',
+      },
+      createdAt: event.created_at || new Date().toISOString(),
+      backendId: event.id,
+    }
+  }, [normalizeTimeForInput, parseStoredCampaignNotes, resolveBoothFromLocation])
+
+  const loadCampaignEvents = useCallback(async () => {
+    const events = await fetchCampaignEvents()
+    if (!events) {
+      return
+    }
+    dispatch({
+      type: 'SET_MODULE_RECORDS',
+      module: 'campaign',
+      records: events.map(mapCampaignEventToRecord),
+    })
+  }, [dispatch, fetchCampaignEvents, mapCampaignEventToRecord])
+
   useEffect(() => {
-    if (!teamRoleId) { setTeamRoleVolunteers([]); return }
+    loadCampaignEvents()
+  }, [loadCampaignEvents])
+
+  useEffect(() => {
+    if (!teamRoleId) {
+      masterApi.fetchVolunteerNames().then(d => { if (d) setTeamRoleVolunteers(d) })
+      return
+    }
     const roleName = volunteerRoles.find(vr => String(vr.id) === teamRoleId)?.name
     masterApi.fetchVolunteerNames(roleName).then(d => { if (d) setTeamRoleVolunteers(d) })
   }, [teamRoleId, volunteerRoles])
@@ -87,7 +201,6 @@ export function CampaignEntry() {
     date:    useRef<HTMLInputElement>(null),
     time:    useRef<HTMLInputElement>(null),
     area:    useRef<HTMLSelectElement>(null),
-    ward:    useRef<HTMLSelectElement>(null),
     booth:   useRef<HTMLSelectElement>(null),
     reach:   useRef<HTMLInputElement>(null),
     material:useRef<HTMLInputElement>(null),
@@ -98,13 +211,17 @@ export function CampaignEntry() {
     notes:   useRef<HTMLTextAreaElement>(null),
   }
 
-  const pendingFill = useRef<Record<string,string> | null>(null)
-
   const fill = (d: Record<string,string>) => {
     Object.entries(r).forEach(([k, ref]) => { if (ref.current) ref.current.value = d[k] ?? '' })
     // Restore ward/booth selection state for volunteer filtering
     const wId = d.wardId ? parseInt(d.wardId) : null
     const bId = d.boothId ? parseInt(d.boothId) : null
+    if (r.booth.current) {
+      r.booth.current.value = d.boothId ?? d.booth ?? ''
+    }
+    if (r.outcome.current) {
+      r.outcome.current.value = d.outcome || 'Pending'
+    }
     setSelWardId(wId)
     setSelBoothId(bId)
     setTeamRoleId(d.teamRole ?? '')
@@ -117,6 +234,7 @@ export function CampaignEntry() {
     setSelBoothId(null)
     setTeamRoleId('')
     setTeamVolunteerId('')
+    if (r.outcome.current) r.outcome.current.value = 'Pending'
   }
 
   const collect = (): Record<string, string> => ({
@@ -128,8 +246,14 @@ export function CampaignEntry() {
   })
 
   useEffect(() => {
-    if (em.isFormOpen && pendingFill.current) { fill(pendingFill.current); pendingFill.current = null }
-  }, [em.isFormOpen])
+    if (!em.isFormOpen || !em.isEditing || !em.editingId) {
+      return
+    }
+    const record = em.records.find(rec => rec.id === em.editingId)
+    if (record) {
+      fill(record.data)
+    }
+  }, [em.editingId, em.isEditing, em.isFormOpen, em.records, booths.length, activityTypes.length, volunteerRoles.length])
 
   const handleSave = async () => {
     const d = collect()
@@ -137,29 +261,75 @@ export function CampaignEntry() {
     const wardName  = wards.find(w => w.id === selWardId)?.name   || ''
     const boothName = booths.find(b => b.id === selBoothId)?.name || ''
     const location  = [d.area, wardName, boothName].filter(Boolean).join(' / ') || '—'
-    em.saveRecord(d.type, `${d.date || '—'} · ${d.area || '—'} · ${location} · Reached: ${d.reach || '0'}`, d)
-
-    // Also persist to backend so dashboard "Upcoming Events" can display it
     const constituencyId = constituencies[0]?.id
-    await entryApi.createCampaignEvent({
+    const editingRecord = em.isEditing && em.editingId
+      ? em.records.find(rec => rec.id === em.editingId)
+      : undefined
+    const selectedRoleLabel = volunteerRoles.find(vr => String(vr.id) === d.teamRole)?.name || editingRecord?.data?.teamRoleLabel || ''
+    const selectedVolunteerLabel = teamVolunteerOptions.find(opt => opt.value === d.team)?.label || editingRecord?.data?.teamLabel || ''
+    const outcomeNotes = [
+      d.outcome ? `Outcome: ${d.outcome}` : '',
+      d.issues ? `Issues: ${d.issues}` : '',
+      d.followup ? `Follow-up: ${d.followup}` : '',
+      d.teamRole ? `__meta_team_role_id:${d.teamRole}` : '',
+      selectedRoleLabel ? `__meta_team_role_label:${selectedRoleLabel}` : '',
+      d.team ? `__meta_team_volunteer_id:${d.team}` : '',
+      selectedVolunteerLabel ? `__meta_team_volunteer_label:${selectedVolunteerLabel}` : '',
+    ].filter(Boolean).join('\n')
+
+    const payload = {
       title:              d.type,
       event_type:         'meeting',
       scheduled_date:     d.date || new Date().toISOString().slice(0, 10),
       scheduled_time:     d.time || undefined,
       location,
-      status:             'planned',
+      status:             editingRecord?.data?.status || 'planned',
       description:        d.notes || undefined,
       expected_attendees: d.reach ? parseInt(d.reach) : undefined,
+      materials_prepared: d.material || undefined,
+      outcome_notes:      outcomeNotes || undefined,
       special_guest_name: d.guest || undefined,
       ...(constituencyId ? { constituency: constituencyId } : {}),
-    })
+    }
+
+    const saved = editingRecord?.backendId
+      ? await updateCampaignEvent(editingRecord.backendId, payload)
+      : await createCampaignEvent(payload)
+
+    if (!saved) {
+      return
+    }
+
+    await loadCampaignEvents()
 
     clear()
+    em.closeForm()
   }
 
   const handleEdit = (id: string) => {
-    const rec = em.startEdit(id)
-    if (rec) { pendingFill.current = rec.data }
+    em.startEdit(id)
+  }
+
+  const handleDelete = async (id: string) => {
+    const record = em.records.find(rec => rec.id === id)
+    if (!record) {
+      return
+    }
+
+    if (!record.backendId) {
+      em.deleteRecord(id)
+      return
+    }
+
+    const deleted = await deleteCampaignEvent(record.backendId)
+    if (!deleted) {
+      return
+    }
+
+    await loadCampaignEvents()
+    if (em.editingId === id) {
+      em.closeForm()
+    }
   }
 
   const dateFiltered = em.filtered.filter(rec => {
@@ -168,6 +338,40 @@ export function CampaignEntry() {
     if (filterDateTo   && d > filterDateTo)   return false
     return true
   })
+
+  const teamVolunteerOptions = teamRoleVolunteers.map(v => {
+    const name = v.user_name || `Volunteer #${v.id}`
+    return {
+      value: String(v.id),
+      label: v.phone ? `${name} · ${v.phone}` : name,
+    }
+  })
+
+  const activeEditingRecord = em.isEditing && em.editingId
+    ? em.records.find(rec => rec.id === em.editingId)
+    : undefined
+
+  const teamRoleOptions = volunteerRoles.map(vr => ({ value: String(vr.id), label: vr.name }))
+  if (
+    activeEditingRecord?.data?.teamRole &&
+    activeEditingRecord.data.teamRoleLabel &&
+    !teamRoleOptions.some(opt => opt.value === activeEditingRecord.data.teamRole)
+  ) {
+    teamRoleOptions.push({
+      value: activeEditingRecord.data.teamRole,
+      label: activeEditingRecord.data.teamRoleLabel,
+    })
+  }
+  if (
+    activeEditingRecord?.data?.team &&
+    activeEditingRecord.data.teamLabel &&
+    !teamVolunteerOptions.some(opt => opt.value === activeEditingRecord.data.team)
+  ) {
+    teamVolunteerOptions.push({
+      value: activeEditingRecord.data.team,
+      label: activeEditingRecord.data.teamLabel,
+    })
+  }
 
   return (
     <div className="page-enter">
@@ -202,7 +406,7 @@ export function CampaignEntry() {
               )}
             </div>
           </div>
-          <RecordList records={dateFiltered} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={canEdit('campaign') ? handleEdit : undefined} onDelete={canDelete('campaign') ? em.deleteRecord : undefined} />
+          <RecordList records={dateFiltered} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={canEdit('campaign') ? handleEdit : undefined} onDelete={canDelete('campaign') ? handleDelete : undefined} />
         </div>
       </div>
       <EntryFormPanel id="campaign-form" title="Campaign Activity" icon="ph ph-megaphone" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>
@@ -218,23 +422,18 @@ export function CampaignEntry() {
           <FormGroup label="Date" required><input ref={r.date} type="date" className={inputCls} defaultValue={todayISO()} /></FormGroup>
           <FormGroup label="Time"><input ref={r.time} type="time" className={inputCls} /></FormGroup>
         </FormRow>
-        <FormRow cols={3}>
+        <FormRow cols={2}>
           <FormGroup label="Block" required><select ref={r.area} className={selectCls}><BlockOptions /></select></FormGroup>
-          <FormGroup label="Ward">
-            <select
-              ref={r.ward}
-              className={selectCls}
-              onChange={e => { setSelWardId(e.target.value ? parseInt(e.target.value) : null); setSelBoothId(null); if (r.booth.current) r.booth.current.value = '' }}
-            >
-              <option value="">Select Ward</option>
-              {wards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </FormGroup>
           <FormGroup label="Booth">
             <select
               ref={r.booth}
               className={selectCls}
-              onChange={e => { setSelBoothId(e.target.value ? parseInt(e.target.value) : null); setSelWardId(null); if (r.ward.current) r.ward.current.value = '' }}
+              onChange={e => {
+                const boothId = e.target.value ? parseInt(e.target.value) : null
+                const selectedBooth = boothId ? booths.find(b => b.id === boothId) : null
+                setSelBoothId(boothId)
+                setSelWardId(selectedBooth?.ward ?? null)
+              }}
             >
               <option value="">Select Booth</option>
               {booths.map(b => <option key={b.id} value={b.id}>{b.number} — {b.name}</option>)}
@@ -246,7 +445,7 @@ export function CampaignEntry() {
             <SearchableSelect
               value={teamRoleId}
               onChange={v => { setTeamRoleId(v); setTeamVolunteerId('') }}
-              options={volunteerRoles.map(vr => ({ value: String(vr.id), label: vr.name }))}
+              options={teamRoleOptions}
               placeholder="— Select Role —"
             />
           </FormGroup>
@@ -254,9 +453,8 @@ export function CampaignEntry() {
             <SearchableSelect
               value={teamVolunteerId}
               onChange={setTeamVolunteerId}
-              options={teamRoleVolunteers.map(v => ({ value: String(v.id), label: v.user_name }))}
-              placeholder={teamRoleId ? '— Select Volunteer —' : '— Select Role first —'}
-              disabled={!teamRoleId}
+              options={teamVolunteerOptions}
+              placeholder={teamRoleId ? '— Select Volunteer —' : '— Select Volunteer —'}
             />
           </FormGroup>
         </FormRow>
@@ -264,7 +462,7 @@ export function CampaignEntry() {
           <FormGroup label="Houses / People Reached"><input ref={r.reach} type="number" className={inputCls} placeholder="Count" /></FormGroup>
           <FormGroup label="Materials Used"><input ref={r.material} className={inputCls} placeholder="e.g. 500 pamphlets" /></FormGroup>
           <FormGroup label="Special Guest Name"><input ref={r.guest} type="text" className={inputCls} placeholder="Enter guest name" /></FormGroup>
-          <FormGroup label="Outcome"><select ref={r.outcome} className={selectCls}><option>Successful</option><option>Partial</option><option>Follow-up Needed</option><option>Not Available</option></select></FormGroup>
+          <FormGroup label="Outcome"><select ref={r.outcome} className={selectCls} defaultValue="Pending"><option>Pending</option><option>Successful</option><option>Partial</option><option>Follow-up Needed</option><option>Not Available</option></select></FormGroup>
         </FormRow>
         <FormRow cols={2}>
           <FormGroup label="Key Issues Raised by Voters"><input ref={r.issues} className={inputCls} placeholder="Main issues discussed" /></FormGroup>

@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios'
+import { API_BASE_URL } from './apiConfig'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.157:7904/api/v1'
 const TOKEN_KEY = import.meta.env.VITE_TOKEN_KEY || 'access_token'
 const REFRESH_TOKEN_KEY = import.meta.env.VITE_REFRESH_TOKEN_KEY || 'refresh_token'
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000')

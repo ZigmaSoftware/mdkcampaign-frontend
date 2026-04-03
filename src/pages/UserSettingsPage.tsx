@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import SectionHeader from '../components/ui/SectionHeader'
 import UserEntryPage from './entry-modules/UserEntry'
 import PermissionsPage from './master-modules/PermissionsPage'
@@ -8,14 +8,37 @@ type Tab = 'user-mgmt' | 'permissions'
 
 export default function UserSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('user-mgmt')
-  const { canView } = usePermissions()
+  const { canView, loaded, mainScreens } = usePermissions()
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'user-mgmt',   label: 'User Management', icon: 'ph ph-users'         },
-    { id: 'permissions', label: 'Permissions',      icon: 'ph ph-shield-check'  },
-  ]
+  const tabs = useMemo<{ id: Tab; label: string; icon: string }[]>(() => {
+    const mastersScreen = mainScreens.find(ms => ms.slug === 'masters-config')
+    const dynamicTabs = (mastersScreen?.screens ?? [])
+      .filter(screen => screen.is_active && (screen.slug === 'user-mgmt' || screen.slug === 'permissions'))
+      .sort((a, b) => a.order - b.order)
+      .map(screen => ({
+        id: screen.slug as Tab,
+        label: screen.name,
+        icon: screen.icon || (screen.slug === 'permissions' ? 'ph ph-shield-check' : 'ph ph-users'),
+      }))
 
-  const visibleTabs = tabs.filter(t => canView(t.id))
+    if (dynamicTabs.length > 0) return dynamicTabs
+    return [
+      { id: 'user-mgmt', label: 'User Management', icon: 'ph ph-users' },
+      { id: 'permissions', label: 'Permissions', icon: 'ph ph-shield-check' },
+    ]
+  }, [mainScreens])
+
+  const visibleTabs = useMemo(
+    () => tabs.filter(tab => canView(tab.id)),
+    [tabs, canView]
+  )
+
+  useEffect(() => {
+    if (!loaded || visibleTabs.length === 0) return
+    if (!visibleTabs.some(tab => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id)
+    }
+  }, [loaded, visibleTabs, activeTab])
 
   return (
     <div className="max-w-[1440px] mx-auto px-6 py-5 md:px-[10px] sm:px-2">
@@ -50,10 +73,16 @@ export default function UserSettingsPage() {
         })}
       </div>
 
-      <div className="page-enter" key={activeTab}>
-        {activeTab === 'user-mgmt'   && <UserEntryPage />}
-        {activeTab === 'permissions' && <PermissionsPage />}
-      </div>
+      {loaded && visibleTabs.length === 0 ? (
+        <div className="bg-surface border border-border rounded-card p-6 text-[13px] text-muted">
+          You do not have access to User Settings.
+        </div>
+      ) : (
+        <div className="page-enter" key={activeTab}>
+          {activeTab === 'user-mgmt'   && <UserEntryPage />}
+          {activeTab === 'permissions' && <PermissionsPage />}
+        </div>
+      )}
     </div>
   )
 }

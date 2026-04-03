@@ -18,6 +18,7 @@ export type EntryStore = Record<EntryModuleId, EntryRecord[]>
 
 export type EntryAction =
   | { type: 'ADD_RECORD';    module: EntryModuleId; record: EntryRecord }
+  | { type: 'SET_MODULE_RECORDS'; module: EntryModuleId; records: EntryRecord[] }
   | { type: 'UPDATE_RECORD'; module: EntryModuleId; recId: string; record: Partial<EntryRecord> }
   | { type: 'DELETE_RECORD'; module: EntryModuleId; recId: string }
   | { type: 'SET_EDIT_CTX';  ctx: EditCtx | null }

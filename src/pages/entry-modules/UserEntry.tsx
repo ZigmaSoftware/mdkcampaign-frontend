@@ -3,7 +3,7 @@ import apiClient from '../../utils/api'
 import { useUserAPI } from '../../hooks/usePollAPI'
 import type { UserRecord } from '../../hooks/usePollAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Booth, Union, Panchayat } from '../../hooks/useMasterAPI'
+import type { Booth, Union, Panchayat, VolunteerRole } from '../../hooks/useMasterAPI'
 import { useAuthContext } from '../../context/AuthContext'
 import { usePermissions } from '../../context/PermissionContext'
 import EntryListHeader from '../../components/entry/EntryListHeader'
@@ -29,7 +29,7 @@ function useBlocks() {
   return blocks
 }
 
-const ROLES = [
+const SYSTEM_ROLES = [
   { value: 'admin',            label: 'System Administrator' },
   { value: 'district_head',    label: 'District Head' },
   { value: 'constituency_mgr', label: 'Constituency Manager' },
@@ -67,6 +67,7 @@ export default function UserEntryPage() {
   const [booths,     setBooths]     = useState<Booth[]>([])
   const [unions,     setUnions]     = useState<Union[]>([])
   const [panchayats, setPanchayats] = useState<Panchayat[]>([])
+  const [volunteerRoles, setVolunteerRoles] = useState<VolunteerRole[]>([])
 
   const [users, setUsers] = useState<UserRecord[]>([])
   const [search, setSearch] = useState('')
@@ -102,6 +103,7 @@ export default function UserEntryPage() {
     masterApi.fetchBooths().then(d => d && setBooths(d))
     masterApi.fetchUnions().then(d => d && setUnions(d))
     masterApi.fetchPanchayats().then(d => d && setPanchayats(d))
+    masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))
   }, [])
 
   useEffect(() => {
@@ -112,7 +114,7 @@ export default function UserEntryPage() {
       if (r.username.current)     r.username.current.value     = u.username   ?? ''
       if (r.email.current)        r.email.current.value        = u.email      ?? ''
       if (r.phone.current)        r.phone.current.value        = u.phone      ?? ''
-      if (r.role.current)         r.role.current.value         = u.role       ?? ''
+      if (r.role.current)         r.role.current.value         = u.volunteer_role ? String(u.volunteer_role) : ''
       pendingFill.current = null
     }
   }, [isFormOpen])
@@ -130,15 +132,23 @@ export default function UserEntryPage() {
     const passwordConf = r.passwordConf.current?.value ?? ''
     const email        = r.email.current?.value     ?? ''
     const phone        = r.phone.current?.value     ?? ''
-    const role         = r.role.current?.value      ?? ''
+    const volunteerRoleValue = r.role.current?.value ?? ''
+    const volunteerRole = volunteerRoleValue ? Number(volunteerRoleValue) : null
 
-    if (!firstName || !username || !role) {
-      setApiError('First name, username, and role are required.')
+    if (!firstName || !username || !volunteerRole) {
+      setApiError('First name, username, and volunteer role are required.')
       return
     }
 
     if (editingId !== null) {
-      const payload: Record<string, any> = { first_name: firstName, last_name: lastName, email, phone, role }
+      const payload: Record<string, any> = {
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone,
+        role: 'volunteer',
+        volunteer_role: volunteerRole,
+      }
       if (password) {
         if (password !== passwordConf) { setApiError('Passwords do not match.'); return }
         payload.password = password
@@ -155,7 +165,9 @@ export default function UserEntryPage() {
       if (!password) { setApiError('Password is required for new users.'); return }
       if (password !== passwordConf) { setApiError('Passwords do not match.'); return }
       const created = await createUser({
-        first_name: firstName, last_name: lastName, username, email, phone, role,
+        first_name: firstName, last_name: lastName, username, email, phone,
+        role: 'volunteer',
+        volunteer_role: volunteerRole,
         password, password_confirm: passwordConf,
       })
       if (created) {
@@ -230,9 +242,10 @@ export default function UserEntryPage() {
       u.full_name?.toLowerCase().includes(q) ||
       u.username?.toLowerCase().includes(q) ||
       u.role?.toLowerCase().includes(q) ||
+      u.volunteer_role_name?.toLowerCase().includes(q) ||
       u.email?.toLowerCase().includes(q)
     )
-    const matchRole     = !filterRole || u.role === filterRole
+    const matchRole     = !filterRole || u.volunteer_role_name === filterRole
     const matchLocation = !validBoothNamesForFilters || (!!u.booth_name && validBoothNamesForFilters.has(u.booth_name))
     return matchSearch && matchRole && matchLocation
   })
@@ -264,8 +277,10 @@ export default function UserEntryPage() {
                   onChange={e => { setFilterRole(e.target.value); setPage(1) }}
                   className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${filterRole ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
                 >
-                  <option value="">All Roles</option>
-                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  <option value="">All Volunteer Roles</option>
+                  {volunteerRoles.map(volunteerRole => (
+                    <option key={volunteerRole.id} value={volunteerRole.name}>{volunteerRole.name}</option>
+                  ))}
                 </select>
               </div>
 
@@ -327,7 +342,8 @@ export default function UserEntryPage() {
                 <div className="flex flex-col gap-2 mt-3">
                   {paged.map(u => {
                     const badge = ROLE_BADGE[u.role] ?? { bg: '#f1f5f9', color: '#64748b' }
-                    const roleDef = ROLES.find(r => r.value === u.role)
+                    const systemRole = SYSTEM_ROLES.find(r => r.value === u.role)
+                    const roleLabel = u.volunteer_role_name || systemRole?.label || u.role_display
                     return (
                       <div key={u.id} className="flex items-center justify-between px-4 py-3 rounded-xl border border-border bg-white hover:shadow-sm transition-all">
                         <div className="flex items-center gap-3">
@@ -339,7 +355,7 @@ export default function UserEntryPage() {
                               <p className="text-[13px] font-semibold text-navy">{u.full_name || u.username}</p>
                               <span className="text-[10px] font-semibold px-2 py-[2px] rounded-full"
                                 style={{ background: badge.bg, color: badge.color }}>
-                                {roleDef?.label ?? u.role_display}
+                                {roleLabel}
                               </span>
                             </div>
                             <p className="text-[11px] text-muted">@{u.username}{u.phone ? ` · ${u.phone}` : ''}{u.email ? ` · ${u.email}` : ''}</p>
@@ -435,10 +451,12 @@ export default function UserEntryPage() {
                 <input ref={r.username} className={inputCls + (editingId ? ' bg-[#f0f4f8] cursor-not-allowed' : '')}
                   placeholder="Login username" readOnly={editingId !== null} />
               </FormGroup>
-              <FormGroup label="Role" required>
+              <FormGroup label="Volunteer Role" required>
                 <select ref={r.role} className={selectCls}>
-                  <option value="">Select role</option>
-                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  <option value="">Select volunteer role</option>
+                  {volunteerRoles.map(volunteerRole => (
+                    <option key={volunteerRole.id} value={volunteerRole.id}>{volunteerRole.name}</option>
+                  ))}
                 </select>
               </FormGroup>
             </FormRow>

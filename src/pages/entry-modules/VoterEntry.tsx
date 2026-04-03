@@ -136,7 +136,9 @@ export default function VoterEntry() {
   const [beneficiaries,   setBeneficiaries]   = useState<BeneficiaryRecord[]>([])
   const [voterTypeFilter, setVoterTypeFilter] = useState<'' | 'volunteer' | 'beneficiary'>('')
   const [ageGroupFilter,  setAgeGroupFilter]  = useState('')
+  const [contactFilter,   setContactFilter]   = useState<'' | 'with' | 'without'>('')
   const ageGroupFilterRef = useRef('')
+  const contactFilterRef = useRef<'' | 'with' | 'without'>('')
   const [boothVolModal,   setBoothVolModal]   = useState<number | null>(null)       // boothId being viewed
   const [volDetailModal,  setVolDetailModal]  = useState<VolunteerRecord | null>(null) // volunteer badge click
 
@@ -156,9 +158,22 @@ export default function VoterEntry() {
 
   // Keep ref in sync so loadVoters always sees the latest value without re-creating
   ageGroupFilterRef.current = ageGroupFilter
+  contactFilterRef.current = contactFilter
 
-  const loadVoters = useCallback((p: number, q: string, boothId?: number, wId?: number, pin?: string, panId?: number, uId?: number, blkId?: number) => {
-    apiRef.current.fetchVoters(boothId, q || undefined, p, PAGE_SIZE, wId, pin || undefined, panId, uId, blkId, ageGroupFilterRef.current || undefined).then(d => {
+  const loadVoters = useCallback((p: number, q: string, boothId?: number, wId?: number, pin?: string, panId?: number, uId?: number, blkId?: number, contactStatus?: '' | 'with' | 'without') => {
+    apiRef.current.fetchVoters(
+      boothId,
+      q || undefined,
+      p,
+      PAGE_SIZE,
+      wId,
+      pin || undefined,
+      panId,
+      uId,
+      blkId,
+      ageGroupFilterRef.current || undefined,
+      contactStatus || contactFilterRef.current || undefined,
+    ).then(d => {
       setVoters(d?.results ?? [])
       setTotalCount(d?.count ?? 0)
     })
@@ -184,9 +199,9 @@ export default function VoterEntry() {
   const isFirstSearchRender = useRef(true)
   useEffect(() => {
     if (isFirstSearchRender.current) { isFirstSearchRender.current = false; return }
-    const t = setTimeout(() => { setPage(1); loadVoters(1, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter) }, 400)
+    const t = setTimeout(() => { setPage(1); loadVoters(1, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, contactFilter) }, 400)
     return () => clearTimeout(t)
-  }, [search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, ageGroupFilter, loadVoters])
+  }, [search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, ageGroupFilter, contactFilter, loadVoters])
 
   useEffect(() => {
     if (!pendingFill.current) return
@@ -539,7 +554,7 @@ export default function VoterEntry() {
       let p = 1
       const BATCH = 500
       while (true) {
-        const d = await apiRef.current.fetchVoters(boothFilter, search || undefined, p, BATCH, wardFilter, pincodeFilter || undefined, panchayatFilter, unionFilter, blockFilter)
+        const d = await apiRef.current.fetchVoters(boothFilter, search || undefined, p, BATCH, wardFilter, pincodeFilter || undefined, panchayatFilter, unionFilter, blockFilter, ageGroupFilter || undefined, contactFilter || undefined)
         if (!d) break
         all.push(...d.results)
         if (all.length >= d.count || d.results.length < BATCH) break
@@ -642,7 +657,7 @@ export default function VoterEntry() {
                 religion: 'Hindu / Muslim / Christian / Other',
                 address: 'Full address',
               },
-              onSuccess: () => { setPage(1); loadVoters(1, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter) },
+              onSuccess: () => { setPage(1); loadVoters(1, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, contactFilter) },
             }}
             onClose={() => setShowImport(false)}
           />
@@ -671,7 +686,7 @@ export default function VoterEntry() {
                 setPanchayatFilter(undefined)
                 setBoothFilter(undefined)
                 setPage(1)
-                loadVoters(1, search, undefined, wardFilter, pincodeFilter, undefined, undefined, val)
+                loadVoters(1, search, undefined, wardFilter, pincodeFilter, undefined, undefined, val, contactFilter)
               }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${blockFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
@@ -688,7 +703,7 @@ export default function VoterEntry() {
                 setPanchayatFilter(undefined) // reset children
                 setBoothFilter(undefined)
                 setPage(1)
-                loadVoters(1, search, undefined, wardFilter, pincodeFilter, undefined, val, blockFilter)
+                loadVoters(1, search, undefined, wardFilter, pincodeFilter, undefined, val, blockFilter, contactFilter)
               }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${unionFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
@@ -707,7 +722,7 @@ export default function VoterEntry() {
                 setPanchayatFilter(val)
                 setBoothFilter(undefined)     // reset children
                 setPage(1)
-                loadVoters(1, search, undefined, wardFilter, pincodeFilter, val, unionFilter, blockFilter)
+                loadVoters(1, search, undefined, wardFilter, pincodeFilter, val, unionFilter, blockFilter, contactFilter)
               }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${panchayatFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
@@ -727,7 +742,7 @@ export default function VoterEntry() {
                 const val = e.target.value ? Number(e.target.value) : undefined
                 setBoothFilter(val)
                 setPage(1)
-                loadVoters(1, search, val, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter)
+                loadVoters(1, search, val, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, contactFilter)
               }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[180px] w-auto ${boothFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
@@ -745,7 +760,7 @@ export default function VoterEntry() {
                 const val = e.target.value ? Number(e.target.value) : undefined
                 setWardFilter(val)
                 setPage(1)
-                loadVoters(1, search, boothFilter, val, pincodeFilter, panchayatFilter, unionFilter, blockFilter)
+                loadVoters(1, search, boothFilter, val, pincodeFilter, panchayatFilter, unionFilter, blockFilter, contactFilter)
               }}
               className={`form-input text-[11px] py-[4px] pr-7 min-w-[140px] w-auto ${wardFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             >
@@ -759,10 +774,25 @@ export default function VoterEntry() {
               onChange={e => {
                 setPincodeFilter(e.target.value)
                 setPage(1)
-                loadVoters(1, search, boothFilter, wardFilter, e.target.value, panchayatFilter, unionFilter, blockFilter)
+                loadVoters(1, search, boothFilter, wardFilter, e.target.value, panchayatFilter, unionFilter, blockFilter, contactFilter)
               }}
               className={`form-input text-[11px] py-[4px] w-[100px] ${pincodeFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
             />
+
+            <select
+              value={contactFilter}
+              onChange={e => {
+                const val = e.target.value as '' | 'with' | 'without'
+                setContactFilter(val)
+                setPage(1)
+                loadVoters(1, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, val)
+              }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${contactFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">Contact</option>
+              <option value="with">With No.</option>
+              <option value="without">Without</option>
+            </select>
 
             {/* Voter Type filter */}
             <select
@@ -790,14 +820,14 @@ export default function VoterEntry() {
               <option value="60+">60+</option>
             </select>
 
-            {(blockFilter || unionFilter || panchayatFilter || boothFilter || wardFilter || pincodeFilter || voterTypeFilter || ageGroupFilter) && (
+            {(blockFilter || unionFilter || panchayatFilter || boothFilter || wardFilter || pincodeFilter || voterTypeFilter || ageGroupFilter || contactFilter) && (
               <button
                 onClick={() => {
                   setBlockFilter(undefined); setUnionFilter(undefined)
                   setPanchayatFilter(undefined); setBoothFilter(undefined)
                   setWardFilter(undefined); setPincodeFilter('')
-                  setVoterTypeFilter(''); setAgeGroupFilter('')
-                  setPage(1); loadVoters(1, search, undefined, undefined, '')
+                  setVoterTypeFilter(''); setAgeGroupFilter(''); setContactFilter('')
+                  setPage(1); loadVoters(1, search, undefined, undefined, '', undefined, undefined, undefined, '')
                 }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
@@ -858,13 +888,13 @@ export default function VoterEntry() {
               <div className="flex gap-2">
                 <button
                   disabled={page === 1}
-                  onClick={() => { const p = page - 1; setPage(p); loadVoters(p, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter) }}
+                  onClick={() => { const p = page - 1; setPage(p); loadVoters(p, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, contactFilter) }}
                   className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
                 >← Prev</button>
                 <span className="text-[11px] text-muted py-1">Page {page} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
                 <button
                   disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
-                  onClick={() => { const p = page + 1; setPage(p); loadVoters(p, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter) }}
+                  onClick={() => { const p = page + 1; setPage(p); loadVoters(p, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, contactFilter) }}
                   className="text-[11px] font-bold px-3 py-1 rounded border border-border disabled:opacity-40 cursor-pointer"
                 >Next →</button>
               </div>

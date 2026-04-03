@@ -4,7 +4,7 @@ import { useToast } from '../../context/ToastContext'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface ScreenPerm {
-  id: number
+  id: number | null
   role: string
   user_screen: number
   user_screen_slug: string
@@ -17,26 +17,42 @@ interface ScreenPerm {
   can_delete: boolean
 }
 
-interface MainScreenOption {
+interface RoleOption {
+  value: string
+  label: string
+  user_count: number
+}
+
+interface PermissionExtraOption {
   id: number
-  name: string
   slug: string
-  screens: { id: number; name: string; slug: string }[]
+  name: string
+  icon: string
+}
+
+interface PermissionSubmenuOption {
+  slug: string
+  name: string
+  icon: string
+  screen_slugs: string[]
+  items: PermissionExtraOption[]
+}
+
+interface PermissionMenuOption {
+  id: number
+  slug: string
+  name: string
+  icon: string
+  submenus: PermissionSubmenuOption[]
+}
+
+interface PermissionCatalogResponse {
+  roles: RoleOption[]
+  permission_roles: string[]
+  menus: PermissionMenuOption[]
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const ROLES = [
-  { value: 'admin',            label: 'Admin' },
-  { value: 'volunteer',        label: 'Volunteer' },
-  { value: 'member',           label: 'Member' },
-  { value: 'district_head',    label: 'District Head' },
-  { value: 'constituency_mgr', label: 'Constituency Mgr' },
-  { value: 'booth_agent',      label: 'Booth Agent' },
-  { value: 'voter',            label: 'Voter' },
-  { value: 'analyst',          label: 'Analyst' },
-  { value: 'observer',         label: 'Observer' },
-]
-
 const ACTION_COLS = [
   { key: 'can_view',   label: 'View'   },
   { key: 'can_add',    label: 'Add'    },
@@ -72,53 +88,89 @@ function Checkbox({
 export default function PermissionsPage() {
   const { showToast } = useToast()
 
-  const [role,        setRole]        = useState('volunteer')
-  const [mainScreens, setMainScreens] = useState<MainScreenOption[]>([])
+  const [role,        setRole]        = useState('')
+  const [roles,       setRoles]       = useState<RoleOption[]>([])
+  const [menus,       setMenus]       = useState<PermissionMenuOption[]>([])
   const [selectedMs,  setSelectedMs]  = useState<string>('')
+  const [selectedSubmenu, setSelectedSubmenu] = useState('')
+  const [selectedExtra,   setSelectedExtra]   = useState('')
   const [perms,       setPerms]       = useState<ScreenPerm[]>([])
-  // local edits before save: permId → partial overrides
+  // local edits before save: user_screen id → partial overrides
   const [edits,       setEdits]       = useState<Record<number, Partial<ScreenPerm>>>({})
+  const [catalogLoading, setCatalogLoading] = useState(false)
   const [loading,     setLoading]     = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [seeding,     setSeeding]     = useState(false)
 
   const isDirty = Object.keys(edits).length > 0
 
-  // ── Load main screens once ─────────────────────────────────────────────────
+  // ── Load role/menu catalog once ────────────────────────────────────────────
   useEffect(() => {
-    apiClient.get('/auth/main-screens/')
+    setCatalogLoading(true)
+    apiClient.get('/auth/screen-permissions/catalog/')
       .then(r => {
-        const list: MainScreenOption[] = r.data.results ?? r.data
-        setMainScreens(list)
-        if (list.length > 0 && !selectedMs) setSelectedMs(list[0].slug)
+        const data = r.data as PermissionCatalogResponse
+        const nextRoles = data.roles ?? []
+        const nextMenus = data.menus ?? []
+        setRoles(nextRoles)
+        setMenus(nextMenus)
+        setRole(current => nextRoles.some(item => item.value === current) ? current : (nextRoles[0]?.value ?? ''))
+        setSelectedMs(current => nextMenus.some(item => item.slug === current) ? current : (nextMenus[0]?.slug ?? ''))
       })
-      .catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => {
+        showToast('<i class="ph ph-x-circle"></i> Failed to load permission catalog.', '#dc2626')
+      })
+      .finally(() => setCatalogLoading(false))
+  }, [showToast])
 
   // ── Load permissions for role ──────────────────────────────────────────────
   const loadPerms = useCallback((r: string) => {
+    if (!r) return
     setLoading(true)
     setEdits({})
     apiClient.get('/auth/screen-permissions/', { params: { role: r } })
       .then(res => setPerms(res.data.results ?? res.data))
-      .catch(() => {})
+      .catch(() => {
+        showToast('<i class="ph ph-x-circle"></i> Failed to load screen permissions.', '#dc2626')
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [showToast])
 
   useEffect(() => { loadPerms(role) }, [role, loadPerms])
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const effectivePerm = (p: ScreenPerm): ScreenPerm => ({ ...p, ...(edits[p.id] ?? {}) })
+  useEffect(() => {
+    setSelectedSubmenu('')
+    setSelectedExtra('')
+  }, [selectedMs])
 
-  const screenPermsForMs = perms.filter(p => p.main_screen_slug === selectedMs)
+  useEffect(() => {
+    setSelectedExtra('')
+  }, [selectedSubmenu])
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const effectivePerm = (p: ScreenPerm): ScreenPerm => ({ ...p, ...(edits[p.user_screen] ?? {}) })
+
+  const selectedMenu = menus.find(menu => menu.slug === selectedMs) ?? null
+  const submenuOptions = selectedMenu?.submenus ?? []
+  const selectedSubmenuOption = submenuOptions.find(option => option.slug === selectedSubmenu) ?? null
+  const extraOptions = selectedSubmenuOption?.items ?? []
+  const filteredScreenSlugs = selectedExtra
+    ? [selectedExtra]
+    : selectedSubmenuOption
+      ? selectedSubmenuOption.screen_slugs
+      : null
+  const screenPermsForMs = perms.filter(p => (
+    p.main_screen_slug === selectedMs &&
+    (!filteredScreenSlugs || filteredScreenSlugs.includes(p.user_screen_slug))
+  ))
 
   const isAdmin = role === 'admin'
 
   // ── Single checkbox change ─────────────────────────────────────────────────
-  const handleCheck = (permId: number, key: ActionKey, value: boolean) => {
+  const handleCheck = (screenId: number, key: ActionKey, value: boolean) => {
     setEdits(prev => ({
       ...prev,
-      [permId]: { ...(prev[permId] ?? {}), [key]: value },
+      [screenId]: { ...(prev[screenId] ?? {}), [key]: value },
     }))
   }
 
@@ -126,7 +178,7 @@ export default function PermissionsPage() {
   const handleAll = (p: ScreenPerm, value: boolean) => {
     setEdits(prev => ({
       ...prev,
-      [p.id]: { can_view: value, can_add: value, can_edit: value, can_delete: value },
+      [p.user_screen]: { can_view: value, can_add: value, can_edit: value, can_delete: value },
     }))
   }
 
@@ -134,7 +186,7 @@ export default function PermissionsPage() {
   const handleColAll = (key: ActionKey, value: boolean) => {
     const next: Record<number, Partial<ScreenPerm>> = { ...edits }
     screenPermsForMs.forEach(p => {
-      next[p.id] = { ...(next[p.id] ?? {}), [key]: value }
+      next[p.user_screen] = { ...(next[p.user_screen] ?? {}), [key]: value }
     })
     setEdits(next)
   }
@@ -163,11 +215,26 @@ export default function PermissionsPage() {
     if (!isDirty) return
     setSaving(true)
     try {
-      await Promise.all(
-        Object.entries(edits).map(([id, patch]) =>
-          apiClient.patch(`/auth/screen-permissions/${id}/`, patch)
-        )
-      )
+      const changedPermissions = perms
+        .filter(p => edits[p.user_screen])
+        .map(p => {
+          const ep = effectivePerm(p)
+          return {
+            user_screen: p.user_screen,
+            user_screen_slug: p.user_screen_slug,
+            can_view: ep.can_view,
+            can_add: ep.can_add,
+            can_edit: ep.can_edit,
+            can_delete: ep.can_delete,
+          }
+        })
+
+      if (changedPermissions.length === 0) return
+
+      await apiClient.post('/auth/screen-permissions/bulk-upsert/', {
+        role,
+        permissions: changedPermissions,
+      })
       showToast('<i class="ph ph-check-circle"></i> Permissions saved.', '#138808')
       loadPerms(role)
     } catch {
@@ -256,45 +323,124 @@ export default function PermissionsPage() {
           </div>
         </div>
 
-        {/* ── Role selector ── */}
+        {/* ── Phase 0 scope form ── */}
         <div className="px-5 py-3 border-b border-border bg-[#f8fafc]">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-bold text-muted uppercase tracking-widest mr-1">Role</span>
-            {ROLES.map(r => (
-              <button
-                key={r.value}
-                onClick={() => { setRole(r.value); setEdits({}) }}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
-                  role === r.value
-                    ? 'bg-navy text-white border-navy shadow-sm'
-                    : 'bg-white text-navy border-border hover:border-saffron hover:text-saffron'
-                }`}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Role</span>
+              <select
+                value={role}
+                disabled={catalogLoading || roles.length === 0}
+                onChange={e => { setRole(e.target.value); setEdits({}) }}
+                className="form-input text-[12px] font-semibold"
               >
-                {r.label}
-              </button>
-            ))}
+                {roles.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} ({option.user_count})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Menu</span>
+              <select
+                value={selectedMs}
+                disabled={catalogLoading || menus.length === 0}
+                onChange={e => setSelectedMs(e.target.value)}
+                className="form-input text-[12px] font-semibold"
+              >
+                {menus.map(menu => (
+                  <option key={menu.slug} value={menu.slug}>
+                    {menu.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Submenu</span>
+              <select
+                value={selectedSubmenu}
+                disabled={catalogLoading || submenuOptions.length === 0}
+                onChange={e => setSelectedSubmenu(e.target.value)}
+                className="form-input text-[12px] font-semibold"
+              >
+                <option value="">All Submenus</option>
+                {submenuOptions.map(option => (
+                  <option key={option.slug} value={option.slug}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Extra</span>
+              <select
+                value={selectedExtra}
+                disabled={catalogLoading || extraOptions.length === 0}
+                onChange={e => setSelectedExtra(e.target.value)}
+                className="form-input text-[12px] font-semibold"
+              >
+                <option value="">All Extras</option>
+                {extraOptions.map(option => (
+                  <option key={option.slug} value={option.slug}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Selected Path</span>
+            {role && (
+              <span className="px-2 py-1 rounded-md bg-navy text-white text-[11px] font-semibold">
+                {roles.find(option => option.value === role)?.label ?? role}
+              </span>
+            )}
+            {selectedMenu && (
+              <span className="px-2 py-1 rounded-md bg-saffron/15 text-navy text-[11px] font-semibold border border-saffron/30">
+                {selectedMenu.name}
+              </span>
+            )}
+            {selectedSubmenuOption && (
+              <span className="px-2 py-1 rounded-md bg-white text-navy text-[11px] font-semibold border border-border">
+                {selectedSubmenuOption.name}
+              </span>
+            )}
+            {selectedExtra && (
+              <span className="px-2 py-1 rounded-md bg-kampgreen/10 text-kampgreen-dark text-[11px] font-semibold border border-kampgreen/20">
+                {extraOptions.find(option => option.slug === selectedExtra)?.name ?? selectedExtra}
+              </span>
+            )}
+          </div>
+
+          {!catalogLoading && selectedMenu && submenuOptions.length === 0 && (
+            <div className="mt-3 text-[11px] text-muted bg-white border border-border rounded-lg px-3 py-2">
+              This menu currently has no nested submenu or extra mapping in the permission catalog.
+            </div>
+          )}
         </div>
 
-        {/* ── Main screen selector ── */}
-        {mainScreens.length > 0 && (
-          <div className="px-5 py-3 border-b border-border bg-white flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-bold text-muted uppercase tracking-widest mr-1">Main Screen</span>
-            {mainScreens.map(ms => (
-              <button
-                key={ms.slug}
-                onClick={() => setSelectedMs(ms.slug)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
-                  selectedMs === ms.slug
-                    ? 'bg-saffron text-navy border-saffron/60 shadow-sm'
-                    : 'bg-white text-muted border-border hover:border-saffron hover:text-navy'
-                }`}
-              >
-                {ms.name}
-              </button>
-            ))}
+        {/* ── Matrix title ── */}
+        <div className="px-5 py-3 border-b border-border bg-white flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-[13px] font-bold text-navy">Permission Matrix</div>
+            <div className="text-[11px] text-muted">
+              {selectedMenu
+                ? `Showing ${screenPermsForMs.length} permission row${screenPermsForMs.length !== 1 ? 's' : ''} for ${selectedMenu.name}`
+                : 'Select a menu to view permission rows'}
+            </div>
           </div>
-        )}
+          {catalogLoading && (
+            <div className="flex items-center gap-2 text-[12px] text-muted">
+              <i className="ph ph-circle-notch animate-spin text-[15px]" />
+              Loading form data…
+            </div>
+          )}
+        </div>
 
         {/* ── Permissions table ── */}
         <div className="px-5 py-4">
@@ -313,7 +459,7 @@ export default function PermissionsPage() {
           ) : screenPermsForMs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted">
               <i className="ph ph-shield-slash text-[32px]" />
-              <span className="text-[13px]">No screens found for this main screen</span>
+              <span className="text-[13px]">No permission rows found for the current selection</span>
             </div>
           ) : (
             <div className="border border-border rounded-xl overflow-hidden">
@@ -346,7 +492,7 @@ export default function PermissionsPage() {
                   {screenPermsForMs.map((p, idx) => {
                     const ep = effectivePerm(p)
                     const hasAny = ep.can_view || ep.can_add || ep.can_edit || ep.can_delete
-                    const isModified = !!edits[p.id]
+                    const isModified = !!edits[p.user_screen]
                     return (
                       <tr
                         key={p.id}
@@ -389,7 +535,7 @@ export default function PermissionsPage() {
                               <Checkbox
                                 checked={ep[col.key]}
                                 disabled={isAdmin}
-                                onChange={v => handleCheck(p.id, col.key, v)}
+                                onChange={v => handleCheck(p.user_screen, col.key, v)}
                               />
                             </div>
                           </td>

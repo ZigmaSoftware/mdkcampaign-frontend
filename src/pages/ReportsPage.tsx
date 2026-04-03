@@ -635,6 +635,7 @@ export default function ReportsPage() {
 
   const [villageData, setVillages]   = useState<WardStat[]>([])
   const [boothData,   setBooths]     = useState<BoothStat[]>([])
+  const [surveyCount, setSurveyCount] = useState<number | null>(null)
   const [search,      setSearch]     = useState('')
   const [boothSearch, setBoothSearch] = useState('')
   const [loading,     setLoad]       = useState(true)
@@ -655,6 +656,8 @@ export default function ReportsPage() {
     api.fetchBoothStats()
       .then(b => setBooths(b))
       .finally(() => setBoothLoad(false))
+    api.fetchDashboardStats()
+      .then(s => { if (s) setSurveyCount(s.surveys_conducted ?? null) })
   }
 
   useEffect(() => { reload() }, [])
@@ -768,11 +771,14 @@ export default function ReportsPage() {
   }
 
   /* ── KPI totals — follow active filters so cards reflect current scope ── */
-  const kpiBase        = (blockFilter || unionFilter || panchayatFilter || boothFilter) ? filteredBooths : boothData
-  const totalVoters    = kpiBase.reduce((s, b) => s + (b.total_voters    || 0), 0)
-  const totalContacted = kpiBase.reduce((s, b) => s + (b.voters_contacted || 0), 0)
-  const totalBooths    = kpiBase.length
-  const overallPct     = totalVoters > 0 ? Math.round(totalContacted * 100 / totalVoters) : 0
+  const kpiBase            = (blockFilter || unionFilter || panchayatFilter || boothFilter) ? filteredBooths : boothData
+  const totalVoters        = kpiBase.reduce((s, b) => s + (b.total_voters    || 0), 0)
+  const totalBooths        = kpiBase.length
+  // Survey-based metrics (source of truth for contacted / favourable / coverage)
+  const totalSurveyed      = kpiBase.reduce((s, b) => s + (b.survey_count    || 0), 0)
+  const totalFavourable    = kpiBase.reduce((s, b) => s + (b.survey_positive || 0), 0)
+  const totalNonFavourable = kpiBase.reduce((s, b) => s + (b.survey_negative || 0), 0)
+  const overallPct         = totalVoters > 0 ? Math.round(totalSurveyed * 100 / totalVoters) : 0
 
   // Breadcrumb trail for KPI scope label
   const filterTrail = [
@@ -832,12 +838,15 @@ export default function ReportsPage() {
       )}
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-[10px] mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-[10px] mb-5">
         {[
-          { label: 'Total Voters', value: totalVoters.toLocaleString(),    color: '#0d2455' },
-          { label: 'Contacted',    value: totalContacted.toLocaleString(), color: '#138808' },
-          { label: 'Coverage',     value: `${overallPct}%`,               color: overallPct >= 70 ? '#138808' : '#FF9933' },
-          { label: 'Total Booths', value: String(totalBooths),             color: '#7c3aed' },
+          { label: 'Total Voters',    value: totalVoters.toLocaleString(),        color: '#0d2455' },
+          { label: 'Contacted',       value: totalSurveyed.toLocaleString(),      color: '#138808' },
+          { label: 'Coverage',        value: `${overallPct}%`,                   color: overallPct >= 70 ? '#138808' : '#FF9933' },
+          { label: 'Total Booths',    value: String(totalBooths),                 color: '#7c3aed' },
+          { label: 'Favourable',      value: totalFavourable.toLocaleString(),    color: '#138808' },
+          { label: 'Non-Favourable',  value: totalNonFavourable.toLocaleString(), color: '#dc2626' },
+          { label: 'Voter Surveys',   value: surveyCount !== null ? surveyCount.toLocaleString() : '—', color: '#0369a1' },
         ].map(k => (
           <div key={k.label} className="bg-surface rounded-[10px] px-[14px] py-3 shadow-card text-center">
             <div className="font-inter text-[22px] font-extrabold" style={{ color: k.color }}>{k.value}</div>

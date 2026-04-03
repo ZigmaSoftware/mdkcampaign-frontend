@@ -135,6 +135,8 @@ export default function VoterEntry() {
   const [volunteers,      setVolunteers]      = useState<VolunteerRecord[]>([])
   const [beneficiaries,   setBeneficiaries]   = useState<BeneficiaryRecord[]>([])
   const [voterTypeFilter, setVoterTypeFilter] = useState<'' | 'volunteer' | 'beneficiary'>('')
+  const [ageGroupFilter,  setAgeGroupFilter]  = useState('')
+  const ageGroupFilterRef = useRef('')
   const [boothVolModal,   setBoothVolModal]   = useState<number | null>(null)       // boothId being viewed
   const [volDetailModal,  setVolDetailModal]  = useState<VolunteerRecord | null>(null) // volunteer badge click
 
@@ -152,8 +154,11 @@ export default function VoterEntry() {
   const masterApiRef = useRef(masterApi)
   masterApiRef.current = masterApi
 
+  // Keep ref in sync so loadVoters always sees the latest value without re-creating
+  ageGroupFilterRef.current = ageGroupFilter
+
   const loadVoters = useCallback((p: number, q: string, boothId?: number, wId?: number, pin?: string, panId?: number, uId?: number, blkId?: number) => {
-    apiRef.current.fetchVoters(boothId, q || undefined, p, PAGE_SIZE, wId, pin || undefined, panId, uId, blkId).then(d => {
+    apiRef.current.fetchVoters(boothId, q || undefined, p, PAGE_SIZE, wId, pin || undefined, panId, uId, blkId, ageGroupFilterRef.current || undefined).then(d => {
       setVoters(d?.results ?? [])
       setTotalCount(d?.count ?? 0)
     })
@@ -181,7 +186,7 @@ export default function VoterEntry() {
     if (isFirstSearchRender.current) { isFirstSearchRender.current = false; return }
     const t = setTimeout(() => { setPage(1); loadVoters(1, search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter) }, 400)
     return () => clearTimeout(t)
-  }, [search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, loadVoters])
+  }, [search, boothFilter, wardFilter, pincodeFilter, panchayatFilter, unionFilter, blockFilter, ageGroupFilter, loadVoters])
 
   useEffect(() => {
     if (!pendingFill.current) return
@@ -770,13 +775,28 @@ export default function VoterEntry() {
               <option value="beneficiary">Beneficiary</option>
             </select>
 
-            {(blockFilter || unionFilter || panchayatFilter || boothFilter || wardFilter || pincodeFilter || voterTypeFilter) && (
+            {/* Age Group filter */}
+            <select
+              value={ageGroupFilter}
+              onChange={e => { setAgeGroupFilter(e.target.value); setPage(1) }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${ageGroupFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Ages</option>
+              <option value="Below 18">Below 18</option>
+              <option value="18-25">18–25</option>
+              <option value="26-35">26–35</option>
+              <option value="36-45">36–45</option>
+              <option value="46-60">46–60</option>
+              <option value="60+">60+</option>
+            </select>
+
+            {(blockFilter || unionFilter || panchayatFilter || boothFilter || wardFilter || pincodeFilter || voterTypeFilter || ageGroupFilter) && (
               <button
                 onClick={() => {
                   setBlockFilter(undefined); setUnionFilter(undefined)
                   setPanchayatFilter(undefined); setBoothFilter(undefined)
                   setWardFilter(undefined); setPincodeFilter('')
-                  setVoterTypeFilter('')
+                  setVoterTypeFilter(''); setAgeGroupFilter('')
                   setPage(1); loadVoters(1, search, undefined, undefined, '')
                 }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"

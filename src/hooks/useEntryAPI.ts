@@ -229,13 +229,13 @@ interface UseEntryAPIReturn {
   loading: boolean
   error: string | null
   // Voters
-  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number) => Promise<{ results: VoterRecord[]; count: number } | null>
+  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string) => Promise<{ results: VoterRecord[]; count: number } | null>
   fetchVoter: (voterId: number) => Promise<VoterRecord | null>
   createVoter: (voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   deleteVoter: (voterId: number) => Promise<boolean>
   // Volunteers
-  fetchVolunteers: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string) => Promise<{ results: VolunteerRecord[]; count: number } | null>
+  fetchVolunteers: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string, ageGroup?: string) => Promise<{ results: VolunteerRecord[]; count: number } | null>
   createVolunteer: (volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   updateVolunteer: (volunteerId: number, volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   // Booths
@@ -261,7 +261,7 @@ interface UseEntryAPIReturn {
   updateFieldSurvey: (id: number, data: Partial<FieldSurveyRecord>) => Promise<FieldSurveyRecord | null>
   deleteFieldSurvey: (id: number) => Promise<boolean>
   // Beneficiaries
-  fetchBeneficiaries: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string) => Promise<{ results: BeneficiaryRecord[]; count: number } | null>
+  fetchBeneficiaries: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string, ageGroup?: string) => Promise<{ results: BeneficiaryRecord[]; count: number } | null>
   createBeneficiary: (data: Partial<BeneficiaryRecord>) => Promise<BeneficiaryRecord | null>
   updateBeneficiary: (id: number, data: Partial<BeneficiaryRecord>) => Promise<BeneficiaryRecord | null>
   deleteBeneficiary: (id: number) => Promise<boolean>
@@ -286,7 +286,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOTERS ====================
 
   const fetchVoters = useCallback(
-    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number): Promise<{ results: VoterRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string): Promise<{ results: VoterRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
@@ -299,6 +299,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
             ...(panchayatId ? { panchayat: panchayatId } : {}),
             ...(unionId     ? { union:     unionId     } : {}),
             ...(blockId     ? { block:     blockId     } : {}),
+            ...(ageGroup    ? { age_group: ageGroup    } : {}),
             limit:  pageSize,
             offset: (page - 1) * pageSize,
           },
@@ -378,7 +379,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOLUNTEERS ====================
 
   const fetchVolunteers = useCallback(
-    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string): Promise<{ results: VolunteerRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string, ageGroup?: string): Promise<{ results: VolunteerRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
@@ -392,6 +393,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
             ...(block     ? { block }                : {}),
             ...(union     ? { union }                : {}),
             ...(panchayat ? { panchayat }            : {}),
+            ...(ageGroup  ? { age_group: ageGroup  } : {}),
           },
         })
         return { results: data.results || [], count: data.count || 0 }
@@ -650,7 +652,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== BENEFICIARIES ====================
 
   const fetchBeneficiaries = useCallback(
-    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string): Promise<{ results: BeneficiaryRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string, ageGroup?: string): Promise<{ results: BeneficiaryRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
@@ -664,6 +666,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
             ...(block     ? { block }                : {}),
             ...(union     ? { union }                : {}),
             ...(panchayat ? { panchayat }            : {}),
+            ...(ageGroup  ? { age_group: ageGroup  } : {}),
           },
         })
         return { results: data.results || [], count: data.count || 0 }

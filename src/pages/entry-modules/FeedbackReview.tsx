@@ -3,6 +3,7 @@ import apiClient from '../../utils/api'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import { selectCls, inputCls } from '../../components/entry/FormGroup'
 import { useToast } from '../../context/ToastContext'
+import { exportToCsv } from '../../utils/exportCsv'
 
 /* ── Types ── */
 interface SurveyRecord {
@@ -590,6 +591,41 @@ export default function FeedbackReview() {
     return 'ph ph-dot-outline'
   }
 
+  const handleExport = () => {
+    if (!surveys.length) return
+    const headers = [
+      'Survey Date', 'Voter Name', 'Phone', 'Booth No', 'Block', 'Village',
+      'Support Level', 'Party Preference', 'Response Status',
+      'Aware of Candidate', 'Likely to Vote', 'Remarks', 'Surveyed By',
+      'Telecaller Name', 'Telecaller Phone',
+      'Followup Action', 'Followup Type', 'Decision Date',
+    ]
+    const rows = surveys.map(s => {
+      const tc  = telecallerByVoterName.get(s.voter_name?.toLowerCase() ?? '')
+      const dec = decisionMap.get(s.id)
+      const followupAction = dec?.action === 'followup_required'
+        ? 'Followup Required'
+        : dec?.action === 'followup_not_required'
+          ? 'Followup Not Required'
+          : ''
+      const followupType = dec?.followup_type === 'field_survey'
+        ? 'Field Survey'
+        : dec?.followup_type === 'telephonic'
+          ? 'Telephonic'
+          : ''
+      return [
+        s.survey_date, s.voter_name, s.phone ?? '', s.booth_no ?? '', s.block ?? '', s.village ?? '',
+        s.support_level ?? '', s.party_preference ?? '',
+        s.response_status ? responseLabel(s.response_status) : '',
+        s.aware_of_candidate ?? '', s.likely_to_vote ?? '',
+        s.remarks ?? '', s.surveyed_by ?? '',
+        tc?.name ?? '', tc?.phone ?? '',
+        followupAction, followupType, dec?.date ?? '',
+      ]
+    })
+    exportToCsv(headers, rows, `BJP_FeedbackReview_${new Date().toISOString().slice(0, 10)}.csv`)
+  }
+
   /* ════════════════════════════════════════════════════════
      Render
   ════════════════════════════════════════════════════════ */
@@ -622,6 +658,16 @@ export default function FeedbackReview() {
               )}
             </div>
           </div>
+          {surveys.length > 0 && (
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
+              title="Download all survey records as CSV"
+            >
+              <i className="ph ph-file-csv text-[13px]" />
+              Export CSV
+            </button>
+          )}
         </div>
 
         {/* ── Status tabs ── */}

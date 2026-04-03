@@ -84,12 +84,16 @@ export default function DashboardPage() {
   const coverageProgress = totalBooths > 0 ? (boothsAssigned / totalBooths) * 100 : 0
   const coverageStat     = coverageProgress.toFixed(1) + '%'
 
-  const sentiments       = analytics?.voters_by_sentiment ?? {}
-  const positiveVoters   = sentiments['positive'] ?? 0
-  const neutralVoters    = sentiments['neutral']  ?? 0
-  const favourablePct    = totalVoters > 0 ? ((positiveVoters / totalVoters) * 100).toFixed(1) + '%' : '0%'
-  const undecidedPct     = totalVoters > 0 ? ((neutralVoters  / totalVoters) * 100).toFixed(1) + '%' : '0%'
-  const favourableProgress = totalVoters > 0 ? (positiveVoters / totalVoters) * 100 : 0
+  // Use contacted-voter sentiment for Favourable/Undecided so the stats
+  // reflect the opinions of people actually reached, not the whole electorate.
+  const contactedSentiments = analytics?.contacted_by_sentiment ?? analytics?.voters_by_sentiment ?? {}
+  const positiveVoters      = contactedSentiments['positive'] ?? 0
+  const neutralVoters       = contactedSentiments['neutral']  ?? 0
+  const negativeVoters      = contactedSentiments['negative'] ?? 0
+  const sentimentBase       = positiveVoters + neutralVoters + negativeVoters
+  const favourablePct       = sentimentBase > 0 ? ((positiveVoters / sentimentBase) * 100).toFixed(1) + '%' : '0%'
+  const undecidedPct        = sentimentBase > 0 ? ((neutralVoters  / sentimentBase) * 100).toFixed(1) + '%' : '0%'
+  const favourableProgress  = sentimentBase > 0 ? (positiveVoters / sentimentBase) * 100 : 0
 
   return (
     <div>

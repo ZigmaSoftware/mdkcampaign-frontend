@@ -9,6 +9,7 @@ import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/en
 import { todayISO } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { usePermissions } from '../../context/PermissionContext'
+import { exportToCsv } from '../../utils/exportCsv'
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 
@@ -464,6 +465,41 @@ export default function FieldActivityEntry() {
     )
   }
 
+  const handleExport = () => {
+    if (!fieldSurveys.length) return
+    const headers = [
+      'Survey Date', 'Voter Name', 'Phone', 'Address', 'Booth No', 'Block',
+      'Panchayat', 'Union', 'Age', 'Gender', 'Support Level', 'Party Preference',
+      'Response Status', 'Aware of Candidate', 'Likely to Vote',
+      'Assigned Volunteer', 'Remarks', 'Followup Action', 'Followup Type',
+    ]
+    const rows = fieldSurveys.map(s => {
+      const pan = getPanchayat(s)
+      const uni = getUnion(s)
+      const dec = decisionBySurvey.get(s.id)
+      const followupAction = dec?.action === 'followup_required'
+        ? 'Followup Required'
+        : dec?.action === 'followup_not_required'
+          ? 'Followup Not Required'
+          : ''
+      const followupType = dec?.followup_type === 'field_survey'
+        ? 'Field Survey'
+        : dec?.followup_type === 'telephonic'
+          ? 'Telephonic'
+          : ''
+      return [
+        s.survey_date, s.voter_name, s.phone, s.address, s.booth_no, s.block,
+        pan ?? '', uni ?? '', s.age, genderLabel(s.gender),
+        s.support_level, s.party_preference,
+        s.response_status ? responseLabel(s.response_status) : '',
+        s.aware_of_candidate, s.likely_to_vote,
+        s.assigned_volunteer, s.remarks,
+        followupAction, followupType,
+      ]
+    })
+    exportToCsv(headers, rows, `BJP_FieldSurvey_${new Date().toISOString().slice(0, 10)}.csv`)
+  }
+
   /* ════════════════════════════════════════════════════════
      Render
   ════════════════════════════════════════════════════════ */
@@ -488,6 +524,16 @@ export default function FieldActivityEntry() {
               </span>
             </div>
           </div>
+          {fieldSurveys.length > 0 && (
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
+              title="Download all field survey records as CSV"
+            >
+              <i className="ph ph-file-csv text-[13px]" />
+              Export CSV
+            </button>
+          )}
         </div>
 
         {/* ── Filters ── */}

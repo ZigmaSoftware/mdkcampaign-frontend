@@ -7,6 +7,7 @@ import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/en
 import { todayISO } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import apiClient from '../../utils/api'
+import { exportToCsv } from '../../utils/exportCsv'
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 
@@ -502,6 +503,40 @@ export default function VoterSurveyEntry() {
     )
   }
 
+  const handleExport = () => {
+    if (!records.length) return
+    const voterMap = new Map(allVoters.map(v => [v.voter_name.toLowerCase(), v]))
+    const headers = [
+      'Survey Date', 'Voter Name', 'Voter ID No', 'Phone', 'Address', 'Booth',
+      'Age', 'Gender', 'Telecaller Name', 'Telecaller Phone',
+      'Support Level', 'Party Preference', 'Response Status',
+      'Is Registered', 'Aware of Candidate', 'Likely to Vote', 'Remarks',
+    ]
+    const rows = records.map(r => {
+      const v = voterMap.get((r.voter_name ?? '').toLowerCase())
+      return [
+        r.survey_date,
+        r.voter_name,
+        v?.voter_id_no ?? '',
+        r.phone,
+        r.address,
+        r.booth_no,
+        r.age,
+        toGenderDisplay(r.gender),
+        r.surveyed_by ?? v?.telecaller_name ?? '',
+        v?.telecaller_phone ?? '',
+        r.support_level,
+        r.party_preference,
+        r.response_status ? responseLabel(r.response_status) : '',
+        r.is_registered,
+        r.aware_of_candidate,
+        r.likely_to_vote,
+        r.remarks,
+      ]
+    })
+    exportToCsv(headers, rows, `BJP_VoterSurvey_${new Date().toISOString().slice(0, 10)}.csv`)
+  }
+
   /* ════════════════════════════════════════════════════════
      Render
   ════════════════════════════════════════════════════════ */
@@ -531,6 +566,16 @@ export default function VoterSurveyEntry() {
               )}
             </div>
           </div>
+          {records.length > 0 && (
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
+              title="Download all survey records as CSV"
+            >
+              <i className="ph ph-file-csv text-[13px]" />
+              Export CSV
+            </button>
+          )}
         </div>
 
         {/* ── Filters ── */}

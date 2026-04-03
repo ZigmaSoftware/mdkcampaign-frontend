@@ -260,16 +260,37 @@ const SENTIMENT_COLOR: Record<string, string> = {
 }
 const POPUP_PAGE = 20
 
+/* ── Mini sentiment bar (contacted voters) ──────────────────────── */
+function SentimentBar({ pos, neu, neg }: { pos: number; neu: number; neg: number }) {
+  if (pos === 0 && neu === 0 && neg === 0) return <span className="text-muted text-[10px]">—</span>
+  return (
+    <div className="flex flex-col gap-[2px] min-w-[70px]">
+      <div className="flex h-[5px] rounded overflow-hidden gap-[1px]">
+        {pos > 0 && <div style={{ flex: pos }} className="bg-kampgreen rounded-l" />}
+        {neu > 0 && <div style={{ flex: neu }} className="bg-saffron" />}
+        {neg > 0 && <div style={{ flex: neg }} className="bg-kampr rounded-r" />}
+      </div>
+      <div className="flex gap-[5px] text-[9px]">
+        {pos > 0 && <span className="text-kampgreen font-semibold">{pos}%</span>}
+        {neu > 0 && <span className="text-saffron-dark font-semibold">{neu}%</span>}
+        {neg > 0 && <span className="text-kampr font-semibold">{neg}%</span>}
+      </div>
+    </div>
+  )
+}
+
 function VoterPopup({
   title,
   voters,
   loading,
   onClose,
+  contactedOnly = false,
 }: {
   title: string
   voters: VoterBasicInfo[]
   loading: boolean
   onClose: () => void
+  contactedOnly?: boolean
 }) {
   const [search,       setSearch]       = useState('')
   const [activeWard,   setActiveWard]   = useState<string | null>(null)
@@ -289,16 +310,24 @@ function VoterPopup({
     []
   )
 
+  // When contactedOnly mode: restrict the base list to is_contacted voters only
+  const baseVoters = useMemo(
+    () => contactedOnly ? voters.filter(v => v.is_contacted) : voters,
+    [voters, contactedOnly]
+  )
+
   const typeCounts = useMemo(() => ({
-    volunteer: voters.filter(v => matchType(v, 'volunteer')).length,
-    beneficiary: voters.filter(v => matchType(v, 'beneficiary')).length,
-    both: voters.filter(v => matchType(v, 'both')).length,
-    unassigned: voters.filter(v => matchType(v, 'unassigned')).length,
-  }), [voters, matchType])
+    volunteer: baseVoters.filter(v => matchType(v, 'volunteer')).length,
+    beneficiary: baseVoters.filter(v => matchType(v, 'beneficiary')).length,
+    both: baseVoters.filter(v => matchType(v, 'both')).length,
+    unassigned: baseVoters.filter(v => matchType(v, 'unassigned')).length,
+  }), [baseVoters, matchType])
+
+  const [ageGroupFilter, setAgeGroupFilter] = useState('')
 
   const typedVoters = useMemo(
-    () => voters.filter(v => matchType(v, activeType)),
-    [voters, activeType, matchType]
+    () => baseVoters.filter(v => matchType(v, activeType)),
+    [baseVoters, activeType, matchType]
   )
 
   const volunteerTypeCounts = useMemo(() => {
@@ -344,16 +373,31 @@ function VoterPopup({
     [volunteerTypedVoters, activeWard]
   )
 
+  const ageFilteredVoters = useMemo(() => {
+    if (!ageGroupFilter) return wardVoters
+    return wardVoters.filter(v => {
+      const a = v.age
+      if (a == null) return false
+      if (ageGroupFilter === 'Below 18') return a < 18
+      if (ageGroupFilter === '18-25')    return a >= 18 && a <= 25
+      if (ageGroupFilter === '26-35')    return a >= 26 && a <= 35
+      if (ageGroupFilter === '36-45')    return a >= 36 && a <= 45
+      if (ageGroupFilter === '46-60')    return a >= 46 && a <= 60
+      if (ageGroupFilter === '60+')      return a > 60
+      return true
+    })
+  }, [wardVoters, ageGroupFilter])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return wardVoters
-    return wardVoters.filter(v =>
+    if (!q) return ageFilteredVoters
+    return ageFilteredVoters.filter(v =>
       (v.name || '').toLowerCase().includes(q) ||
       (v.voter_type || '').toLowerCase().includes(q) ||
       (v.voter_id || '').toLowerCase().includes(q) ||
       (v.phone || '').includes(q)
     )
-  }, [wardVoters, search])
+  }, [ageFilteredVoters, search])
 
   const handleSearch = (v: string) => setSearch(v)
   const handleWardChange = (w: string) => { setActiveWard(w); setSearch('') }
@@ -374,12 +418,17 @@ function VoterPopup({
         {/* Header */}
         <div className="bg-navy px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <div className="text-white text-[12px] font-bold tracking-[0.6px]">
-              <i className="ph ph-users mr-2 text-saffron" />
-              Voters — {title}
+            <div className="text-white text-[12px] font-bold tracking-[0.6px] flex items-center gap-2">
+              <i className="ph ph-users mr-1 text-saffron" />
+              {contactedOnly ? 'Contacted Voters' : 'Voters'} — {title}
+              {contactedOnly && (
+                <span className="text-[9px] font-bold px-2 py-[2px] rounded-full bg-kampgreen/30 text-kampgreen border border-kampgreen/40">
+                  Contacted only
+                </span>
+              )}
             </div>
             <div className="text-white/50 text-[9px] mt-[2px]">
-              {loading ? 'Loading…' : `${voters.length} voter${voters.length !== 1 ? 's' : ''} across ${wards.length} ward${wards.length !== 1 ? 's' : ''}`}
+              {loading ? 'Loading…' : `${baseVoters.length} voter${baseVoters.length !== 1 ? 's' : ''} across ${wards.length} ward${wards.length !== 1 ? 's' : ''}`}
             </div>
           </div>
           <button
@@ -391,10 +440,10 @@ function VoterPopup({
         </div>
 
         {/* Type tabs */}
-        {!loading && voters.length > 0 && (
+        {!loading && baseVoters.length > 0 && (
           <div className="flex gap-1 px-4 pt-3 pb-0 flex-shrink-0 flex-wrap border-b border-border bg-[#f7f9fc]">
             {([
-              { key: 'all', label: 'All', count: voters.length },
+              { key: 'all', label: 'All', count: baseVoters.length },
               { key: 'volunteer', label: 'Volunteer', count: typeCounts.volunteer },
               { key: 'beneficiary', label: 'Beneficiary', count: typeCounts.beneficiary },
               { key: 'both', label: 'Both', count: typeCounts.both },
@@ -471,10 +520,10 @@ function VoterPopup({
           </div>
         )}
 
-        {/* Search */}
-        {!loading && voters.length > 0 && (
-          <div className="px-4 pt-3 pb-2 flex-shrink-0 border-b border-border">
-            <div className="relative">
+        {/* Search + Age Group filter */}
+        {!loading && baseVoters.length > 0 && (
+          <div className="px-4 pt-3 pb-2 flex-shrink-0 border-b border-border flex items-center gap-2">
+            <div className="relative flex-1">
               <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-[12px] pointer-events-none" />
               <input
                 type="text" value={search}
@@ -489,6 +538,19 @@ function VoterPopup({
                 </button>
               )}
             </div>
+            <select
+              value={ageGroupFilter}
+              onChange={e => setAgeGroupFilter(e.target.value)}
+              className={`form-input text-[11px] py-[5px] pr-7 min-w-[110px] flex-shrink-0 ${ageGroupFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Ages</option>
+              <option value="Below 18">Below 18</option>
+              <option value="18-25">18–25</option>
+              <option value="26-35">26–35</option>
+              <option value="36-45">36–45</option>
+              <option value="46-60">46–60</option>
+              <option value="60+">60+</option>
+            </select>
           </div>
         )}
 
@@ -906,7 +968,7 @@ export default function ReportsPage() {
 }
 
 /* ── Booth table ─────────────────────────────────────────────────── */
-type BoothSortKey = 'number' | 'name' | 'panchayat_name' | 'union_name' | 'block_name' | 'total_voters' | 'voters_contacted' | 'coverage_percentage' | 'volunteer_count'
+type BoothSortKey = 'number' | 'name' | 'panchayat_name' | 'union_name' | 'block_name' | 'total_voters' | 'voters_contacted' | 'coverage_percentage' | 'volunteer_count' | 'positive_pct' | 'neutral_pct' | 'negative_pct'
 
 function BoothTable({
   rows,
@@ -923,9 +985,11 @@ function BoothTable({
   const [popup,   setPopup]       = useState<{ id: number; title: string } | null>(null)
   const [volList, setVolList]     = useState<VolunteerInfo[]>([])
   const [volLoad, setVolLoad]     = useState(false)
-  const [voterPopup, setVoterPopup] = useState<{ id: number; title: string } | null>(null)
-  const [voterList,  setVoterList]  = useState<VoterBasicInfo[]>([])
-  const [voterLoad,  setVoterLoad]  = useState(false)
+  const [voterPopup,            setVoterPopup]            = useState<{ id: number; title: string } | null>(null)
+  const [voterList,             setVoterList]             = useState<VoterBasicInfo[]>([])
+  const [voterLoad,             setVoterLoad]             = useState(false)
+  const [voterPopupContactedOnly, setVoterPopupContactedOnly] = useState(false)
+  const [addrPopup, setAddrPopup] = useState<{ name: string; number: string; address: string } | null>(null)
 
   useEffect(() => { setPage(1) }, [rows])
 
@@ -942,13 +1006,10 @@ function BoothTable({
     fetchVolunteers(b.id).then(v => { setVolList(v); setVolLoad(false) })
   }
 
-  const openVoterPopup = (b: BoothStat) => {
+  const openVoterPopup = (b: BoothStat, contactedOnly = false) => {
     const title = `${b.number ? `#${b.number} — ` : ''}${b.name || 'Booth'}`
-    console.log('[BoothTable] Voter list request payload:', {
-      booth_id: b.id,
-      booth_no: b.number,
-    })
     setVoterPopup({ id: b.id, title })
+    setVoterPopupContactedOnly(contactedOnly)
     setVoterLoad(true)
     setVoterList([])
     fetchVoters(b.id)
@@ -996,6 +1057,7 @@ function BoothTable({
               <Th label="Total Voters" colKey="total_voters"        {...thProps} className="text-right" />
               <Th label="Contacted"    colKey="voters_contacted"    {...thProps} className="text-right" />
               <Th label="Coverage"     colKey="coverage_percentage" {...thProps} />
+              <Th label="Support"      colKey="positive_pct"        {...thProps} />
               <Th label="Volunteers"   colKey="volunteer_count"     {...thProps} className="text-center" />
             </tr>
           </thead>
@@ -1004,7 +1066,17 @@ function BoothTable({
               <tr key={b.id}>
                 <td className="text-muted">{(page - 1) * PAGE_SIZE + i + 1}</td>
                 <td className="font-bold text-navy">{b.number || '—'}</td>
-                <td>{b.name || '—'}</td>
+                <td>
+                  {b.address ? (
+                    <button
+                      onClick={() => setAddrPopup({ name: b.name, number: b.number, address: b.address! })}
+                      className="text-left hover:text-saffron hover:underline transition-colors cursor-pointer"
+                      title="Click to view address"
+                    >
+                      {b.name || '—'}
+                    </button>
+                  ) : (b.name || '—')}
+                </td>
                 <td className="text-muted">{b.panchayat_name || '—'}</td>
                 <td className="text-muted">{b.union_name || '—'}</td>
                 <td className="text-muted">{b.block_name || '—'}</td>
@@ -1017,8 +1089,27 @@ function BoothTable({
                     {(b.total_voters || 0).toLocaleString()}
                   </button>
                 </td>
-                <td className="text-right">{(b.voters_contacted || 0).toLocaleString()}</td>
+                <td className="text-right">
+                  {(b.voters_contacted || 0) > 0 ? (
+                    <button
+                      onClick={() => openVoterPopup(b, true)}
+                      className="font-semibold text-kampgreen hover:text-saffron hover:underline transition-colors cursor-pointer"
+                      title="View contacted voters"
+                    >
+                      {(b.voters_contacted || 0).toLocaleString()}
+                    </button>
+                  ) : (
+                    <span className="text-muted">0</span>
+                  )}
+                </td>
                 <td className="min-w-[130px]"><PctBar pct={b.coverage_percentage || 0} /></td>
+                <td className="min-w-[90px]">
+                  <SentimentBar
+                    pos={b.positive_pct ?? 0}
+                    neu={b.neutral_pct  ?? 0}
+                    neg={b.negative_pct ?? 0}
+                  />
+                </td>
                 <td className="text-center">
                   <button
                     onClick={() => openVolPopup(b)}
@@ -1046,6 +1137,7 @@ function BoothTable({
               <td className="text-right text-navy">{grandTotal.toLocaleString()}</td>
               <td className="text-right text-navy">{grandContact.toLocaleString()}</td>
               <td />
+              <td />
               <td className="text-center text-navy">{grandVols}</td>
             </tr>
           </tfoot>
@@ -1067,8 +1159,33 @@ function BoothTable({
           title={voterPopup.title}
           voters={voterList}
           loading={voterLoad}
-          onClose={() => setVoterPopup(null)}
+          contactedOnly={voterPopupContactedOnly}
+          onClose={() => { setVoterPopup(null); setVoterPopupContactedOnly(false) }}
         />
+      )}
+
+      {addrPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]" onClick={() => setAddrPopup(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-navy px-5 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-white font-bold text-[13px]">
+                  {addrPopup.number ? `#${addrPopup.number} — ` : ''}{addrPopup.name}
+                </p>
+                <p className="text-white/60 text-[10px] uppercase tracking-wider mt-[1px]">Booth Address</p>
+              </div>
+              <button onClick={() => setAddrPopup(null)} className="text-white/60 hover:text-white transition-colors">
+                <i className="ph ph-x text-[16px]" />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <div className="flex items-start gap-3">
+                <i className="ph ph-map-pin text-saffron text-[18px] mt-[1px] flex-shrink-0" />
+                <p className="text-navy text-[13px] leading-relaxed">{addrPopup.address}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

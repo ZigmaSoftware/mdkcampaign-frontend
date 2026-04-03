@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react'
 import { usePermissions } from '../../context/PermissionContext'
 import { useEntryModule } from '../../hooks/useEntryModule'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
-import type { Ward, Booth, Constituency, CampaignActivityType } from '../../hooks/useMasterAPI'
+import type { Ward, Booth, Constituency, CampaignActivityType, VolunteerRole, VolunteerName } from '../../hooks/useMasterAPI'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { VolunteerRecord } from '../../hooks/useEntryAPI'
 import apiClient from '../../utils/api'
@@ -13,8 +13,9 @@ import RecordList from '../../components/entry/RecordList'
 import EntryFormPanel from '../../components/entry/EntryFormPanel'
 import FormRow from '../../components/entry/FormRow'
 import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
+import { SearchableSelect } from '../../components/entry/SearchableSelect'
 import FormActions from '../../components/entry/FormActions'
-import { exportRecordsToCsv } from '../../utils/exportCsv'
+import { exportRecordsToCsv, exportCampaignActivitiesCsv } from '../../utils/exportCsv'
 import { printModule } from '../../utils/printModule'
 import { todayISO, nowDatetimeLocal } from '../../utils/formatters'
 
@@ -64,6 +65,10 @@ export function CampaignEntry() {
   const [activityTypes, setActivityTypes] = useState<CampaignActivityType[]>([])
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo,   setFilterDateTo]   = useState('')
+  const [volunteerRoles,    setVolunteerRoles]    = useState<VolunteerRole[]>([])
+  const [teamRoleId,        setTeamRoleId]        = useState('')
+  const [teamVolunteerId,   setTeamVolunteerId]   = useState('')
+  const [teamRoleVolunteers, setTeamRoleVolunteers] = useState<VolunteerName[]>([])
 
   useEffect(() => {
     masterApi.fetchWards().then(d => d && setWards(d))
@@ -71,13 +76,14 @@ export function CampaignEntry() {
     entryApi.fetchVolunteers().then(d => d && setVolunteers(d.results))
     masterApi.fetchConstituencies().then(d => d && setConstituencies(d))
     masterApi.fetchCampaignActivityTypes().then(d => d && setActivityTypes(d))
+    masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))
   }, [])
 
-  const filteredVolunteers = volunteers.filter(v => {
-    if (selBoothId) return v.booth === selBoothId
-    if (selWardId)  return v.ward  === selWardId
-    return true
-  })
+  useEffect(() => {
+    if (!teamRoleId) { setTeamRoleVolunteers([]); return }
+    const roleName = volunteerRoles.find(vr => String(vr.id) === teamRoleId)?.name
+    masterApi.fetchVolunteerNames(roleName).then(d => { if (d) setTeamRoleVolunteers(d) })
+  }, [teamRoleId, volunteerRoles])
 
   const r = {
     type:    useRef<HTMLSelectElement>(null),
@@ -86,7 +92,6 @@ export function CampaignEntry() {
     area:    useRef<HTMLSelectElement>(null),
     ward:    useRef<HTMLSelectElement>(null),
     booth:   useRef<HTMLSelectElement>(null),
-    team:    useRef<HTMLSelectElement>(null),
     reach:   useRef<HTMLInputElement>(null),
     material:useRef<HTMLInputElement>(null),
     guest:   useRef<HTMLInputElement>(null),
@@ -105,18 +110,24 @@ export function CampaignEntry() {
     const bId = d.boothId ? parseInt(d.boothId) : null
     setSelWardId(wId)
     setSelBoothId(bId)
+    setTeamRoleId(d.teamRole ?? '')
+    setTeamVolunteerId(d.team ?? '')
   }
 
   const clear = () => {
     Object.values(r).forEach(ref => { if (ref.current) ref.current.value = '' })
     setSelWardId(null)
     setSelBoothId(null)
+    setTeamRoleId('')
+    setTeamVolunteerId('')
   }
 
   const collect = (): Record<string, string> => ({
     ...Object.fromEntries(Object.entries(r).map(([k, ref]) => [k, ref.current?.value ?? ''])),
-    wardId:  selWardId  ? String(selWardId)  : '',
-    boothId: selBoothId ? String(selBoothId) : '',
+    wardId:   selWardId        ? String(selWardId)      : '',
+    boothId:  selBoothId       ? String(selBoothId)     : '',
+    teamRole: teamRoleId,
+    team:     teamVolunteerId,
   })
 
   useEffect(() => {
@@ -166,7 +177,7 @@ export function CampaignEntry() {
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
         <EntryListHeader title="Campaign Activities" icon="ph ph-megaphone" count={em.records.length} onAddNew={canAdd('campaign') ? em.openForm : undefined} addLabel="Add Activity" />
         <div className="px-[18px] py-[14px]">
-          <EntrySearchToolbar placeholder="Search activities..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportRecordsToCsv(em.records,'Campaign_Activities')} onPrint={() => printModule(em.records,'Campaign Activities')} />
+          <EntrySearchToolbar placeholder="Search activities..." value={em.searchQuery} onChange={em.setSearch} onExport={() => exportCampaignActivitiesCsv(em.records)} onPrint={() => printModule(em.records,'Campaign Activities')} />
           {/* Date range filter */}
           <div className="flex items-center gap-3 mb-3 flex-wrap">
             <label className="text-xs font-semibold text-muted uppercase tracking-wide">Filter by Date:</label>
@@ -210,7 +221,7 @@ export function CampaignEntry() {
           <FormGroup label="Date" required><input ref={r.date} type="date" className={inputCls} defaultValue={todayISO()} /></FormGroup>
           <FormGroup label="Time"><input ref={r.time} type="time" className={inputCls} /></FormGroup>
         </FormRow>
-        <FormRow cols={4}>
+        <FormRow cols={3}>
           <FormGroup label="Block" required><select ref={r.area} className={selectCls}><BlockOptions /></select></FormGroup>
           <FormGroup label="Ward">
             <select
@@ -232,15 +243,24 @@ export function CampaignEntry() {
               {booths.map(b => <option key={b.id} value={b.id}>{b.number} — {b.name}</option>)}
             </select>
           </FormGroup>
+        </FormRow>
+        <FormRow cols={2}>
+          <FormGroup label="Volunteer Role">
+            <SearchableSelect
+              value={teamRoleId}
+              onChange={v => { setTeamRoleId(v); setTeamVolunteerId('') }}
+              options={volunteerRoles.map(vr => ({ value: String(vr.id), label: vr.name }))}
+              placeholder="— Select Role —"
+            />
+          </FormGroup>
           <FormGroup label="Team / Volunteer">
-            <select ref={r.team} className={selectCls}>
-              <option value="">Select volunteer</option>
-              {filteredVolunteers.map(v => (
-                <option key={v.id} value={String(v.id)}>
-                  {v.user_name?.trim() || v.username || `Volunteer #${v.id}`}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={teamVolunteerId}
+              onChange={setTeamVolunteerId}
+              options={teamRoleVolunteers.map(v => ({ value: String(v.id), label: v.user_name }))}
+              placeholder={teamRoleId ? '— Select Volunteer —' : '— Select Role first —'}
+              disabled={!teamRoleId}
+            />
           </FormGroup>
         </FormRow>
         <FormRow cols={4}>

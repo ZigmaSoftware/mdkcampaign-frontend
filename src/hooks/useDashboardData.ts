@@ -48,6 +48,7 @@ export interface DashboardAnalytics {
   total_voters?: number
   voters_contacted?: number
   voters_by_sentiment?: Record<string, number>
+  contacted_by_sentiment?: Record<string, number>
   total_booths?: number
   booths_assigned?: number
   active_volunteers?: number

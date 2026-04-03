@@ -75,14 +75,19 @@ export default function BeneficiaryEntry() {
   const [wardFilter,    setWardFilter]       = useState<number | ''>('')
   const [isContacted,   setIsContacted]     = useState(false)
 
+  const [ageGroupFilter, setAgeGroupFilter] = useState('')
+  const ageGroupFilterRef = useRef('')
+
   const apiRef = useRef(api)
   apiRef.current = api
+
+  ageGroupFilterRef.current = ageGroupFilter
 
   const blocks = useBlocks()
 
   const loadBeneficiaries = useCallback((p: number, q?: string, boothId?: number, wardId?: number, blk?: string, uni?: string, pan?: string) => {
     apiRef.current.fetchBeneficiaries(
-      boothId, q || undefined, wardId, p, PAGE_SIZE, blk || undefined, uni || undefined, pan || undefined
+      boothId, q || undefined, wardId, p, PAGE_SIZE, blk || undefined, uni || undefined, pan || undefined, ageGroupFilterRef.current || undefined
     ).then(d => { setBeneficiaries(d?.results ?? []); setTotalCount(d?.count ?? 0) })
   }, [PAGE_SIZE])
 
@@ -103,7 +108,7 @@ export default function BeneficiaryEntry() {
       loadBeneficiaries(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
     }, 400)
     return () => clearTimeout(t)
-  }, [search, boothFilterLocal, wardFilter, blockFilter, unionFilter, panchayatFilter, loadBeneficiaries])
+  }, [search, boothFilterLocal, wardFilter, blockFilter, unionFilter, panchayatFilter, ageGroupFilter, loadBeneficiaries])
 
   const r = {
     name:           useRef<HTMLInputElement>(null),
@@ -407,9 +412,24 @@ export default function BeneficiaryEntry() {
               {filteredWards.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
 
-            {(blockFilter || unionFilter || panchayatFilter || boothFilterLocal || wardFilter) && (
+            {/* Age Group filter */}
+            <select
+              value={ageGroupFilter}
+              onChange={e => { setAgeGroupFilter(e.target.value); setPage(1) }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[130px] w-auto ${ageGroupFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Ages</option>
+              <option value="Below 18">Below 18</option>
+              <option value="18-25">18–25</option>
+              <option value="26-35">26–35</option>
+              <option value="36-45">36–45</option>
+              <option value="46-60">46–60</option>
+              <option value="60+">60+</option>
+            </select>
+
+            {(blockFilter || unionFilter || panchayatFilter || boothFilterLocal || wardFilter || ageGroupFilter) && (
               <button
-                onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilterLocal(''); setWardFilter('') }}
+                onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilterLocal(''); setWardFilter(''); setAgeGroupFilter('') }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
                 <i className="ph ph-x-circle" /> Clear Filters

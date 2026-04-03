@@ -14,6 +14,12 @@ interface DashboardStats {
     negative?: number
     undecided?: number
   }
+  contacted_by_sentiment?: {
+    positive?: number
+    neutral?: number
+    negative?: number
+    undecided?: number
+  }
   total_booths: number
   booths_assigned: number
   booths_working: number
@@ -35,6 +41,7 @@ interface BoothStat {
   id: number
   name: string
   number: string
+  address?: string
   constituency_name: string | null
   panchayat_name: string
   union_name: string
@@ -43,6 +50,9 @@ interface BoothStat {
   voters_contacted: number
   coverage_percentage: number
   volunteer_count: number
+  positive_pct?: number
+  neutral_pct?: number
+  negative_pct?: number
 }
 
 interface WardStat {

@@ -168,8 +168,6 @@ export default function FamilyMapping() {
   }, [search])
 
   /* ── Fetch voters when booths change ── */
-  /* Paginate: the API returns at most `limit` rows; we keep asking until we
-     have everything so the family grouping operates on the full dataset. */
   useEffect(() => {
     if (filterBooths.size === 0) {
       setVoters([])
@@ -178,20 +176,12 @@ export default function FamilyMapping() {
     const controller = new AbortController()
     setLoading(true)
     const boothParam = [...filterBooths].join(',')
-    const PAGE = 2000
-
-    const fetchAll = async () => {
-      let collected: VoterRow[] = []
-      let offset = 0
-      let hasMore = true
-
-      while (hasMore) {
-        const r = await apiClient.get('/voters/voters/', {
-          params: { booth: boothParam, limit: PAGE, offset },
-          signal: controller.signal,
-        })
-        const results = r.data.results ?? r.data ?? []
-        const rows: VoterRow[] = results.map((v: any) => ({
+    apiClient.get('/voters/voters/', {
+      params: { booth: boothParam, limit: 5000 },
+      signal: controller.signal,
+    })
+      .then(r => {
+        const all: VoterRow[] = (r.data.results ?? []).map((v: any) => ({
           id: v.id, name: v.name ?? '', voter_id: v.voter_id ?? '',
           father_name: v.father_name ?? '',
           phone: v.phone ?? '', phone2: v.phone2 ?? '',
@@ -200,15 +190,8 @@ export default function FamilyMapping() {
           booth_name: v.booth_name ?? '',
           age: v.age, gender: v.gender ?? '',
         }))
-        collected = collected.concat(rows)
-        offset += PAGE
-        hasMore = rows.length === PAGE && (r.data.next != null)
-      }
-      return collected
-    }
-
-    fetchAll()
-      .then(all => setVoters(all))
+        setVoters(all)
+      })
       .catch(err => {
         if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED')
           showToast('Failed to load voters', 'error')

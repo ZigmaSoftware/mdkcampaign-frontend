@@ -12,7 +12,7 @@ import FormRow from '../../components/entry/FormRow'
 import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
 import { SearchableSelect } from '../../components/entry/SearchableSelect'
 import FormActions from '../../components/entry/FormActions'
-import { exportRecordsToCsv } from '../../utils/exportCsv'
+import { exportTasksCsv } from '../../utils/exportCsv'
 import { printModule } from '../../utils/printModule'
 import { useToast } from '../../context/ToastContext'
 import { usePermissions } from '../../context/PermissionContext'
@@ -615,7 +615,7 @@ export default function EventEntry() {
             placeholder="Search tasks..."
             value={search}
             onChange={setSearch}
-            onExport={() => exportRecordsToCsv(allTaskRecords, 'Task_Management')}
+            onExport={() => exportTasksCsv(tasks)}
             onPrint={() => printModule(allTaskRecords, 'Task Management')}
           />
           <RecordList

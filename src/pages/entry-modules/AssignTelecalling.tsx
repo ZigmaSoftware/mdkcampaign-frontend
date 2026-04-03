@@ -31,6 +31,11 @@ interface BoothOption {
   name: string
 }
 
+interface VolunteerRoleOption {
+  id: number
+  name: string
+}
+
 type WorkflowStatus =
   | 'assigned'
   | 'pending_followup'
@@ -152,10 +157,13 @@ export default function AssignTelecalling() {
 
   const [booths,      setBooths]      = useState<BoothOption[]>([])
   const [telecallers, setTelecallers] = useState<Telecaller[]>([])
+  const [volunteerRoles, setVolunteerRoles] = useState<VolunteerRoleOption[]>([])
+  const [assignableVolunteers, setAssignableVolunteers] = useState<Telecaller[]>([])
 
   const [filterBooths,     setFilterBooths]     = useState<Set<number>>(new Set())
   const [filterContactStatus, setFilterContactStatus] = useState('')
   const [filterTelecaller, setFilterTelecaller] = useState('')
+  const [filterVolunteerRole, setFilterVolunteerRole] = useState('')
   const [filterDate,       setFilterDate]       = useState('')
   const [filterSearch,     setFilterSearch]     = useState('')
   const [debouncedSearch,  setDebouncedSearch]  = useState('')
@@ -175,20 +183,30 @@ export default function AssignTelecalling() {
   const workflowByVoterRef = useRef<Map<number, WorkflowInfo>>(new Map())
   const [workflowByVoterId, setWorkflowByVoterId] = useState<Map<number, WorkflowInfo>>(new Map())
 
+  const mapVolunteerOptions = (payload: any): Telecaller[] => {
+    const rows = Array.isArray(payload) ? payload : (payload?.results ?? [])
+    return rows.map((v: any) => ({
+      id: v.id,
+      name: v.user_name ?? v.name ?? `Vol #${v.id}`,
+      phone: v.phone ?? '',
+    }))
+  }
+
   /* ── Fetch masters + already-assigned IDs ── */
   useEffect(() => {
     apiClient.get('/masters/booths/', { params: { limit: 500 } })
       .then(r => setBooths(r.data.results ?? []))
       .catch(() => {})
 
-    apiClient.get('/volunteers/volunteers/', { params: { role: 'Telecalling', limit: 500, status: 'active' } })
+    apiClient.get('/masters/volunteer-roles/', { params: { limit: 500 } })
+      .then(r => setVolunteerRoles(r.data.results ?? []))
+      .catch(() => {})
+
+    apiClient.get('/volunteers/volunteers/names/', { params: { role: 'Telecalling', status: 'active' } })
       .then(r => {
-        const rows = (r.data.results ?? []) as any[]
-        setTelecallers(
-          rows
-            .filter(v => (v.role ?? '').toLowerCase() === 'telecalling')
-            .map(v => ({ id: v.id, name: v.name ?? v.user_name ?? `Vol #${v.id}`, phone: v.phone }))
-        )
+        const options = mapVolunteerOptions(r.data)
+        setTelecallers(options)
+        setAssignableVolunteers(options)
       })
       .catch(() => {})
 
@@ -213,6 +231,25 @@ export default function AssignTelecalling() {
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const params: Record<string, string> = { status: 'active' }
+    if (filterVolunteerRole) params.volunteer_role = filterVolunteerRole
+    else params.role = 'Telecalling'
+
+    apiClient.get('/volunteers/volunteers/names/', { params })
+      .then(r => {
+        const options = mapVolunteerOptions(r.data)
+        setAssignableVolunteers(options)
+        if (assignTo && !options.some(v => String(v.id) === assignTo)) {
+          setAssignTo('')
+        }
+      })
+      .catch(() => {
+        setAssignableVolunteers([])
+        if (assignTo) setAssignTo('')
+      })
+  }, [filterVolunteerRole])
 
   /* ── Debounce search ── */
   useEffect(() => {
@@ -286,7 +323,7 @@ export default function AssignTelecalling() {
     if (!assignTo)           { showToast('Select a telecalling person', 'error'); return }
     if (selected.size === 0) { showToast('Select at least one voter', 'error');   return }
 
-    const telecaller = telecallers.find(t => String(t.id) === assignTo)
+    const telecaller = assignableVolunteers.find(t => String(t.id) === assignTo)
     if (!telecaller) { showToast('Telecaller not found — please re-select', 'error'); return }
 
     const date        = filterDate || new Date().toISOString().slice(0, 10)
@@ -361,6 +398,10 @@ export default function AssignTelecalling() {
 
   const applyBooths  = (next: Set<number>) => { setFilterBooths(next); setPage(1) }
   const applyContactStatus = (value: string) => { setFilterContactStatus(value); setPage(1) }
+  const applyVolunteerRole = (value: string) => {
+    setFilterVolunteerRole(value)
+    setAssignTo('')
+  }
   const applyDate    = (v: string)          => { setFilterDate(v) }
   const applySearch  = (v: string)          => { setFilterSearch(v) }
   const clearAll     = () => {
@@ -368,12 +409,14 @@ export default function AssignTelecalling() {
     setFilterContactStatus('')
     setFilterDate('')
     setFilterTelecaller('')
+    setFilterVolunteerRole('')
     setFilterSearch('')
     setDebouncedSearch('')
+    setAssignTo('')
     setPage(1)
   }
-  const hasFilters   = filterBooths.size > 0 || !!filterContactStatus || !!filterTelecaller || !!filterSearch
-  const assignName   = telecallers.find(t => String(t.id) === assignTo)?.name ?? ''
+  const hasFilters   = filterBooths.size > 0 || !!filterContactStatus || !!filterTelecaller || !!filterVolunteerRole || !!filterSearch
+  const assignName   = assignableVolunteers.find(t => String(t.id) === assignTo)?.name ?? ''
   const workflowCounts = [...workflowByVoterId.values()].reduce(
     (acc, info) => {
       acc[info.status] = (acc[info.status] ?? 0) + 1
@@ -476,6 +519,20 @@ export default function AssignTelecalling() {
           </div>
 
           <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Volunteer Role</label>
+            <select
+              value={filterVolunteerRole}
+              onChange={e => applyVolunteerRole(e.target.value)}
+              className={`${selectCls} w-[180px]`}
+            >
+              <option value="">All Telecallers</option>
+              {volunteerRoles.map(role => (
+                <option key={role.id} value={role.name}>{role.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-wide text-muted">
               Assign To
               {selected.size > 0 && <span className="ml-1 normal-case text-navy font-semibold">({selected.size} selected)</span>}
@@ -483,8 +540,8 @@ export default function AssignTelecalling() {
             <div className="flex items-stretch rounded-lg overflow-hidden border border-border shadow-sm">
               <select value={assignTo} onChange={e => setAssignTo(e.target.value)}
                 className="text-[12px] px-3 py-[7px] bg-surface text-heading outline-none min-w-[180px] cursor-pointer">
-                <option value="">Select Telecaller…</option>
-                {telecallers.map(t => (
+                <option value="">{filterVolunteerRole ? 'Select Volunteer…' : 'Select Telecaller…'}</option>
+                {assignableVolunteers.map(t => (
                   <option key={t.id} value={t.id}>{t.name}{t.phone ? ` · ${t.phone}` : ''}</option>
                 ))}
               </select>

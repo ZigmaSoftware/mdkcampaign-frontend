@@ -12,7 +12,7 @@ import EntryFormPanel from '../../components/entry/EntryFormPanel'
 import FormRow from '../../components/entry/FormRow'
 import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
 import FormActions from '../../components/entry/FormActions'
-import { exportRecordsToCsv } from '../../utils/exportCsv'
+import { exportBeneficiariesCsv } from '../../utils/exportCsv'
 import { printModule } from '../../utils/printModule'
 import { useToast } from '../../context/ToastContext'
 import { usePermissions } from '../../context/PermissionContext'
@@ -77,6 +77,7 @@ export default function BeneficiaryEntry() {
 
   const [ageGroupFilter, setAgeGroupFilter] = useState('')
   const ageGroupFilterRef = useRef('')
+  const [exporting, setExporting] = useState(false)
 
   const apiRef = useRef(api)
   apiRef.current = api
@@ -307,6 +308,43 @@ export default function BeneficiaryEntry() {
   const filtered   = beneficiaries.map<EntryRecord>(mapBeneficiary)
   const allRecords = filtered
 
+  const handleExportCsv = useCallback(async () => {
+    setExporting(true)
+    try {
+      const all: BeneficiaryRecord[] = []
+      let currentPage = 1
+      const batchSize = 500
+
+      while (true) {
+        const response = await apiRef.current.fetchBeneficiaries(
+          boothFilterLocal || undefined,
+          search || undefined,
+          wardFilter || undefined,
+          currentPage,
+          batchSize,
+          blockFilter || undefined,
+          unionFilter || undefined,
+          panchayatFilter || undefined,
+          ageGroupFilter || undefined,
+        )
+
+        if (!response) break
+        all.push(...response.results)
+        if (all.length >= response.count || response.results.length < batchSize) break
+        currentPage++
+      }
+
+      if (!all.length) {
+        showToast('<i class="ph ph-warning"></i> No beneficiary data found for export.', '#dc2626')
+        return
+      }
+
+      exportBeneficiariesCsv(all)
+    } finally {
+      setExporting(false)
+    }
+  }, [ageGroupFilter, blockFilter, boothFilterLocal, panchayatFilter, search, showToast, unionFilter, wardFilter])
+
   const checkCls = 'flex items-center gap-2 cursor-pointer select-none text-[11px] text-body font-medium'
   const checkBoxCls = 'w-4 h-4 rounded border-2 border-border cursor-pointer accent-navy'
 
@@ -357,7 +395,8 @@ export default function BeneficiaryEntry() {
             placeholder="Search by name, voter ID, phone, scheme, benefit type…"
             value={search}
             onChange={setSearch}
-            onExport={() => exportRecordsToCsv(allRecords, 'Beneficiaries')}
+            onExport={handleExportCsv}
+            exportLoading={exporting}
             onPrint={() => printModule(allRecords, 'Beneficiary Info')}
           />
 

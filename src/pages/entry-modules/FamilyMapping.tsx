@@ -4,6 +4,13 @@ import { inputCls, selectCls } from '../../components/entry/FormGroup'
 import { useToast } from '../../context/ToastContext'
 
 /* ── Types ─────────────────────────────────────────────── */
+interface ApiResponse<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
 interface VoterRow {
   id: number
   name: string
@@ -42,6 +49,9 @@ interface FamilyGroup {
 
 /* ── Helpers ───────────────────────────────────────────── */
 const PAGE_SIZE = 20
+const API_BATCH_SIZE = 5000
+const BOOTH_CHUNK_SIZE = 100
+const MAX_CONCURRENT_BOOTH_REQUESTS = 4
 
 const normalizeAddress = (addr?: string) =>
   (addr ?? '').trim().toLowerCase().replace(/[,.\-\/\\]+/g, ' ').replace(/\s+/g, ' ')
@@ -50,6 +60,116 @@ const genderLabel = (g?: string) =>
   g === 'm' || g === 'Male'   ? 'Male'   :
   g === 'f' || g === 'Female' ? 'Female' :
   g === 'o' || g === 'Other'  ? 'Other'  : '—'
+
+const toCanceledError = () => {
+  const err = new Error('Request canceled')
+  ;(err as Error & { name: string; code?: string }).name = 'CanceledError'
+  ;(err as Error & { name: string; code?: string }).code = 'ERR_CANCELED'
+  return err
+}
+
+const assertNotAborted = (signal?: AbortSignal) => {
+  if (signal?.aborted) throw toCanceledError()
+}
+
+const chunkNumbers = (values: number[], size: number) => {
+  const chunks: number[][] = []
+  for (let i = 0; i < values.length; i += size) chunks.push(values.slice(i, i + size))
+  return chunks
+}
+
+const mapVoterRow = (v: any): VoterRow => ({
+  id: v.id,
+  name: v.name ?? '',
+  voter_id: v.voter_id ?? '',
+  father_name: v.father_name ?? '',
+  phone: v.phone ?? '',
+  phone2: v.phone2 ?? '',
+  alt_phoneno2: v.alt_phoneno2 ?? '',
+  alt_phoneno3: v.alt_phoneno3 ?? '',
+  address: v.address ?? '',
+  booth: v.booth,
+  booth_name: v.booth_name ?? '',
+  age: v.age,
+  gender: v.gender ?? '',
+})
+
+async function fetchAllPages<T>(
+  url: string,
+  params: Record<string, string | number> = {},
+  signal?: AbortSignal,
+): Promise<T[]> {
+  assertNotAborted(signal)
+  const { data: firstPage } = await apiClient.get<ApiResponse<T>>(url, {
+    params: { ...params, limit: API_BATCH_SIZE, offset: 0 },
+    signal,
+  })
+
+  const firstResults = firstPage.results ?? []
+  const totalCount = firstPage.count ?? firstResults.length
+
+  if (!firstPage.next || firstResults.length >= totalCount) {
+    return firstResults
+  }
+
+  const offsets: number[] = []
+  for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
+    offsets.push(offset)
+  }
+
+  const remainingPages = await Promise.all(offsets.map(async offset => {
+    assertNotAborted(signal)
+    const { data } = await apiClient.get<ApiResponse<T>>(url, {
+      params: { ...params, limit: API_BATCH_SIZE, offset },
+      signal,
+    })
+    return data.results ?? []
+  }))
+
+  return firstResults.concat(...remainingPages)
+}
+
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  if (tasks.length === 0) return []
+
+  const results: T[] = new Array(tasks.length)
+  let nextIndex = 0
+
+  const worker = async () => {
+    while (nextIndex < tasks.length) {
+      const currentIndex = nextIndex++
+      results[currentIndex] = await tasks[currentIndex]()
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    () => worker(),
+  )
+  await Promise.all(workers)
+  return results
+}
+
+async function fetchAllVotersForBooths(
+  boothIds: number[],
+  signal?: AbortSignal,
+): Promise<VoterRow[]> {
+  const boothChunks = chunkNumbers(boothIds, BOOTH_CHUNK_SIZE)
+  const tasks = boothChunks.map(boothChunk => async () => {
+    const rows = await fetchAllPages<any>(
+      '/voters/voters/',
+      { booth: boothChunk.join(','), scope: 'family_mapping' },
+      signal,
+    )
+    return rows.map(mapVoterRow)
+  })
+
+  const chunkResults = await runWithConcurrency(tasks, MAX_CONCURRENT_BOOTH_REQUESTS)
+  return chunkResults.flat()
+}
 
 /* ── Booth multi-select (reused pattern from AssignTelecalling) ── */
 function BoothMultiSelect({
@@ -137,6 +257,7 @@ function BoothMultiSelect({
 ════════════════════════════════════════════════════════════ */
 export default function FamilyMapping() {
   const { showToast } = useToast()
+  const voterCacheRef = useRef<Map<number, VoterRow[]>>(new Map())
 
   /* ── Master data ── */
   const [booths, setBooths] = useState<BoothOption[]>([])
@@ -156,10 +277,17 @@ export default function FamilyMapping() {
 
   /* ── Fetch booths on mount ── */
   useEffect(() => {
-    apiClient.get('/masters/booths/', { params: { limit: 500 } })
-      .then(r => setBooths(r.data.results ?? []))
-      .catch(() => {})
-  }, [])
+    const controller = new AbortController()
+    let active = true
+    fetchAllPages<BoothOption>('/masters/booths/', {}, controller.signal)
+      .then(data => { if (active) setBooths(data) })
+      .catch(err => {
+        if (active && err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+          showToast('Failed to load booths', 'error')
+        }
+      })
+    return () => { active = false; controller.abort() }
+  }, [showToast])
 
   /* ── Debounce search ── */
   useEffect(() => {
@@ -171,34 +299,42 @@ export default function FamilyMapping() {
   useEffect(() => {
     if (filterBooths.size === 0) {
       setVoters([])
+      setLoading(false)
       return
     }
+
+    const selectedBoothIds = [...filterBooths].sort((a, b) => a - b)
+    const cachedVoters = selectedBoothIds.flatMap(boothId => voterCacheRef.current.get(boothId) ?? [])
+    const missingBoothIds = selectedBoothIds.filter(boothId => !voterCacheRef.current.has(boothId))
+
+    setVoters(cachedVoters)
+
+    if (missingBoothIds.length === 0) {
+      setLoading(false)
+      return
+    }
+
     const controller = new AbortController()
+    let active = true
     setLoading(true)
-    const boothParam = [...filterBooths].join(',')
-    apiClient.get('/voters/voters/', {
-      params: { booth: boothParam, limit: 5000 },
-      signal: controller.signal,
-    })
-      .then(r => {
-        const all: VoterRow[] = (r.data.results ?? []).map((v: any) => ({
-          id: v.id, name: v.name ?? '', voter_id: v.voter_id ?? '',
-          father_name: v.father_name ?? '',
-          phone: v.phone ?? '', phone2: v.phone2 ?? '',
-          alt_phoneno2: v.alt_phoneno2 ?? '', alt_phoneno3: v.alt_phoneno3 ?? '',
-          address: v.address ?? '', booth: v.booth,
-          booth_name: v.booth_name ?? '',
-          age: v.age, gender: v.gender ?? '',
-        }))
-        setVoters(all)
+    fetchAllVotersForBooths(missingBoothIds, controller.signal)
+      .then(data => {
+        if (!active) return
+
+        const rowsByBooth = new Map<number, VoterRow[]>()
+        for (const boothId of missingBoothIds) rowsByBooth.set(boothId, [])
+        for (const voter of data) rowsByBooth.get(voter.booth)?.push(voter)
+        rowsByBooth.forEach((rows, boothId) => voterCacheRef.current.set(boothId, rows))
+
+        setVoters(selectedBoothIds.flatMap(boothId => voterCacheRef.current.get(boothId) ?? []))
       })
       .catch(err => {
-        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED')
+        if (active && err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED')
           showToast('Failed to load voters', 'error')
       })
-      .finally(() => setLoading(false))
-    return () => controller.abort()
-  }, [filterBooths])
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false; controller.abort() }
+  }, [filterBooths, showToast])
 
   /* ── Build booth lookup ── */
   const boothMap = useMemo(() => {
@@ -276,12 +412,14 @@ export default function FamilyMapping() {
     return pages
   })()
 
-  const singlesCount = voters.filter(v => {
+  const familyKeys = useMemo(() => new Set(families.map(f => f.key)), [families])
+
+  const singlesCount = useMemo(() => voters.filter(v => {
     const norm = normalizeAddress(v.address)
     if (!norm) return false
     const key = `${v.booth}::${norm}`
-    return !families.some(f => f.key === key)
-  }).length
+    return !familyKeys.has(key)
+  }).length, [voters, familyKeys])
 
   /* ════════════════════════════════════════════════════════
      Render

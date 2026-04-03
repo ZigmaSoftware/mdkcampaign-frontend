@@ -58,12 +58,14 @@ interface VolunteerRecord {
   phone?: string
   phone2?: string
   booth: number | null
+  booth_name?: string
   booths?: number[]
   booth_names?: string[]
   ward: number | null
   panchayat?: number | null
   status?: string
   role?: string
+  volunteer_role?: number | null
   age?: number | null
   gender?: string
   joined_date?: string
@@ -75,6 +77,13 @@ interface VolunteerRecord {
   vehicle?: string
   volunteer_type?: string
   notes?: string
+  experience_months?: number | null
+  previous_campaigns?: string
+  voters_contacted?: number | null
+  events_attended?: number | null
+  hours_contributed?: number | null
+  performance_score?: number | null
+  is_active?: boolean
   created_at?: string
 }
 
@@ -105,7 +114,9 @@ interface BeneficiaryRecord {
   source?: string
   is_contacted?: boolean
   notes?: string
+  is_active?: boolean
   created_at?: string
+  updated_at?: string
 }
 
 interface BoothRecord {
@@ -231,13 +242,13 @@ interface UseEntryAPIReturn {
   loading: boolean
   error: string | null
   // Voters
-  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string, contactStatus?: string) => Promise<{ results: VoterRecord[]; count: number } | null>
+  fetchVoters: (boothId?: number, search?: string, page?: number, pageSize?: number, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string, contactStatus?: string, ageFrom?: number, ageTo?: number, sort?: string, sortByAge?: 'asc' | 'desc') => Promise<{ results: VoterRecord[]; count: number } | null>
   fetchVoter: (voterId: number) => Promise<VoterRecord | null>
   createVoter: (voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   updateVoter: (voterId: number, voterData: Partial<VoterRecord>) => Promise<VoterRecord | null>
   deleteVoter: (voterId: number) => Promise<boolean>
   // Volunteers
-  fetchVolunteers: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string, ageGroup?: string) => Promise<{ results: VolunteerRecord[]; count: number } | null>
+  fetchVolunteers: (boothId?: number, search?: string, wardId?: number, page?: number, pageSize?: number, block?: string, union?: string, panchayat?: string, ageGroup?: string, voterIdStatus?: string, role?: string, status?: string, volunteerType?: string, gender?: string, source?: string) => Promise<{ results: VolunteerRecord[]; count: number } | null>
   createVolunteer: (volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   updateVolunteer: (volunteerId: number, volunteerData: Partial<VolunteerRecord>) => Promise<VolunteerRecord | null>
   // Booths
@@ -289,7 +300,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOTERS ====================
 
   const fetchVoters = useCallback(
-    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string, contactStatus?: string): Promise<{ results: VoterRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, page = 1, pageSize = 200, wardId?: number, pincode?: string, panchayatId?: number, unionId?: number, blockId?: number, ageGroup?: string, contactStatus?: string, ageFrom?: number, ageTo?: number, sort?: string, sortByAge?: 'asc' | 'desc'): Promise<{ results: VoterRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
@@ -304,6 +315,10 @@ export function useEntryAPI(): UseEntryAPIReturn {
             ...(blockId     ? { block:     blockId     } : {}),
             ...(ageGroup    ? { age_group: ageGroup    } : {}),
             ...(contactStatus ? { contact_status: contactStatus } : {}),
+            ...(ageFrom != null ? { age_from: ageFrom } : {}),
+            ...(ageTo != null ? { age_to: ageTo } : {}),
+            ...(sort ? { sort } : {}),
+            ...(sortByAge ? { sort_by_age: sortByAge } : {}),
             limit:  pageSize,
             offset: (page - 1) * pageSize,
           },
@@ -383,7 +398,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
   // ==================== VOLUNTEERS ====================
 
   const fetchVolunteers = useCallback(
-    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string, ageGroup?: string): Promise<{ results: VolunteerRecord[]; count: number } | null> => {
+    async (boothId?: number, search?: string, wardId?: number, page = 1, pageSize = 10, block?: string, union?: string, panchayat?: string, ageGroup?: string, voterIdStatus?: string, role?: string, status?: string, volunteerType?: string, gender?: string, source?: string): Promise<{ results: VolunteerRecord[]; count: number } | null> => {
       setLoading(true)
       setError(null)
       try {
@@ -398,6 +413,12 @@ export function useEntryAPI(): UseEntryAPIReturn {
             ...(union     ? { union }                : {}),
             ...(panchayat ? { panchayat }            : {}),
             ...(ageGroup  ? { age_group: ageGroup  } : {}),
+            ...(voterIdStatus ? { voter_id_status: voterIdStatus } : {}),
+            ...(role ? { role } : {}),
+            ...(status ? { status } : {}),
+            ...(volunteerType ? { volunteer_type: volunteerType } : {}),
+            ...(gender ? { gender } : {}),
+            ...(source ? { source } : {}),
           },
         })
         return { results: data.results || [], count: data.count || 0 }

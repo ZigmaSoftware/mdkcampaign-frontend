@@ -20,6 +20,9 @@ interface RecordListProps {
   onDelete?:            (id: string) => void
   onViewVolunteers?:    (id: string) => void
   filterConfig?:        FilterConfig[]
+  filterValues?:        Record<string, string>
+  onFilterChange?:      (key: string, value: string) => void
+  onClearFilters?:      () => void
   itemsPerPage?:  number
   serverTotal?:   number
   startIndex?:    number
@@ -40,6 +43,9 @@ export default function RecordList({
   onDelete,
   onViewVolunteers,
   filterConfig,
+  filterValues,
+  onFilterChange,
+  onClearFilters,
   itemsPerPage = DEFAULT_PAGE_SIZE,
   serverTotal,
   startIndex = 0,
@@ -51,16 +57,22 @@ export default function RecordList({
   const [page,       setPage]       = useState(1)
   const [filters,    setFilters]    = useState<Record<string, string>>({})
   const [viewingRec, setViewingRec] = useState<EntryRecord | null>(null)
+  const usesExternalFilters = !!onFilterChange
+  const activeFilters = usesExternalFilters ? (filterValues ?? {}) : filters
 
   const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }))
+    if (usesExternalFilters) {
+      onFilterChange?.(key, value)
+    } else {
+      setFilters(prev => ({ ...prev, [key]: value }))
+    }
     setPage(1)
   }
 
   // Apply dropdown filters on top of the (already search-filtered) records
-  const visible = filterConfig?.length
+  const visible = !usesExternalFilters && filterConfig?.length
     ? records.filter(rec =>
-        filterConfig.every(fc => !filters[fc.key] || rec.data[fc.key] === filters[fc.key])
+        filterConfig.every(fc => !activeFilters[fc.key] || rec.data[fc.key] === activeFilters[fc.key])
       )
     : records
 
@@ -68,7 +80,7 @@ export default function RecordList({
   const safePage   = Math.min(page, totalPages)
   const paged      = visible.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage)
 
-  const activeFilterCount = Object.values(filters).filter(Boolean).length
+  const activeFilterCount = Object.values(activeFilters).filter(Boolean).length
 
   return (
     <div className="mt-[14px]">
@@ -81,11 +93,11 @@ export default function RecordList({
           {filterConfig.map(fc => (
             <select
               key={fc.key}
-              value={filters[fc.key] || ''}
+              value={activeFilters[fc.key] || ''}
               onChange={e => handleFilterChange(fc.key, e.target.value)}
               className={`
                 form-input text-[11px] py-[4px] pr-7 min-w-[110px] w-auto
-                ${filters[fc.key] ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}
+                ${activeFilters[fc.key] ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}
               `}
             >
               <option value="">All {fc.label}</option>
@@ -96,7 +108,14 @@ export default function RecordList({
           ))}
           {activeFilterCount > 0 && (
             <button
-              onClick={() => { setFilters({}); setPage(1) }}
+              onClick={() => {
+                if (usesExternalFilters) {
+                  onClearFilters?.()
+                } else {
+                  setFilters({})
+                }
+                setPage(1)
+              }}
               className="text-[10px] font-bold text-kampr hover:text-red-700 flex items-center gap-1 ml-1"
             >
               <i className="ph ph-x-circle" /> Clear

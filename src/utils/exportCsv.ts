@@ -1,5 +1,5 @@
 import type { EntryRecord } from '../types/entry.types'
-import type { TaskRecord } from '../hooks/useEntryAPI'
+import type { BeneficiaryRecord, TaskRecord, VolunteerRecord } from '../hooks/useEntryAPI'
 
 export function exportRecordsToCsv(records: EntryRecord[], moduleName: string): void {
   if (!records.length) return
@@ -54,6 +54,163 @@ export function exportVotersCsv(records: EntryRecord[], boothNumberMap?: Map<str
     .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
     .join('\n')
   downloadCsv(csv, `BJP_Voter_Details_${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
+const BENEFICIARY_COLUMNS: { key: keyof BeneficiaryRecord | 'gender_label' | 'benefit_status_label' | 'is_contacted_label'; label: string }[] = [
+  { key: 'id',                    label: 'ID' },
+  { key: 'name',                  label: 'Name' },
+  { key: 'voter_id',              label: 'Voter ID' },
+  { key: 'phone',                 label: 'Phone' },
+  { key: 'phone2',                label: 'Alt Phone' },
+  { key: 'age',                   label: 'Age' },
+  { key: 'gender_label',          label: 'Gender' },
+  { key: 'address',               label: 'Address' },
+  { key: 'pincode',               label: 'Pincode' },
+  { key: 'block',                 label: 'Block' },
+  { key: 'union_name',            label: 'Union' },
+  { key: 'panchayat_name',        label: 'Panchayat' },
+  { key: 'ward',                  label: 'Ward ID' },
+  { key: 'ward_name',             label: 'Ward Name' },
+  { key: 'booth',                 label: 'Booth ID' },
+  { key: 'booth_number',          label: 'Booth Number' },
+  { key: 'booth_name',            label: 'Booth Name' },
+  { key: 'scheme',                label: 'Scheme ID' },
+  { key: 'scheme_display',        label: 'Scheme' },
+  { key: 'scheme_name',           label: 'Scheme Name (Free Text)' },
+  { key: 'benefit_type',          label: 'Benefit Type' },
+  { key: 'benefit_status_label',  label: 'Benefit Status' },
+  { key: 'benefit_amount',        label: 'Benefit Amount' },
+  { key: 'source',                label: 'Source' },
+  { key: 'is_contacted_label',    label: 'Beneficiary Contacted' },
+  { key: 'notes',                 label: 'Notes' },
+  { key: 'is_active',             label: 'Active' },
+  { key: 'created_at',            label: 'Created At' },
+  { key: 'updated_at',            label: 'Updated At' },
+]
+
+const BENEFICIARY_GENDER_LABELS: Record<string, string> = {
+  m: 'Male',
+  f: 'Female',
+  o: 'Other',
+}
+
+const BENEFICIARY_STATUS_LABELS: Record<string, string> = {
+  pending: 'Pending',
+  approved: 'Approved',
+  received: 'Received',
+  rejected: 'Rejected',
+}
+
+export function exportBeneficiariesCsv(records: BeneficiaryRecord[]): void {
+  if (!records.length) return
+
+  const header = BENEFICIARY_COLUMNS.map(c => c.label)
+  const rows = records.map(record =>
+    BENEFICIARY_COLUMNS.map(column => {
+      if (column.key === 'gender_label') {
+        return BENEFICIARY_GENDER_LABELS[record.gender ?? ''] || record.gender || ''
+      }
+      if (column.key === 'benefit_status_label') {
+        return BENEFICIARY_STATUS_LABELS[record.benefit_status ?? ''] || record.benefit_status || ''
+      }
+      if (column.key === 'is_contacted_label') {
+        return record.is_contacted ? 'Yes' : 'No'
+      }
+      const value = record[column.key as keyof BeneficiaryRecord]
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+      return value != null ? String(value) : ''
+    })
+  )
+
+  const csv = [header, ...rows]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+
+  downloadCsv(csv, `BJP_Beneficiaries_${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
+const VOLUNTEER_COLUMNS: { key: keyof VolunteerRecord | 'display_name' | 'status_label' | 'gender_label' | 'booths_label'; label: string }[] = [
+  { key: 'id',                  label: 'ID' },
+  { key: 'display_name',        label: 'Name' },
+  { key: 'user_name',           label: 'User Name' },
+  { key: 'username',            label: 'Username' },
+  { key: 'voter_id',            label: 'Voter ID' },
+  { key: 'phone',               label: 'Phone' },
+  { key: 'phone2',              label: 'Alt Phone' },
+  { key: 'block',               label: 'Block' },
+  { key: 'ward',                label: 'Ward ID' },
+  { key: 'panchayat',           label: 'Panchayat ID' },
+  { key: 'panchayat_name',      label: 'Panchayat' },
+  { key: 'union_name',          label: 'Union' },
+  { key: 'booth',               label: 'Primary Booth ID' },
+  { key: 'booth_name',          label: 'Primary Booth Name' },
+  { key: 'booths_label',        label: 'Booths' },
+  { key: 'role',                label: 'Role' },
+  { key: 'volunteer_role',      label: 'Volunteer Role ID' },
+  { key: 'volunteer_type',      label: 'Volunteer Type' },
+  { key: 'status_label',        label: 'Status' },
+  { key: 'age',                 label: 'Age' },
+  { key: 'gender_label',        label: 'Gender' },
+  { key: 'joined_date',         label: 'Joined Date' },
+  { key: 'source',              label: 'Source' },
+  { key: 'skills',              label: 'Designation / Skills' },
+  { key: 'vehicle',             label: 'Vehicle' },
+  { key: 'experience_months',   label: 'Experience Months' },
+  { key: 'previous_campaigns',  label: 'Previous Campaigns' },
+  { key: 'voters_contacted',    label: 'Voters Contacted' },
+  { key: 'events_attended',     label: 'Events Attended' },
+  { key: 'hours_contributed',   label: 'Hours Contributed' },
+  { key: 'performance_score',   label: 'Performance Score' },
+  { key: 'notes',               label: 'Notes' },
+  { key: 'is_active',           label: 'Active' },
+  { key: 'created_at',          label: 'Created At' },
+]
+
+const VOLUNTEER_STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  inactive: 'Inactive',
+  on_leave: 'Suspended',
+}
+
+const VOLUNTEER_GENDER_LABELS: Record<string, string> = {
+  m: 'Male',
+  f: 'Female',
+  o: 'Other',
+}
+
+export function exportVolunteersCsv(records: VolunteerRecord[]): void {
+  if (!records.length) return
+
+  const header = VOLUNTEER_COLUMNS.map(c => c.label)
+  const rows = records.map(record =>
+    VOLUNTEER_COLUMNS.map(column => {
+      if (column.key === 'display_name') {
+        return record.name || record.user_name || record.username || `Volunteer #${record.id}`
+      }
+      if (column.key === 'status_label') {
+        return VOLUNTEER_STATUS_LABELS[record.status ?? ''] || record.status || ''
+      }
+      if (column.key === 'gender_label') {
+        return VOLUNTEER_GENDER_LABELS[record.gender ?? ''] || record.gender || ''
+      }
+      if (column.key === 'booths_label') {
+        if (record.booth_names?.length) return record.booth_names.join(', ')
+        if (record.booths?.length) return record.booths.join(', ')
+        if (record.booth != null) return String(record.booth)
+        return ''
+      }
+      const value = record[column.key as keyof VolunteerRecord]
+      if (Array.isArray(value)) return value.join(', ')
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+      return value != null ? String(value) : ''
+    })
+  )
+
+  const csv = [header, ...rows]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+
+  downloadCsv(csv, `BJP_Volunteers_${new Date().toISOString().slice(0, 10)}.csv`)
 }
 
 export function exportReportCsv(): void {

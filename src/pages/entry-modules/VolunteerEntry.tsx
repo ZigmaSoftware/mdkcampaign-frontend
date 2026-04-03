@@ -200,16 +200,48 @@ export default function VolunteerEntry() {
   const [wardFilter, setWardFilter]             = useState<number | ''>('')
   const [selectedBoothIds, setSelectedBoothIds] = useState<number[]>([])
   const [ageGroupFilter, setAgeGroupFilter]       = useState('')
+  const [voterIdStatusFilter, setVoterIdStatusFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [roleFilter, setRoleFilter] = useState('')
+  const [volunteerTypeFilter, setVolunteerTypeFilter] = useState('')
+  const [genderFilter, setGenderFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
   const ageGroupFilterRef = useRef('')
+  const voterIdStatusFilterRef = useRef('')
+  const statusFilterRef = useRef('')
+  const roleFilterRef = useRef('')
+  const volunteerTypeFilterRef = useRef('')
+  const genderFilterRef = useRef('')
+  const sourceFilterRef = useRef('')
 
   const apiRef = useRef(api)
   apiRef.current = api
 
   ageGroupFilterRef.current = ageGroupFilter
+  voterIdStatusFilterRef.current = voterIdStatusFilter
+  statusFilterRef.current = statusFilter
+  roleFilterRef.current = roleFilter
+  volunteerTypeFilterRef.current = volunteerTypeFilter
+  genderFilterRef.current = genderFilter
+  sourceFilterRef.current = sourceFilter
 
   const loadVolunteers = useCallback((p: number, q: string, boothId?: number, wardId?: number, blk?: string, uni?: string, pan?: string) => {
     apiRef.current.fetchVolunteers(
-      boothId, q || undefined, wardId, p, PAGE_SIZE, blk || undefined, uni || undefined, pan || undefined, ageGroupFilterRef.current || undefined
+      boothId,
+      q || undefined,
+      wardId,
+      p,
+      PAGE_SIZE,
+      blk || undefined,
+      uni || undefined,
+      pan || undefined,
+      ageGroupFilterRef.current || undefined,
+      voterIdStatusFilterRef.current || undefined,
+      roleFilterRef.current || undefined,
+      statusFilterRef.current || undefined,
+      volunteerTypeFilterRef.current || undefined,
+      genderFilterRef.current || undefined,
+      sourceFilterRef.current || undefined,
     ).then(d => { setVolunteers(d?.results ?? []); setTotalCount(d?.count ?? 0) })
   }, [PAGE_SIZE])
 
@@ -231,7 +263,7 @@ export default function VolunteerEntry() {
       loadVolunteers(1, search, boothFilterLocal || undefined, wardFilter || undefined, blockFilter, unionFilter, panchayatFilter)
     }, 400)
     return () => clearTimeout(t)
-  }, [search, boothFilterLocal, wardFilter, blockFilter, unionFilter, panchayatFilter, ageGroupFilter, loadVolunteers])
+  }, [search, boothFilterLocal, wardFilter, blockFilter, unionFilter, panchayatFilter, ageGroupFilter, voterIdStatusFilter, statusFilter, roleFilter, volunteerTypeFilter, genderFilter, sourceFilter, loadVolunteers])
 
   const blocks = useBlocks()
 
@@ -425,6 +457,43 @@ export default function VolunteerEntry() {
 
   const filtered = volunteers.map<EntryRecord>(mapVolunteer)
   const allVolunteerRecords = filtered
+  const listFilters = {
+    status: statusFilter,
+    role: roleFilter,
+    volunteer_type: volunteerTypeFilter,
+    gender: genderFilter,
+    source: sourceFilter,
+  }
+
+  const handleListFilterChange = useCallback((key: string, value: string) => {
+    setPage(1)
+    switch (key) {
+      case 'status':
+        setStatusFilter(value)
+        break
+      case 'role':
+        setRoleFilter(value)
+        break
+      case 'volunteer_type':
+        setVolunteerTypeFilter(value)
+        break
+      case 'gender':
+        setGenderFilter(value)
+        break
+      case 'source':
+        setSourceFilter(value)
+        break
+    }
+  }, [])
+
+  const clearListFilters = useCallback(() => {
+    setPage(1)
+    setStatusFilter('')
+    setRoleFilter('')
+    setVolunteerTypeFilter('')
+    setGenderFilter('')
+    setSourceFilter('')
+  }, [])
 
   return (
     <div className="page-enter">
@@ -538,9 +607,27 @@ export default function VolunteerEntry() {
               <option value="60+">60+</option>
             </select>
 
-            {(blockFilter || unionFilter || panchayatFilter || boothFilterLocal || wardFilter || ageGroupFilter) && (
+            <select
+              value={voterIdStatusFilter}
+              onChange={e => { setVoterIdStatusFilter(e.target.value); setPage(1) }}
+              className={`form-input text-[11px] py-[4px] pr-7 min-w-[150px] w-auto ${voterIdStatusFilter ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+            >
+              <option value="">All Voter IDs</option>
+              <option value="with">With Voter ID</option>
+              <option value="without">Without Voter ID</option>
+            </select>
+
+            {(blockFilter || unionFilter || panchayatFilter || boothFilterLocal || wardFilter || ageGroupFilter || voterIdStatusFilter) && (
               <button
-                onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilterLocal(''); setWardFilter(''); setAgeGroupFilter('') }}
+                onClick={() => {
+                  setBlockFilter('')
+                  setUnionFilter('')
+                  setPanchayatFilter('')
+                  setBoothFilterLocal('')
+                  setWardFilter('')
+                  setAgeGroupFilter('')
+                  setVoterIdStatusFilter('')
+                }}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
                 <i className="ph ph-x-circle" /> Clear Filters
@@ -559,11 +646,14 @@ export default function VolunteerEntry() {
             itemsPerPage={PAGE_SIZE}
             serverTotal={totalCount}
             startIndex={(page - 1) * PAGE_SIZE}
+            filterValues={listFilters}
+            onFilterChange={handleListFilterChange}
+            onClearFilters={clearListFilters}
             filterConfig={[
               { key: 'status', label: 'Status', options: [
-                { value: 'Active',     label: 'Active' },
-                { value: 'Inactive',   label: 'Inactive' },
-                { value: 'Suspended',  label: 'Suspended' },
+                { value: 'active',     label: 'Active' },
+                { value: 'inactive',   label: 'Inactive' },
+                { value: 'on_leave',   label: 'Suspended' },
               ]},
               { key: 'role', label: 'Role', options:
                 volunteerRoles.map(r => ({ value: r.name, label: r.name }))

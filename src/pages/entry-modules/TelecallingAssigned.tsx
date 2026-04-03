@@ -32,12 +32,37 @@ function esc(s: string | number | undefined) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function openPrintWindow(a: Assignment, phoneMap: Record<number, string[]>) {
-  const rows = a.voters.map((v, i) => {
-    /* Use fresh phones from API; fall back to whatever was stored */
-    const fresh   = v.voter ? (phoneMap[v.voter] ?? []) : []
+function normalizeAddress(address?: string) {
+  return (address ?? '').trim()
+}
+
+function openPrintWindow(
+  a: Assignment,
+  voterDetailsMap: Record<number, { phones: string[]; address: string }>
+) {
+  const sortedVoters = [...a.voters].sort((left, right) => {
+    const leftAddress = normalizeAddress(
+      left.voter ? voterDetailsMap[left.voter]?.address : left.address
+    ) || normalizeAddress(left.address)
+    const rightAddress = normalizeAddress(
+      right.voter ? voterDetailsMap[right.voter]?.address : right.address
+    ) || normalizeAddress(right.address)
+
+    const leftBlank = leftAddress === ''
+    const rightBlank = rightAddress === ''
+    if (leftBlank !== rightBlank) return leftBlank ? 1 : -1
+
+    const byAddress = leftAddress.localeCompare(rightAddress, 'en', { sensitivity: 'base' })
+    if (byAddress !== 0) return byAddress
+    return left.id - right.id
+  })
+
+  const rows = sortedVoters.map((v, i) => {
+    /* Use fresh phones/address from API; fall back to stored values */
+    const fresh   = v.voter ? voterDetailsMap[v.voter] : undefined
     const stored  = [v.phone, v.phone2, v.alt_phoneno2, v.alt_phoneno3].filter(Boolean) as string[]
-    const phones  = fresh.length ? fresh : stored
+    const phones  = fresh?.phones?.length ? fresh.phones : stored
+    const address = normalizeAddress(fresh?.address) || normalizeAddress(v.address)
     const phonesHtml = phones.length
       ? phones.map(p => `<div>${esc(p)}</div>`).join('')
       : '—'
@@ -48,7 +73,7 @@ function openPrintWindow(a: Assignment, phoneMap: Record<number, string[]>) {
       <td>${esc(v.voter_id_no) || '—'}</td>
       <td>${phonesHtml}</td>
       <td>${esc(v.booth_name) || '—'}</td>
-      <td>${esc(v.address) || '—'}</td>
+      <td>${esc(address) || '—'}</td>
       <td class="remarks-col">
         <div class="two-col">
           <div class="remark-group">
@@ -157,16 +182,19 @@ export default function TelecallingAssigned() {
       )
     )
 
-    /* Build id → [phone, phone2, alt_phoneno2, alt_phoneno3] map */
-    const phoneMap: Record<number, string[]> = {}
+    /* Build id → latest phone/address map */
+    const voterDetailsMap: Record<number, { phones: string[]; address: string }> = {}
     results.forEach((v: any) => {
       if (!v) return
       const phones = [v.phone, v.phone2, v.alt_phoneno2, v.alt_phoneno3].filter(Boolean)
-      phoneMap[v.id] = phones
+      voterDetailsMap[v.id] = {
+        phones,
+        address: v.address ?? '',
+      }
     })
 
     setPrintingId(null)
-    openPrintWindow(a, phoneMap)
+    openPrintWindow(a, voterDetailsMap)
   }
 
   return (

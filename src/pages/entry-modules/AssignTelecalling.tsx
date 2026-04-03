@@ -154,6 +154,7 @@ export default function AssignTelecalling() {
   const [telecallers, setTelecallers] = useState<Telecaller[]>([])
 
   const [filterBooths,     setFilterBooths]     = useState<Set<number>>(new Set())
+  const [filterContactStatus, setFilterContactStatus] = useState('')
   const [filterTelecaller, setFilterTelecaller] = useState('')
   const [filterDate,       setFilterDate]       = useState('')
   const [filterSearch,     setFilterSearch]     = useState('')
@@ -236,10 +237,12 @@ export default function AssignTelecalling() {
     const params: Record<string, any> = {
       limit:  PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
+      sort: 'address_asc',
     }
     if (filterBooths.size === 1) params.booth = [...filterBooths][0]
     else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')
     if (debouncedSearch) params.search = debouncedSearch
+    if (filterContactStatus) params.contact_status = filterContactStatus
 
     apiClient.get('/voters/voters/', { params, signal: controller.signal })
       .then(r => {
@@ -261,7 +264,7 @@ export default function AssignTelecalling() {
       .finally(() => setLoading(false))
 
     return () => controller.abort()
-  }, [page, filterBooths, debouncedSearch])
+  }, [page, filterBooths, debouncedSearch, filterContactStatus])
 
   const visibleVoters = voters
   const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
@@ -357,10 +360,19 @@ export default function AssignTelecalling() {
   })()
 
   const applyBooths  = (next: Set<number>) => { setFilterBooths(next); setPage(1) }
+  const applyContactStatus = (value: string) => { setFilterContactStatus(value); setPage(1) }
   const applyDate    = (v: string)          => { setFilterDate(v) }
   const applySearch  = (v: string)          => { setFilterSearch(v) }
-  const clearAll     = () => { setFilterBooths(new Set()); setFilterDate(''); setFilterTelecaller(''); setFilterSearch(''); setDebouncedSearch(''); setPage(1) }
-  const hasFilters   = filterBooths.size > 0 || !!filterTelecaller || !!filterSearch
+  const clearAll     = () => {
+    setFilterBooths(new Set())
+    setFilterContactStatus('')
+    setFilterDate('')
+    setFilterTelecaller('')
+    setFilterSearch('')
+    setDebouncedSearch('')
+    setPage(1)
+  }
+  const hasFilters   = filterBooths.size > 0 || !!filterContactStatus || !!filterTelecaller || !!filterSearch
   const assignName   = telecallers.find(t => String(t.id) === assignTo)?.name ?? ''
   const workflowCounts = [...workflowByVoterId.values()].reduce(
     (acc, info) => {
@@ -440,6 +452,19 @@ export default function AssignTelecalling() {
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Booth</label>
             <BoothMultiSelect booths={booths} selected={filterBooths} onChange={applyBooths} />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Contact Filter</label>
+            <select
+              value={filterContactStatus}
+              onChange={e => applyContactStatus(e.target.value)}
+              className={`${selectCls} w-[160px]`}
+            >
+              <option value="">All</option>
+              <option value="with">With Contact</option>
+              <option value="without">Without Contact</option>
+            </select>
           </div>
 
           <div className="w-px self-stretch bg-border mx-1" />

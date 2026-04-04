@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import apiClient from '../../utils/api'
-import { inputCls, selectCls } from '../../components/entry/FormGroup'
 
 /* ─── Types ──────────────────────────────────────────────── */
 interface AssignmentVoter {
@@ -28,11 +27,6 @@ interface Assignment {
   created_at:       string
 }
 
-function telecallerFilterKey(assignment: Pick<Assignment, 'telecaller_id' | 'telecaller_name'>) {
-  if (assignment.telecaller_id != null) return `id:${assignment.telecaller_id}`
-  return `name:${assignment.telecaller_name.trim().toLowerCase()}`
-}
-
 /* ─── Print helpers ──────────────────────────────────────── */
 function esc(s: string | number | undefined) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -40,17 +34,6 @@ function esc(s: string | number | undefined) {
 
 function normalizeAddress(address?: string) {
   return (address ?? '').trim()
-}
-
-function formatCreatedTime(value?: string) {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
 }
 
 function openPrintWindow(
@@ -174,8 +157,6 @@ export default function TelecallingAssigned() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading,     setLoading]     = useState(true)
   const [printingId,  setPrintingId]  = useState<number | null>(null)
-  const [filterTelecaller, setFilterTelecaller] = useState('')
-  const [filterDate, setFilterDate] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -185,33 +166,7 @@ export default function TelecallingAssigned() {
       .finally(() => setLoading(false))
   }, [])
 
-  const telecallerOptions = Array.from(
-    assignments.reduce((map, assignment) => {
-      const key = telecallerFilterKey(assignment)
-      if (!map.has(key)) {
-        map.set(key, {
-          value: key,
-          label: assignment.telecaller_name,
-        })
-      }
-      return map
-    }, new Map<string, { value: string; label: string }>())
-  )
-    .map(([, option]) => option)
-    .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }))
-
-  const filteredAssignments = assignments.filter(assignment => {
-    if (filterTelecaller && telecallerFilterKey(assignment) !== filterTelecaller) {
-      return false
-    }
-    if (filterDate && assignment.assigned_date !== filterDate) {
-      return false
-    }
-    return true
-  })
-
-  const totalVoters = filteredAssignments.reduce((sum, assignment) => sum + assignment.voters.length, 0)
-  const hasActiveFilters = Boolean(filterTelecaller || filterDate)
+  const totalVoters = assignments.reduce((s, a) => s + a.voters.length, 0)
 
   /* Fetch fresh voter phone data, then open print window */
   const handlePrint = async (a: Assignment) => {
@@ -262,39 +217,6 @@ export default function TelecallingAssigned() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 px-5 py-3 bg-surface-alt border-b border-border">
-          <select
-            value={filterTelecaller}
-            onChange={e => setFilterTelecaller(e.target.value)}
-            className={`${selectCls} w-[220px]`}
-          >
-            <option value="">All Telecalling Persons</option>
-            {telecallerOptions.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-
-          <input
-            type="date"
-            value={filterDate}
-            onChange={e => setFilterDate(e.target.value)}
-            className={`${inputCls} w-[180px]`}
-          />
-
-          {hasActiveFilters && (
-            <button
-              onClick={() => {
-                setFilterTelecaller('')
-                setFilterDate('')
-              }}
-              className="inline-flex items-center gap-1 px-3 py-[6px] rounded-lg border border-rose-200 bg-rose-50 text-rose-500 text-[11px] font-medium hover:bg-rose-100 transition-colors"
-            >
-              <i className="ph ph-x text-[11px]" />
-              Clear
-            </button>
-          )}
-        </div>
-
         {/* Body */}
         {loading ? (
           <div className="px-5 py-16 text-center text-muted">
@@ -309,14 +231,6 @@ export default function TelecallingAssigned() {
               Go to <strong>Assign Telecalling</strong> tab, select voters and assign them to a telecaller.
             </p>
           </div>
-        ) : filteredAssignments.length === 0 ? (
-          <div className="px-5 py-16 text-center">
-            <i className="ph ph-funnel text-[36px] text-border block mb-3" />
-            <p className="text-[13px] font-semibold text-heading mb-1">No assignments match these filters</p>
-            <p className="text-[12px] text-muted">
-              Change the telecalling person or date filter to view assignments.
-            </p>
-          </div>
         ) : (
           <table className="w-full text-[12px]">
             <thead>
@@ -325,12 +239,11 @@ export default function TelecallingAssigned() {
                 <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Telecalling Person</th>
                 <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Voters Assigned</th>
                 <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Date</th>
-                <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Time</th>
                 <th className="px-4 py-[10px]" />
               </tr>
             </thead>
             <tbody>
-              {filteredAssignments.map((a, idx) => (
+              {assignments.map((a, idx) => (
                 <tr key={a.id} className="border-b border-border last:border-0 hover:bg-surface-alt transition-colors">
                   <td className="px-5 py-3 text-muted">{idx + 1}</td>
 
@@ -357,7 +270,6 @@ export default function TelecallingAssigned() {
                   </td>
 
                   <td className="px-4 py-3 text-muted">{a.assigned_date}</td>
-                  <td className="px-4 py-3 text-muted font-mono">{formatCreatedTime(a.created_at)}</td>
 
                   <td className="px-4 py-3 text-right">
                     <button

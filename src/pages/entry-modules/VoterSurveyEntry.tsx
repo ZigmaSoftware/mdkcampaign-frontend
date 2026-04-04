@@ -42,6 +42,7 @@ interface FlatVoter {
   phone:            string
   address:          string
   booth_name:       string
+  booth_no:         string
   age:              number | null
   gender:           string
   telecaller_id:    number
@@ -73,6 +74,8 @@ const responseLabel = (s?: string) => {
   if (s === 'need_followup') return 'Need Followup'
   return s || ''
 }
+
+const sortText = (value?: string) => (value ?? '').trim().toLowerCase()
 
 /* ── Section header ── */
 function SectionLabel({ icon, label, count, color }: {
@@ -107,6 +110,7 @@ export default function VoterSurveyEntry() {
               phone:            v.phone ?? '',
               address:          v.address ?? '',
               booth_name:       v.booth_name ?? '',
+              booth_no:         v.booth_no ?? '',
               age:              v.age ?? null,
               gender:           v.gender ?? '',
               telecaller_id:    a.telecaller_id ?? 0,
@@ -199,7 +203,7 @@ export default function VoterSurveyEntry() {
       const v = selectedVoterRef.current
       currentVoterIdRef.current = v.voter ?? null
       if (r.surveyDate.current)     r.surveyDate.current.value = v.assigned_date || todayISO()
-      if (r.booth.current)          r.booth.current.value      = v.booth_name
+      if (r.booth.current)          r.booth.current.value      = v.booth_no || ''
       if (r.telecaller.current)     r.telecaller.current.value = v.telecaller_name
       if (r.voterName.current)      r.voterName.current.value  = v.voter_name
       if (r.age.current)            r.age.current.value        = v.age != null ? String(v.age) : ''
@@ -273,7 +277,6 @@ export default function VoterSurveyEntry() {
         setRecords(prev => prev.map(rec => rec.id === editingId ? updated : rec))
         showToast('<i class="ph ph-check-circle"></i> Feedback updated!', '#138808')
         closeForm()
-        setFilterStatus('done')   // show Action Taken list after update
       } else {
         showToast('<i class="ph ph-x-circle"></i> Failed to update feedback.', '#dc2626')
       }
@@ -283,18 +286,35 @@ export default function VoterSurveyEntry() {
         setRecords(prev => [created, ...prev])
         showToast('<i class="ph ph-check-circle"></i> Feedback saved!', '#138808')
         closeForm()
-        setFilterStatus('done')   // show Action Taken list after submit
       } else {
         showToast('<i class="ph ph-x-circle"></i> Failed to save feedback.', '#dc2626')
       }
     }
   }
 
-  const handleVoterClick = (voter: FlatVoter) => {
-    const existing = records.find(rec =>
-      rec.voter_name?.toLowerCase() === voter.voter_name.toLowerCase() &&
-      (!voter.phone || rec.phone === voter.phone)
+  const findRecordForVoter = (voter: FlatVoter) => {
+    if (voter.voter != null) {
+      return records.find(rec => rec.voter === voter.voter)
+    }
+
+    const normalizedName = voter.voter_name.toLowerCase()
+    if (voter.phone) {
+      const byNameAndPhone = records.find(rec =>
+        rec.voter == null &&
+        rec.voter_name?.toLowerCase() === normalizedName &&
+        rec.phone === voter.phone
+      )
+      if (byNameAndPhone) return byNameAndPhone
+    }
+
+    return records.find(rec =>
+      rec.voter == null &&
+      rec.voter_name?.toLowerCase() === normalizedName
     )
+  }
+
+  const handleVoterClick = (voter: FlatVoter) => {
+    const existing = findRecordForVoter(voter)
     if (existing) {
       pendingFill.current = existing
       setEditingId(existing.id)
@@ -318,32 +338,79 @@ export default function VoterSurveyEntry() {
     if (ok) setRecords(prev => prev.filter(rec => rec.id !== id))
   }
 
-  /* Map voter name → feedback record */
-  const recordByVoterName = useMemo(() => {
-    const map = new Map<string, FieldSurveyRecord>()
+  const recordByVoterId = useMemo(() => {
+    const map = new Map<number, FieldSurveyRecord>()
     records.forEach(rec => {
-      if (rec.voter_name) map.set(rec.voter_name.toLowerCase(), rec)
+      if (rec.voter != null) map.set(rec.voter, rec)
     })
     return map
   }, [records])
 
+  const recordByLooseKey = useMemo(() => {
+    const map = new Map<string, FieldSurveyRecord>()
+    records.forEach(rec => {
+      if (rec.voter != null || !rec.voter_name) return
+
+      const normalizedName = rec.voter_name.toLowerCase()
+      if (rec.phone) {
+        map.set(`${normalizedName}::${rec.phone}`, rec)
+      }
+      if (!map.has(normalizedName)) {
+        map.set(normalizedName, rec)
+      }
+    })
+    return map
+  }, [records])
+
+  const getRecordForVoter = (voter: FlatVoter) => {
+    if (voter.voter != null) {
+      return recordByVoterId.get(voter.voter)
+    }
+
+    const normalizedName = voter.voter_name.toLowerCase()
+    if (voter.phone) {
+      const byNameAndPhone = recordByLooseKey.get(`${normalizedName}::${voter.phone}`)
+      if (byNameAndPhone) return byNameAndPhone
+    }
+
+    return recordByLooseKey.get(normalizedName)
+  }
+
   /* Filtered voter list */
   const filteredVoters = useMemo(() => {
-    let list = allVoters
+    let list = [...allVoters]
     if (filterTelecaller) list = list.filter(v => String(v.telecaller_id) === filterTelecaller)
     if (search) {
-      const q = search.toLowerCase()
+      const q = search.toLowerCase().trim()
       list = list.filter(v =>
         v.voter_name.toLowerCase().includes(q) ||
         (v.voter_id_no ?? '').toLowerCase().includes(q) ||
-        (v.phone ?? '').includes(q)
+        (v.phone ?? '').includes(q) ||
+        sortText(v.address).includes(q)
       )
     }
-    return list
+    return list.sort((a, b) => {
+      const addressCompare = sortText(a.address).localeCompare(sortText(b.address), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+      if (addressCompare !== 0) return addressCompare
+
+      const boothCompare = sortText(a.booth_name).localeCompare(sortText(b.booth_name), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+      if (boothCompare !== 0) return boothCompare
+
+      return sortText(a.voter_name).localeCompare(sortText(b.voter_name), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    })
   }, [allVoters, filterTelecaller, search])
 
-  const pendingVoters = filteredVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase()))
-  const doneVoters    = filteredVoters.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase()))
+  const pendingVoters = filteredVoters.filter(v => !getRecordForVoter(v))
+  const doneVoters    = filteredVoters.filter(v =>  getRecordForVoter(v))
 
   const displayPending = filterStatus !== 'done'
   const displayDone    = filterStatus !== 'pending'
@@ -362,8 +429,8 @@ export default function VoterSurveyEntry() {
   const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
   const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const pagedPending = pagedList.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase()))
-  const pagedDone    = pagedList.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase()))
+  const pagedPending = pagedList.filter(v => !getRecordForVoter(v))
+  const pagedDone    = pagedList.filter(v =>  getRecordForVoter(v))
 
   const pageNums: (number | '...')[] = (() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -382,7 +449,7 @@ export default function VoterSurveyEntry() {
 
   /* ── Voter row ── */
   const VoterRow = ({ voter }: { voter: FlatVoter }) => {
-    const rec  = recordByVoterName.get(voter.voter_name.toLowerCase())
+    const rec  = getRecordForVoter(voter)
     const done = !!rec
 
     return (
@@ -422,6 +489,12 @@ export default function VoterSurveyEntry() {
                 <i className="ph ph-headset mr-0.5" />{voter.telecaller_name}
               </span>
             </div>
+            {voter.address && (
+              <div className="mt-1 text-[10px] text-muted truncate">
+                <i className="ph ph-map-pin mr-1" />
+                {voter.address}
+              </div>
+            )}
           </div>
 
           {/* Update button — same for all voters */}
@@ -554,11 +627,11 @@ export default function VoterSurveyEntry() {
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-bold">
                     <i className="ph ph-clock text-[10px]" />
-                    {allVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase())).length} Not Yet Action Taken
+                    {allVoters.filter(v => !getRecordForVoter(v)).length} Not Yet Action Taken
                   </span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
                     <i className="ph ph-check-circle text-[10px]" />
-                    {allVoters.filter(v => recordByVoterName.has(v.voter_name.toLowerCase())).length} Action Taken
+                    {allVoters.filter(v => getRecordForVoter(v)).length} Action Taken
                   </span>
                 </div>
               ) : (
@@ -584,8 +657,8 @@ export default function VoterSurveyEntry() {
           <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
             {([
               { key: 'all',     label: 'All',                  count: allVoters.length },
-              { key: 'pending', label: 'Not Yet Action Taken',  count: allVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase())).length },
-              { key: 'done',    label: 'Action Taken',          count: allVoters.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase())).length },
+              { key: 'pending', label: 'Not Yet Action Taken',  count: allVoters.filter(v => !getRecordForVoter(v)).length },
+              { key: 'done',    label: 'Action Taken',          count: allVoters.filter(v =>  getRecordForVoter(v)).length },
             ] as const).map(tab => (
               <button key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
@@ -616,7 +689,7 @@ export default function VoterSurveyEntry() {
           {/* Search */}
           <div className="relative flex-1 min-w-[160px] max-w-[260px]">
             <i className="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-muted pointer-events-none" />
-            <input type="text" placeholder="Name, voter ID, phone…"
+            <input type="text" placeholder="Name, voter ID, phone, address…"
               value={search} onChange={e => setSearch(e.target.value)}
               className={`${inputCls} pl-7 w-full`} />
             {search && (
@@ -803,11 +876,6 @@ export default function VoterSurveyEntry() {
           <span className="text-[11px] font-bold text-navy uppercase tracking-[1px]">Survey Questions</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <ToggleGroup label="Aware of our candidate?" value={awareOfCandidate} onChange={setAwareOfCandidate} />
-          <ToggleGroup label="Likely to vote?" value={likelyToVote} onChange={setLikelyToVote} />
-        </div>
-
         <div className="mt-4">
           <FormRow cols={2}>
             <FormGroup label="Voter Support Level">
@@ -827,6 +895,10 @@ export default function VoterSurveyEntry() {
               </select>
             </FormGroup>
           </FormRow>
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <ToggleGroup label="Aware of our candidate?" value={awareOfCandidate} onChange={setAwareOfCandidate} />
+            <ToggleGroup label="Likely to vote?" value={likelyToVote} onChange={setLikelyToVote} />
+          </div>
           <FormRow cols={1}>
             <FormGroup label="Party Preference">
               <select ref={r.partyPref} className={selectCls}>

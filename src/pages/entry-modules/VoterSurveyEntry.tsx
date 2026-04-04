@@ -42,6 +42,7 @@ interface FlatVoter {
   phone:            string
   address:          string
   booth_name:       string
+  booth_no:         string
   age:              number | null
   gender:           string
   telecaller_id:    number
@@ -51,28 +52,56 @@ interface FlatVoter {
 }
 
 /* ── Badge helpers ── */
+const normalizeSupportLevel = (s?: string) => {
+  const key = (s ?? '').trim().toLowerCase()
+  if (!key) return ''
+  if (key === 'positive' || key === 'strong support' || key === 'leaning support') return 'positive'
+  if (key === 'negative' || key === 'strong against' || key === 'leaning against') return 'negative'
+  if (key === 'neutral' || key === 'undecided') return 'neutral'
+  return s ?? ''
+}
+
+const normalizeResponseStatus = (s?: string) => {
+  const key = (s ?? '').trim().toLowerCase()
+  if (!key) return ''
+  if (key === 'not_reach' || key === 'not reach') return 'not_reach'
+  if (key === 'no_answer' || key === 'no answer' || key === 'not_attend_call' || key === 'not attend call') return 'no_answer'
+  if (key === 'need_followup' || key === 'need followup' || key === 'need_followups' || key === 'interested') return 'need_followup'
+  return s ?? ''
+}
+
 const supportColor = (s?: string) => {
-  if (!s) return 'bg-border text-muted'
-  if (s === 'positive') return 'bg-green-100 text-green-700'
-  if (s === 'negative') return 'bg-red-100 text-red-600'
-  if (s === 'neutral')  return 'bg-yellow-100 text-yellow-700'
+  const value = normalizeSupportLevel(s)
+  if (!value) return 'bg-border text-muted'
+  if (value === 'positive') return 'bg-green-100 text-green-700'
+  if (value === 'negative') return 'bg-red-100 text-red-600'
+  if (value === 'neutral')  return 'bg-yellow-100 text-yellow-700'
   return 'bg-blue-100 text-blue-700'
 }
 
 const responseColor = (s?: string) => {
-  if (!s) return 'bg-border text-muted'
-  if (s === 'not_reach')     return 'bg-red-100 text-red-600'
-  if (s === 'no_answer')     return 'bg-orange-100 text-orange-600'
-  if (s === 'need_followup') return 'bg-purple-100 text-purple-700'
+  const value = normalizeResponseStatus(s)
+  if (!value) return 'bg-border text-muted'
+  if (value === 'not_reach')     return 'bg-red-100 text-red-600'
+  if (value === 'no_answer')     return 'bg-orange-100 text-orange-600'
+  if (value === 'need_followup') return 'bg-purple-100 text-purple-700'
   return 'bg-border text-muted'
 }
 
 const responseLabel = (s?: string) => {
-  if (s === 'not_reach')     return 'Not Reach'
-  if (s === 'no_answer')     return 'No Answer'
-  if (s === 'need_followup') return 'Need Followup'
+  const value = normalizeResponseStatus(s)
+  if (value === 'not_reach')     return 'Not Reach'
+  if (value === 'no_answer')     return 'No Answer'
+  if (value === 'need_followup') return 'Need Followup'
   return s || ''
 }
+
+const sortText = (value?: string) => (value ?? '').trim().toLowerCase()
+const normalizeName = (value?: string) => (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+const normalizePhone = (value?: string) => (value ?? '').replace(/\D/g, '')
+
+const buildSurveyPatch = (data: Partial<FieldSurveyRecord>) =>
+  Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)) as Partial<FieldSurveyRecord>
 
 /* ── Section header ── */
 function SectionLabel({ icon, label, count, color }: {
@@ -107,6 +136,7 @@ export default function VoterSurveyEntry() {
               phone:            v.phone ?? '',
               address:          v.address ?? '',
               booth_name:       v.booth_name ?? '',
+              booth_no:         v.booth_no ?? '',
               age:              v.age ?? null,
               gender:           v.gender ?? '',
               telecaller_id:    a.telecaller_id ?? 0,
@@ -187,9 +217,9 @@ export default function VoterSurveyEntry() {
       if (r.gender.current)         r.gender.current.value         = toGenderDisplay(d.gender)
       if (r.phone.current)          r.phone.current.value          = d.phone             ?? ''
       if (r.address.current)        r.address.current.value        = d.address           ?? ''
-      if (r.supportLevel.current)   r.supportLevel.current.value   = d.support_level     ?? ''
+      if (r.supportLevel.current)   r.supportLevel.current.value   = normalizeSupportLevel(d.support_level)
       if (r.partyPref.current)      r.partyPref.current.value      = d.party_preference  ?? ''
-      if (r.responseStatus.current) r.responseStatus.current.value = d.response_status   ?? ''
+      if (r.responseStatus.current) r.responseStatus.current.value = normalizeResponseStatus(d.response_status)
       if (r.remarks.current)        r.remarks.current.value        = d.remarks           ?? ''
       setRegistered((d.is_registered as YNS) ?? '')
       setAwareOfCandidate((d.aware_of_candidate as YNS) ?? '')
@@ -199,7 +229,7 @@ export default function VoterSurveyEntry() {
       const v = selectedVoterRef.current
       currentVoterIdRef.current = v.voter ?? null
       if (r.surveyDate.current)     r.surveyDate.current.value = v.assigned_date || todayISO()
-      if (r.booth.current)          r.booth.current.value      = v.booth_name
+      if (r.booth.current)          r.booth.current.value      = v.booth_no ?? ''
       if (r.telecaller.current)     r.telecaller.current.value = v.telecaller_name
       if (r.voterName.current)      r.voterName.current.value  = v.voter_name
       if (r.age.current)            r.age.current.value        = v.age != null ? String(v.age) : ''
@@ -210,7 +240,9 @@ export default function VoterSurveyEntry() {
       if (r.partyPref.current)      r.partyPref.current.value      = ''
       if (r.responseStatus.current) r.responseStatus.current.value = ''
       if (r.remarks.current)        r.remarks.current.value        = ''
-      setRegistered(''); setAwareOfCandidate(''); setLikelyToVote('')
+      setRegistered('')
+      setAwareOfCandidate('')
+      setLikelyToVote('')
       selectedVoterRef.current = null
     }
   }, [fillKey, isFormOpen])
@@ -230,6 +262,34 @@ export default function VoterSurveyEntry() {
     if (r.responseStatus.current) r.responseStatus.current.value = ''
     if (r.remarks.current)        r.remarks.current.value        = ''
     resetToggles()
+  }
+
+  const findMatchingRecord = (candidate: {
+    voter?: number | null
+    voter_name?: string
+    phone?: string
+  }) => {
+    const candidateVoterId = candidate.voter ?? null
+    const candidateName = normalizeName(candidate.voter_name)
+    const candidatePhone = normalizePhone(candidate.phone)
+
+    if (candidateVoterId != null) {
+      return records.find(rec => rec.voter === candidateVoterId) ?? null
+    }
+
+    if (candidateName && candidatePhone) {
+      const byNameAndPhone = records.find(rec =>
+        normalizeName(rec.voter_name) === candidateName &&
+        normalizePhone(rec.phone) === candidatePhone
+      )
+      if (byNameAndPhone) return byNameAndPhone
+    }
+
+    if (candidateName) {
+      return records.find(rec => normalizeName(rec.voter_name) === candidateName) ?? null
+    }
+
+    return null
   }
 
   const collect = (): Partial<FieldSurveyRecord> => {
@@ -256,24 +316,34 @@ export default function VoterSurveyEntry() {
     }
   }
 
-  const closeForm = () => { setFormOpen(false); setEditingId(null); currentVoterIdRef.current = null; clear() }
+  const closeForm = () => {
+    setFormOpen(false)
+    setEditingId(null)
+    selectedVoterRef.current = null
+    currentVoterIdRef.current = null
+    clear()
+  }
 
   const handleSave = async () => {
     const d = collect()
     if (!d.voter_name) { showToast('<i class="ph ph-warning"></i> Voter name is required!', '#dc2626'); return }
 
-    if (editingId !== null) {
-      /* Merge: keep original values for any field collect() left as undefined */
-      const original = records.find(rec => rec.id === editingId)
-      const payload  = original
-        ? { ...original, ...Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)) }
-        : d
-      const updated = await updateFieldSurvey(editingId, payload)
+    const payload = buildSurveyPatch(d)
+    const matchedRecord = editingId === null
+      ? findMatchingRecord({
+          voter: currentVoterIdRef.current,
+          voter_name: d.voter_name,
+          phone: d.phone,
+        })
+      : null
+    const targetId = editingId ?? matchedRecord?.id ?? null
+
+    if (targetId !== null) {
+      const updated = await updateFieldSurvey(targetId, payload)
       if (updated) {
-        setRecords(prev => prev.map(rec => rec.id === editingId ? updated : rec))
+        setRecords(prev => prev.map(rec => rec.id === targetId ? updated : rec))
         showToast('<i class="ph ph-check-circle"></i> Feedback updated!', '#138808')
         closeForm()
-        setFilterStatus('done')   // show Action Taken list after update
       } else {
         showToast('<i class="ph ph-x-circle"></i> Failed to update feedback.', '#dc2626')
       }
@@ -283,7 +353,6 @@ export default function VoterSurveyEntry() {
         setRecords(prev => [created, ...prev])
         showToast('<i class="ph ph-check-circle"></i> Feedback saved!', '#138808')
         closeForm()
-        setFilterStatus('done')   // show Action Taken list after submit
       } else {
         showToast('<i class="ph ph-x-circle"></i> Failed to save feedback.', '#dc2626')
       }
@@ -291,10 +360,7 @@ export default function VoterSurveyEntry() {
   }
 
   const handleVoterClick = (voter: FlatVoter) => {
-    const existing = records.find(rec =>
-      rec.voter_name?.toLowerCase() === voter.voter_name.toLowerCase() &&
-      (!voter.phone || rec.phone === voter.phone)
-    )
+    const existing = findMatchingRecord(voter)
     if (existing) {
       pendingFill.current = existing
       setEditingId(existing.id)
@@ -319,31 +385,38 @@ export default function VoterSurveyEntry() {
   }
 
   /* Map voter name → feedback record */
-  const recordByVoterName = useMemo(() => {
-    const map = new Map<string, FieldSurveyRecord>()
-    records.forEach(rec => {
-      if (rec.voter_name) map.set(rec.voter_name.toLowerCase(), rec)
-    })
-    return map
-  }, [records])
+  const matchedRecordFor = (voter: FlatVoter) => findMatchingRecord(voter)
 
   /* Filtered voter list */
   const filteredVoters = useMemo(() => {
-    let list = allVoters
+    let list = [...allVoters]
     if (filterTelecaller) list = list.filter(v => String(v.telecaller_id) === filterTelecaller)
     if (search) {
-      const q = search.toLowerCase()
+      const q = search.toLowerCase().trim()
       list = list.filter(v =>
         v.voter_name.toLowerCase().includes(q) ||
         (v.voter_id_no ?? '').toLowerCase().includes(q) ||
-        (v.phone ?? '').includes(q)
+        (v.phone ?? '').includes(q) ||
+        sortText(v.address).includes(q)
       )
     }
-    return list
+    return list.sort((a, b) => {
+      const addressA = sortText(a.address)
+      const addressB = sortText(b.address)
+      if (!addressA && addressB) return 1
+      if (addressA && !addressB) return -1
+      const addressCompare = addressA.localeCompare(addressB, undefined, { numeric: true, sensitivity: 'base' })
+      if (addressCompare !== 0) return addressCompare
+
+      const boothCompare = sortText(a.booth_name).localeCompare(sortText(b.booth_name), undefined, { numeric: true, sensitivity: 'base' })
+      if (boothCompare !== 0) return boothCompare
+
+      return sortText(a.voter_name).localeCompare(sortText(b.voter_name), undefined, { numeric: true, sensitivity: 'base' })
+    })
   }, [allVoters, filterTelecaller, search])
 
-  const pendingVoters = filteredVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase()))
-  const doneVoters    = filteredVoters.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase()))
+  const pendingVoters = filteredVoters.filter(v => !matchedRecordFor(v))
+  const doneVoters    = filteredVoters.filter(v =>  matchedRecordFor(v))
 
   const displayPending = filterStatus !== 'done'
   const displayDone    = filterStatus !== 'pending'
@@ -362,8 +435,8 @@ export default function VoterSurveyEntry() {
   const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
   const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const pagedPending = pagedList.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase()))
-  const pagedDone    = pagedList.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase()))
+  const pagedPending = pagedList.filter(v => !matchedRecordFor(v))
+  const pagedDone    = pagedList.filter(v =>  matchedRecordFor(v))
 
   const pageNums: (number | '...')[] = (() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -382,8 +455,8 @@ export default function VoterSurveyEntry() {
 
   /* ── Voter row ── */
   const VoterRow = ({ voter }: { voter: FlatVoter }) => {
-    const rec  = recordByVoterName.get(voter.voter_name.toLowerCase())
-    const done = !!rec
+      const rec  = matchedRecordFor(voter)
+      const done = !!rec
 
     return (
       <div className={`border-b border-border ${done ? 'bg-green-50/30' : ''}`}>
@@ -422,6 +495,12 @@ export default function VoterSurveyEntry() {
                 <i className="ph ph-headset mr-0.5" />{voter.telecaller_name}
               </span>
             </div>
+            {voter.address && (
+              <div className="mt-1 text-[10px] text-muted truncate">
+                <i className="ph ph-map-pin mr-1" />
+                {voter.address}
+              </div>
+            )}
           </div>
 
           {/* Update button — same for all voters */}
@@ -468,7 +547,7 @@ export default function VoterSurveyEntry() {
             <div className="flex flex-wrap gap-2 px-3 py-2">
               {rec.support_level && (
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${supportColor(rec.support_level)}`}>
-                  <i className="ph ph-hand-pointing mr-1" />{rec.support_level}
+                  <i className="ph ph-hand-pointing mr-1" />{normalizeSupportLevel(rec.support_level) || rec.support_level}
                 </span>
               )}
               {rec.response_status && (
@@ -554,11 +633,11 @@ export default function VoterSurveyEntry() {
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-bold">
                     <i className="ph ph-clock text-[10px]" />
-                    {allVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase())).length} Not Yet Action Taken
+                    {allVoters.filter(v => !matchedRecordFor(v)).length} Not Yet Action Taken
                   </span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
                     <i className="ph ph-check-circle text-[10px]" />
-                    {allVoters.filter(v => recordByVoterName.has(v.voter_name.toLowerCase())).length} Action Taken
+                    {allVoters.filter(v => matchedRecordFor(v)).length} Action Taken
                   </span>
                 </div>
               ) : (
@@ -584,8 +663,8 @@ export default function VoterSurveyEntry() {
           <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
             {([
               { key: 'all',     label: 'All',                  count: allVoters.length },
-              { key: 'pending', label: 'Not Yet Action Taken',  count: allVoters.filter(v => !recordByVoterName.has(v.voter_name.toLowerCase())).length },
-              { key: 'done',    label: 'Action Taken',          count: allVoters.filter(v =>  recordByVoterName.has(v.voter_name.toLowerCase())).length },
+              { key: 'pending', label: 'Not Yet Action Taken',  count: allVoters.filter(v => !matchedRecordFor(v)).length },
+              { key: 'done',    label: 'Action Taken',          count: allVoters.filter(v =>  matchedRecordFor(v)).length },
             ] as const).map(tab => (
               <button key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
@@ -616,7 +695,7 @@ export default function VoterSurveyEntry() {
           {/* Search */}
           <div className="relative flex-1 min-w-[160px] max-w-[260px]">
             <i className="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-muted pointer-events-none" />
-            <input type="text" placeholder="Name, voter ID, phone…"
+            <input type="text" placeholder="Name, voter ID, phone, address…"
               value={search} onChange={e => setSearch(e.target.value)}
               className={`${inputCls} pl-7 w-full`} />
             {search && (
@@ -803,11 +882,6 @@ export default function VoterSurveyEntry() {
           <span className="text-[11px] font-bold text-navy uppercase tracking-[1px]">Survey Questions</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <ToggleGroup label="Aware of our candidate?" value={awareOfCandidate} onChange={setAwareOfCandidate} />
-          <ToggleGroup label="Likely to vote?" value={likelyToVote} onChange={setLikelyToVote} />
-        </div>
-
         <div className="mt-4">
           <FormRow cols={2}>
             <FormGroup label="Voter Support Level">
@@ -827,6 +901,10 @@ export default function VoterSurveyEntry() {
               </select>
             </FormGroup>
           </FormRow>
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <ToggleGroup label="Aware of our candidate?" value={awareOfCandidate} onChange={setAwareOfCandidate} />
+            <ToggleGroup label="Likely to vote?" value={likelyToVote} onChange={setLikelyToVote} />
+          </div>
           <FormRow cols={1}>
             <FormGroup label="Party Preference">
               <select ref={r.partyPref} className={selectCls}>

@@ -211,7 +211,7 @@ export default function AssignTelecalling() {
       .catch(() => {})
 
     /* Load assignment workflow state from backend */
-    apiClient.get('/telecalling/assignments/', { params: { limit: 1000 } })
+    apiClient.get('/telecalling/assignments/', { params: { limit: 1000, include_workflow: 1 } })
       .then(r => {
         const assignments = r.data.results ?? []
         const nextMap = new Map<number, WorkflowInfo>()

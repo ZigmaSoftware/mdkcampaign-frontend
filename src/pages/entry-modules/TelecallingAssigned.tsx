@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import apiClient from '../../utils/api'
 
 /* ─── Types ──────────────────────────────────────────────── */
@@ -157,6 +157,8 @@ export default function TelecallingAssigned() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading,     setLoading]     = useState(true)
   const [printingId,  setPrintingId]  = useState<number | null>(null)
+  const [filterTelecaller, setFilterTelecaller] = useState('')
+  const [filterDate, setFilterDate] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -166,7 +168,26 @@ export default function TelecallingAssigned() {
       .finally(() => setLoading(false))
   }, [])
 
-  const totalVoters = assignments.reduce((s, a) => s + a.voters.length, 0)
+  const telecallerOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    assignments.forEach(a => {
+      const key = String(a.telecaller_id ?? '')
+      if (key) seen.set(key, a.telecaller_name)
+    })
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+  }, [assignments])
+
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter(a => {
+      if (filterTelecaller && String(a.telecaller_id ?? '') !== filterTelecaller) return false
+      if (filterDate && a.assigned_date !== filterDate) return false
+      return true
+    })
+  }, [assignments, filterTelecaller, filterDate])
+
+  const totalVoters = filteredAssignments.reduce((s, a) => s + a.voters.length, 0)
 
   /* Fetch fresh voter phone data, then open print window */
   const handlePrint = async (a: Assignment) => {
@@ -217,6 +238,51 @@ export default function TelecallingAssigned() {
           </div>
         </div>
 
+        {!loading && assignments.length > 0 && (
+          <div className="flex flex-wrap items-end gap-3 px-5 py-3 bg-surface-alt border-b border-border">
+            <div className="min-w-[220px] flex-1 max-w-[280px]">
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-muted mb-1">
+                Telecalling Person
+              </label>
+              <select
+                value={filterTelecaller}
+                onChange={e => setFilterTelecaller(e.target.value)}
+                className="w-full h-[38px] rounded-lg border border-border bg-white px-3 text-[12px] text-heading outline-none focus:border-navy"
+              >
+                <option value="">All telecalling persons</option>
+                {telecallerOptions.map(option => (
+                  <option key={option.id} value={option.id}>{option.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="min-w-[180px]">
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-muted mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={filterDate}
+                onChange={e => setFilterDate(e.target.value)}
+                className="w-full h-[38px] rounded-lg border border-border bg-white px-3 text-[12px] text-heading outline-none focus:border-navy"
+              />
+            </div>
+
+            {(filterTelecaller || filterDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterTelecaller('')
+                  setFilterDate('')
+                }}
+                className="h-[38px] px-4 rounded-lg border border-border bg-white text-[12px] font-semibold text-muted hover:border-navy hover:text-navy transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Body */}
         {loading ? (
           <div className="px-5 py-16 text-center text-muted">
@@ -231,6 +297,14 @@ export default function TelecallingAssigned() {
               Go to <strong>Assign Telecalling</strong> tab, select voters and assign them to a telecaller.
             </p>
           </div>
+        ) : filteredAssignments.length === 0 ? (
+          <div className="px-5 py-16 text-center">
+            <i className="ph ph-funnel text-[36px] text-border block mb-3" />
+            <p className="text-[13px] font-semibold text-heading mb-1">No assignments match the selected filters</p>
+            <p className="text-[12px] text-muted">
+              Change the telecalling person or date filter to see matching assignment rows.
+            </p>
+          </div>
         ) : (
           <table className="w-full text-[12px]">
             <thead>
@@ -243,7 +317,7 @@ export default function TelecallingAssigned() {
               </tr>
             </thead>
             <tbody>
-              {assignments.map((a, idx) => (
+              {filteredAssignments.map((a, idx) => (
                 <tr key={a.id} className="border-b border-border last:border-0 hover:bg-surface-alt transition-colors">
                   <td className="px-5 py-3 text-muted">{idx + 1}</td>
 

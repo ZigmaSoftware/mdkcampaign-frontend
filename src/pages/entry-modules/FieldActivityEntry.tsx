@@ -19,6 +19,18 @@ interface FeedbackDecision {
   followup_type?: 'telephonic' | 'field_survey'
 }
 
+interface VolunteerRoleOption {
+  id: number
+  name: string
+}
+
+interface VolunteerOption {
+  id: number
+  user_name?: string
+  phone?: string
+  role?: string
+}
+
 /* ── Toggle group (Yes / No / Not Sure) ── */
 function ToggleGroup({ label, value, onChange }: {
   label: string; value: YNS; onChange: (v: YNS) => void
@@ -82,6 +94,9 @@ const genderLabel = (g?: string) =>
   g === 'f' || g === 'Female' ? 'Female' :
   g === 'o' || g === 'Other'  ? 'Other'  : ''
 
+const normalizeText = (value?: string) => (value ?? '').trim().toLowerCase()
+const volunteerDisplayName = (volunteer: VolunteerOption) => volunteer.user_name?.trim() || `Volunteer #${volunteer.id}`
+
 /* ════════════════════════════════════════════════════════════
    Main component
 ════════════════════════════════════════════════════════════ */
@@ -100,7 +115,9 @@ export default function FieldActivityEntry() {
   const [masterBooths,     setMasterBooths]     = useState<{ id: number; number: string; name: string; panchayat_name?: string }[]>([])
   const [masterPanchayats, setMasterPanchayats] = useState<{ id: number; name: string; union_name?: string }[]>([])
   const [masterParties,    setMasterParties]    = useState<{ id: number; name: string; abbreviation?: string }[]>([])
-  const [volunteers,       setVolunteers]       = useState<{ id: number; name?: string; phone?: string; role?: string }[]>([])
+  const [volunteerRoles,   setVolunteerRoles]   = useState<VolunteerRoleOption[]>([])
+  const [allVolunteers,    setAllVolunteers]    = useState<VolunteerOption[]>([])
+  const [assignableVolunteers, setAssignableVolunteers] = useState<VolunteerOption[]>([])
 
   useEffect(() => {
     // Fetch all surveys
@@ -144,9 +161,13 @@ export default function FieldActivityEntry() {
     masterApi.fetchBooths().then(d => d && setMasterBooths(d))
     masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
     masterApi.fetchParties().then(d => d && setMasterParties(d))
-    apiClient.get('/volunteers/volunteers/', { params: { status: 'active', limit: 500 } })
-      .then(res => setVolunteers(res.data.results ?? []))
-      .catch(() => {})
+    masterApi.fetchVolunteerRoles().then(d => d && setVolunteerRoles(d))
+    masterApi.fetchVolunteerNames().then(d => {
+      if (d) {
+        setAllVolunteers(d)
+        setAssignableVolunteers(d)
+      }
+    })
   }, [])
 
   /* ── Lookup maps ── */
@@ -226,6 +247,8 @@ export default function FieldActivityEntry() {
   const [editingId,        setEditingId]      = useState<number | null>(null)
   const [awareOfCandidate, setAwareOfCandidate] = useState<YNS>('')
   const [likelyToVote,     setLikelyToVote]     = useState<YNS>('')
+  const [selectedVolunteerRoleId, setSelectedVolunteerRoleId] = useState('')
+  const [selectedVolunteerName, setSelectedVolunteerName] = useState('')
   const pendingFill = useRef<FieldSurveyRecord | null>(null)
   const [fillKey,   setFillKey] = useState(0)
 
@@ -240,18 +263,61 @@ export default function FieldActivityEntry() {
     gender:         useRef<HTMLSelectElement>(null),
     phone:          useRef<HTMLInputElement>(null),
     address:        useRef<HTMLInputElement>(null),
-    volunteer:      useRef<HTMLSelectElement>(null),
     supportLevel:   useRef<HTMLSelectElement>(null),
     partyPref:      useRef<HTMLSelectElement>(null),
     responseStatus: useRef<HTMLSelectElement>(null),
     remarks:        useRef<HTMLTextAreaElement>(null),
   }
 
+  const selectedVolunteerRoleName = useMemo(
+    () => volunteerRoles.find(role => String(role.id) === selectedVolunteerRoleId)?.name || '',
+    [selectedVolunteerRoleId, volunteerRoles]
+  )
+
+  const volunteerNameOptions = useMemo(() => {
+    const options = [...assignableVolunteers]
+    if (
+      selectedVolunteerName &&
+      !options.some(volunteer => normalizeText(volunteerDisplayName(volunteer)) === normalizeText(selectedVolunteerName))
+    ) {
+      options.unshift({
+        id: -1,
+        user_name: selectedVolunteerName,
+        role: selectedVolunteerRoleName,
+      })
+    }
+    return options
+  }, [assignableVolunteers, selectedVolunteerName, selectedVolunteerRoleName])
+
+  useEffect(() => {
+    if (!selectedVolunteerRoleName) {
+      setAssignableVolunteers(allVolunteers)
+      return
+    }
+
+    masterApi.fetchVolunteerNames(selectedVolunteerRoleName).then(d => {
+      const next = d ?? []
+      setAssignableVolunteers(next)
+      if (
+        selectedVolunteerName &&
+        !next.some(volunteer => normalizeText(volunteerDisplayName(volunteer)) === normalizeText(selectedVolunteerName))
+      ) {
+        setSelectedVolunteerName('')
+      }
+    })
+  }, [selectedVolunteerRoleName, allVolunteers])
+
   useEffect(() => {
     if (!isFormOpen || !pendingFill.current) return
     const d = pendingFill.current
     const pan = boothPanchayatMap.get(d.booth_no ?? '')
     const uni = pan ? panchayatUnionMap.get(pan) : undefined
+    const matchedVolunteer = allVolunteers.find(volunteer =>
+      normalizeText(volunteerDisplayName(volunteer)) === normalizeText(d.assigned_volunteer)
+    )
+    const matchedRoleId = matchedVolunteer
+      ? String(volunteerRoles.find(role => normalizeText(role.name) === normalizeText(matchedVolunteer.role))?.id ?? '')
+      : ''
 
     if (r.surveyDate.current)     r.surveyDate.current.value     = d.survey_date           ?? todayISO()
     if (r.voterName.current)      r.voterName.current.value      = d.voter_name             ?? ''
@@ -263,15 +329,28 @@ export default function FieldActivityEntry() {
     if (r.gender.current)         r.gender.current.value         = genderLabel(d.gender)    ?? ''
     if (r.phone.current)          r.phone.current.value          = d.phone                  ?? ''
     if (r.address.current)        r.address.current.value        = d.address                ?? ''
-    if (r.volunteer.current)      r.volunteer.current.value      = d.assigned_volunteer     ?? ''
     if (r.supportLevel.current)   r.supportLevel.current.value   = d.support_level          ?? ''
     if (r.partyPref.current)      r.partyPref.current.value      = d.party_preference       ?? ''
     if (r.responseStatus.current) r.responseStatus.current.value = d.response_status        ?? ''
     if (r.remarks.current)        r.remarks.current.value        = d.remarks                ?? ''
     setAwareOfCandidate((d.aware_of_candidate as YNS) ?? '')
     setLikelyToVote((d.likely_to_vote as YNS) ?? '')
+    setSelectedVolunteerRoleId(matchedRoleId)
+    setSelectedVolunteerName(d.assigned_volunteer ?? '')
     pendingFill.current = null
-  }, [fillKey, isFormOpen])
+  }, [fillKey, isFormOpen, allVolunteers, volunteerRoles])
+
+  useEffect(() => {
+    if (!isFormOpen || selectedVolunteerRoleId || !selectedVolunteerName) return
+    const matchedVolunteer = allVolunteers.find(volunteer =>
+      normalizeText(volunteerDisplayName(volunteer)) === normalizeText(selectedVolunteerName)
+    )
+    if (!matchedVolunteer?.role) return
+    const matchedRoleId = String(
+      volunteerRoles.find(role => normalizeText(role.name) === normalizeText(matchedVolunteer.role))?.id ?? ''
+    )
+    if (matchedRoleId) setSelectedVolunteerRoleId(matchedRoleId)
+  }, [isFormOpen, selectedVolunteerRoleId, selectedVolunteerName, allVolunteers, volunteerRoles])
 
   const openForm = (survey: FieldSurveyRecord) => {
     pendingFill.current = survey
@@ -285,14 +364,13 @@ export default function FieldActivityEntry() {
     setEditingId(null)
     setAwareOfCandidate('')
     setLikelyToVote('')
+    setSelectedVolunteerRoleId('')
+    setSelectedVolunteerName('')
   }
 
   const handleSave = async () => {
     if (editingId === null) return
     const str = (v?: string) => v?.trim() || undefined
-    const volunteerName = volunteers.find(v => String(v.id) === r.volunteer.current?.value)?.name
-      ?? r.volunteer.current?.value
-      ?? undefined
 
     const original = records.find(rec => rec.id === editingId)
     const payload: Partial<FieldSurveyRecord> = {
@@ -304,7 +382,7 @@ export default function FieldActivityEntry() {
       remarks:            str(r.remarks.current?.value),
       aware_of_candidate: awareOfCandidate  || undefined,
       likely_to_vote:     likelyToVote      || undefined,
-      assigned_volunteer: str(volunteerName),
+      assigned_volunteer: str(selectedVolunteerName),
     }
 
     const updated = await updateFieldSurvey(editingId, payload)
@@ -684,7 +762,7 @@ export default function FieldActivityEntry() {
         isEditing={editingId !== null}
         onClose={closeForm}
       >
-        <FormRow cols={2}>
+        <FormRow cols={3}>
           <FormGroup label="Survey Date">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none">
@@ -693,14 +771,40 @@ export default function FieldActivityEntry() {
               <input ref={r.surveyDate} type="date" className={inputCls + ' pl-9'} defaultValue={todayISO()} />
             </div>
           </FormGroup>
-          <FormGroup label="Assign Volunteer" required>
-            <select ref={r.volunteer} className={selectCls}>
-              <option value="">— Select volunteer —</option>
-              {volunteers.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.name ?? `Volunteer #${v.id}`}{v.role ? ` (${v.role})` : ''}
+          <FormGroup label="Volunteer Role" required>
+            <select
+              value={selectedVolunteerRoleId}
+              onChange={e => {
+                setSelectedVolunteerRoleId(e.target.value)
+                setSelectedVolunteerName('')
+              }}
+              className={selectCls}
+            >
+              <option value="">— Select volunteer role —</option>
+              {volunteerRoles.map(role => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
                 </option>
               ))}
+            </select>
+          </FormGroup>
+          <FormGroup label="Assign Volunteer Name" required>
+            <select
+              value={selectedVolunteerName}
+              onChange={e => setSelectedVolunteerName(e.target.value)}
+              className={selectCls}
+            >
+              <option value="">
+                {selectedVolunteerRoleId ? '— Select volunteer name —' : '— Select volunteer name —'}
+              </option>
+              {volunteerNameOptions.map(volunteer => {
+                const name = volunteerDisplayName(volunteer)
+                return (
+                  <option key={`${volunteer.id}-${name}`} value={name}>
+                    {name}
+                  </option>
+                )
+              })}
             </select>
           </FormGroup>
         </FormRow>

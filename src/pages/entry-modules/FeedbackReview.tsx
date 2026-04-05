@@ -76,7 +76,6 @@ const responseLabel = (s?: string) => {
   if (s === 'not_reach')     return 'Not Reach'
   if (s === 'no_answer')     return 'No Answer'
   if (s === 'need_followup') return 'Need Followup'
-  if (s === 'answered')      return 'Answered'
   if (s === 'wrong_number')  return 'Wrong Number'
   return s || '—'
 }
@@ -85,7 +84,6 @@ const responseColor = (s?: string) => {
   if (s === 'not_reach')     return 'bg-red-100 text-red-600'
   if (s === 'no_answer')     return 'bg-orange-100 text-orange-600'
   if (s === 'need_followup') return 'bg-purple-100 text-purple-700'
-  if (s === 'answered')      return 'bg-green-100 text-green-700'
   if (s === 'wrong_number')  return 'bg-rose-100 text-rose-700'
   return 'bg-gray-100 text-gray-500'
 }
@@ -542,7 +540,7 @@ export default function FeedbackReview() {
                   <i className="ph ph-flag mr-0.5" />{survey.party_preference}
                 </span>
               )}
-              {survey.response_status && (
+              {responseLabel(survey.response_status) && (
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${responseColor(survey.response_status)}`}>
                   {responseLabel(survey.response_status)}
                 </span>
@@ -840,7 +838,6 @@ export default function FeedbackReview() {
                 <option value="not_reach">Not Reach</option>
                 <option value="no_answer">No Answer</option>
                 <option value="need_followup">Need Followup</option>
-                <option value="answered">Answered</option>
                 <option value="wrong_number">Wrong Number</option>
               </select>
             </div>

@@ -13,6 +13,26 @@ type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 type SupportLevel = 'positive' | 'negative' | 'neutral' | ''
 type ResponseStatus = 'not_reach' | 'no_answer' | 'need_followup' | 'answered' | 'wrong_number' | ''
 
+const PARTY_PREFERENCE_OPTIONS = [
+  'BJP', 'AIADMK', 'DMK', 'Congress', 'PMK', 'DMDK', 'Other', 'No Preference',
+] as const
+
+interface InlineSurveyDraft {
+  support_level: SupportLevel
+  response_status: ResponseStatus
+  aware_of_candidate: YNS
+  likely_to_vote: YNS
+  party_preference: string
+}
+
+const EMPTY_INLINE_DRAFT: InlineSurveyDraft = {
+  support_level: '',
+  response_status: '',
+  aware_of_candidate: '',
+  likely_to_vote: '',
+  party_preference: '',
+}
+
 function ToggleGroup({ label, value, onChange }: {
   label: string; value: YNS; onChange: (v: YNS) => void
 }) {
@@ -58,6 +78,33 @@ function ChoiceToggleGroup<T extends string>({ value, onChange, options }: {
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+function CompactChoiceToggleGroup<T extends string>({ value, onChange, options, disabled = false }: {
+  value: T | ''
+  onChange: (v: T | '') => void
+  options: { value: T; label: string; activeClass: string }[]
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {options.map(opt => (
+        <button
+          key={opt.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(value === opt.value ? '' : opt.value)}
+          className={`px-2.5 py-[5px] rounded-md text-[10px] font-semibold border transition-all duration-150
+            ${value === opt.value
+              ? `${opt.activeClass} shadow-sm`
+              : 'bg-white text-muted border-border hover:border-navy hover:text-navy'}
+            ${disabled ? 'opacity-60 cursor-not-allowed hover:border-border hover:text-muted' : ''}`}
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -119,7 +166,6 @@ const responseColor = (s?: string) => {
   if (s === 'not_reach')     return 'bg-red-100 text-red-600'
   if (s === 'no_answer')     return 'bg-orange-100 text-orange-600'
   if (s === 'need_followup') return 'bg-purple-100 text-purple-700'
-  if (s === 'answered')      return 'bg-green-100 text-green-700'
   if (s === 'wrong_number')  return 'bg-rose-100 text-rose-700'
   return 'bg-border text-muted'
 }
@@ -128,7 +174,6 @@ const responseLabel = (s?: string) => {
   if (s === 'not_reach')     return 'Not Reach'
   if (s === 'no_answer')     return 'No Answer'
   if (s === 'need_followup') return 'Need Followup'
-  if (s === 'answered')      return 'Answered'
   if (s === 'wrong_number')  return 'Wrong Number'
   return s || ''
 }
@@ -230,6 +275,8 @@ export default function VoterSurveyEntry() {
   const [filterAssignedList, setFilterAssignedList] = useState('')
   const [filterStatus,     setFilterStatus]     = useState<'all' | 'pending' | 'done'>('all')
   const [search, setSearch]                     = useState('')
+  const [inlineDrafts, setInlineDrafts]         = useState<Record<string, InlineSurveyDraft>>({})
+  const [savingRows, setSavingRows]             = useState<Record<string, boolean>>({})
 
   /* ── Toggle state ── */
   const [registered,       setRegistered]       = useState<YNS>('')
@@ -532,6 +579,93 @@ export default function VoterSurveyEntry() {
     return recordByLooseKey.get(normalizedName)
   }
 
+  const getVoterRowKey = (voter: FlatVoter) => `${voter.assignment_id}:${voter.id}`
+
+  const getInlineDraftForVoter = (voter: FlatVoter): InlineSurveyDraft => ({
+    ...EMPTY_INLINE_DRAFT,
+    ...(inlineDrafts[getVoterRowKey(voter)] ?? {}),
+  })
+
+  const updateInlineDraft = (voter: FlatVoter, patch: Partial<InlineSurveyDraft>) => {
+    const rowKey = getVoterRowKey(voter)
+    setInlineDrafts(prev => ({
+      ...prev,
+      [rowKey]: {
+        ...EMPTY_INLINE_DRAFT,
+        ...(prev[rowKey] ?? {}),
+        ...patch,
+      },
+    }))
+  }
+
+  const clearInlineDraft = (voter: FlatVoter) => {
+    const rowKey = getVoterRowKey(voter)
+    setInlineDrafts(prev => {
+      if (!prev[rowKey]) return prev
+      const next = { ...prev }
+      delete next[rowKey]
+      return next
+    })
+  }
+
+  const normalizeInlinePhone = (value?: string) => {
+    const raw = (value ?? '').trim()
+    const digits = raw.replace(/\D/g, '')
+    return digits.length >= 10 ? raw : undefined
+  }
+
+  const normalizeInlineAge = (value?: number | null) =>
+    value != null && value >= 18 && value <= 120 ? value : undefined
+
+  const buildInlinePayload = (voter: FlatVoter, draft: InlineSurveyDraft): Partial<FieldSurveyRecord> => ({
+    ...(voter.voter != null ? { voter: voter.voter } : {}),
+    survey_date: voter.assigned_date || todayISO(),
+    booth_no: voter.booth_no || undefined,
+    voter_name: voter.voter_name,
+    age: normalizeInlineAge(voter.age),
+    gender: toGenderDisplay(voter.gender) || undefined,
+    phone: normalizeInlinePhone(voter.phone),
+    address: voter.address?.trim() || undefined,
+    support_level: draft.support_level || undefined,
+    party_preference: draft.party_preference.trim() || undefined,
+    response_status: draft.response_status || undefined,
+    surveyed_by: voter.telecaller_name || undefined,
+    aware_of_candidate: draft.aware_of_candidate || undefined,
+    likely_to_vote: draft.likely_to_vote || undefined,
+  })
+
+  const handleInlineSave = async (voter: FlatVoter) => {
+    if (getRecordForVoter(voter)) {
+      showToast('<i class="ph ph-lock-key"></i> This survey is already saved and locked.', '#0d2455')
+      return
+    }
+
+    const draft = getInlineDraftForVoter(voter)
+    const hasSelections = Object.values(draft).some(value => String(value ?? '').trim() !== '')
+    if (!hasSelections) {
+      showToast('<i class="ph ph-warning"></i> Select at least one survey option before updating.', '#dc2626')
+      return
+    }
+
+    const rowKey = getVoterRowKey(voter)
+    setSavingRows(prev => ({ ...prev, [rowKey]: true }))
+
+    const created = await createFieldSurvey(buildInlinePayload(voter, draft))
+    if (created) {
+      setRecords(prev => [created, ...prev])
+      clearInlineDraft(voter)
+      showToast('<i class="ph ph-check-circle"></i> Survey saved and locked.', '#138808')
+    } else {
+      showToast('<i class="ph ph-x-circle"></i> Failed to save survey.', '#dc2626')
+    }
+
+    setSavingRows(prev => {
+      const next = { ...prev }
+      delete next[rowKey]
+      return next
+    })
+  }
+
   /* Filtered voter list */
   const filteredVoters = useMemo(() => {
     let list = [...allVoters]
@@ -584,6 +718,10 @@ export default function VoterSurveyEntry() {
   const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
   const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
+  useEffect(() => {
+    setPage(prev => Math.min(prev, totalPages))
+  }, [totalPages])
+
   const pagedPending = pagedList.filter(v => !getRecordForVoter(v))
   const pagedDone    = pagedList.filter(v =>  getRecordForVoter(v))
 
@@ -606,6 +744,10 @@ export default function VoterSurveyEntry() {
   const VoterRow = ({ voter }: { voter: FlatVoter }) => {
     const rec  = getRecordForVoter(voter)
     const done = !!rec
+    const rowKey = getVoterRowKey(voter)
+    const inlineDraft = getInlineDraftForVoter(voter)
+    const isSaving = !!savingRows[rowKey]
+    const hasInlineSelections = Object.values(inlineDraft).some(value => String(value ?? '').trim() !== '')
 
     return (
       <div className={`border-b border-border ${done ? 'bg-green-50/30' : ''}`}>
@@ -652,15 +794,108 @@ export default function VoterSurveyEntry() {
             )}
           </div>
 
-          {/* Update button — same for all voters */}
-          <button
-            onClick={() => done && rec ? handleEditRecord(rec) : handleVoterClick(voter)}
-            className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0"
-          >
-            <i className="ph ph-arrow-clockwise text-[12px]" />
-            Update
-          </button>
+          {done ? (
+            <span className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-green-200 bg-green-100 text-green-700 text-[11px] font-semibold flex-shrink-0">
+              <i className="ph ph-lock-key text-[12px]" />
+              Locked
+            </span>
+          ) : (
+            <button
+              onClick={() => handleInlineSave(voter)}
+              disabled={isSaving || !hasInlineSelections}
+              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0 disabled:opacity-45 disabled:cursor-not-allowed"
+            >
+              <i className={`text-[12px] ${isSaving ? 'ph ph-spinner-gap animate-spin' : 'ph ph-arrow-clockwise'}`} />
+              {isSaving ? 'Saving...' : 'Update'}
+            </button>
+          )}
         </div>
+
+        {!done && (
+          <div className="px-5 pb-3">
+            <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-bold text-navy uppercase tracking-[0.6px]">Voter Support Level</label>
+                  <CompactChoiceToggleGroup
+                    value={inlineDraft.support_level}
+                    onChange={(value) => updateInlineDraft(voter, { support_level: value as SupportLevel })}
+                    disabled={isSaving}
+                    options={[
+                      { value: 'positive', label: 'Positive', activeClass: 'bg-kampgreen text-white border-kampgreen' },
+                      { value: 'negative', label: 'Negative', activeClass: 'bg-kampr text-white border-kampr' },
+                      { value: 'neutral', label: 'Neutral', activeClass: 'bg-navy text-white border-navy' },
+                    ]}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-bold text-navy uppercase tracking-[0.6px]">Response Status</label>
+                  <select
+                    value={inlineDraft.response_status}
+                    disabled={isSaving}
+                    onChange={e => updateInlineDraft(voter, { response_status: e.target.value as ResponseStatus })}
+                    className={`${selectCls} text-[11px] py-[7px] ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <option value="">Select status</option>
+                    <option value="not_reach">Not Reach</option>
+                    <option value="no_answer">No Answer</option>
+                    <option value="need_followup">Need Followup</option>
+                    <option value="wrong_number">Wrong Number</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-bold text-navy uppercase tracking-[0.6px]">Aware of our candidate?</label>
+                  <CompactChoiceToggleGroup
+                    value={inlineDraft.aware_of_candidate}
+                    onChange={(value) => updateInlineDraft(voter, { aware_of_candidate: value as YNS })}
+                    disabled={isSaving}
+                    options={[
+                      { value: 'Yes', label: 'Yes', activeClass: 'bg-kampgreen text-white border-kampgreen' },
+                      { value: 'No', label: 'No', activeClass: 'bg-kampr text-white border-kampr' },
+                      { value: 'Not Sure', label: 'Not Sure', activeClass: 'bg-navy text-white border-navy' },
+                    ]}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-bold text-navy uppercase tracking-[0.6px]">Likely to vote?</label>
+                  <CompactChoiceToggleGroup
+                    value={inlineDraft.likely_to_vote}
+                    onChange={(value) => updateInlineDraft(voter, { likely_to_vote: value as YNS })}
+                    disabled={isSaving}
+                    options={[
+                      { value: 'Yes', label: 'Yes', activeClass: 'bg-kampgreen text-white border-kampgreen' },
+                      { value: 'No', label: 'No', activeClass: 'bg-kampr text-white border-kampr' },
+                      { value: 'Not Sure', label: 'Not Sure', activeClass: 'bg-navy text-white border-navy' },
+                    ]}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-bold text-navy uppercase tracking-[0.6px]">Party Preference</label>
+                  <select
+                    value={inlineDraft.party_preference}
+                    disabled={isSaving}
+                    onChange={e => updateInlineDraft(voter, { party_preference: e.target.value })}
+                    className={`${selectCls} text-[11px] py-[7px] ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <option value="">Select party</option>
+                    {PARTY_PREFERENCE_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-2 text-[10px] text-orange-700/80 flex items-center gap-1.5">
+                <i className="ph ph-info text-[11px]" />
+                Select the quick survey options and press <strong>Update</strong> to save this voter as locked.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Inline feedback record (Action Taken) ── */}
         {done && rec && (
@@ -676,20 +911,10 @@ export default function VoterSurveyEntry() {
                   · <i className="ph ph-headset" /> {rec.surveyed_by}
                 </span>
               )}
-              <div className="ml-auto flex items-center gap-1">
-                <button
-                  onClick={() => handleEditRecord(rec)}
-                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold text-green-700 hover:bg-green-100 transition-colors"
-                >
-                  <i className="ph ph-arrow-clockwise text-[11px]" /> Update
-                </button>
-                <button
-                  onClick={() => handleDelete(rec.id)}
-                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold text-red-400 hover:bg-red-50 transition-colors"
-                >
-                  <i className="ph ph-trash text-[11px]" /> Delete
-                </button>
-              </div>
+              <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold text-green-700">
+                <i className="ph ph-lock-key text-[11px]" />
+                Locked after save
+              </span>
             </div>
 
             {/* Feedback detail pills */}
@@ -699,7 +924,7 @@ export default function VoterSurveyEntry() {
                   <i className="ph ph-hand-pointing mr-1" />{rec.support_level}
                 </span>
               )}
-              {rec.response_status && (
+              {responseLabel(rec.response_status) && (
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${responseColor(rec.response_status)}`}>
                   <i className="ph ph-phone mr-1" />{responseLabel(rec.response_status)}
                 </span>
@@ -1077,7 +1302,6 @@ export default function VoterSurveyEntry() {
                   { value: 'not_reach', label: 'Not Reach', activeClass: 'bg-kampr text-white border-kampr' },
                   { value: 'no_answer', label: 'No Answer', activeClass: 'bg-saffron-dark text-white border-saffron-dark' },
                   { value: 'need_followup', label: 'Need Followup', activeClass: 'bg-navy text-white border-navy' },
-                  { value: 'answered', label: 'Answered', activeClass: 'bg-kampgreen text-white border-kampgreen' },
                   { value: 'wrong_number', label: 'Wrong Number', activeClass: 'bg-rose-600 text-white border-rose-600' },
                 ]}
               />

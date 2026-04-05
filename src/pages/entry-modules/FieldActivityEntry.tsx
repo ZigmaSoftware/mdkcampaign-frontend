@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { FieldSurveyRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
@@ -17,6 +17,26 @@ interface FeedbackDecision {
   survey: number
   action: 'followup_required' | 'followup_not_required'
   followup_type?: 'telephonic' | 'field_survey'
+}
+
+interface SearchOption {
+  value: string
+  label: string
+}
+
+interface VolunteerRoleLookup {
+  id: number
+  name: string
+}
+
+interface VolunteerLookup {
+  id: number
+  user_name: string
+  phone: string
+  label?: string
+  volunteer_role?: number | null
+  volunteer_role_name?: string
+  role?: string
 }
 
 /* ── Toggle group (Yes / No / Not Sure) ── */
@@ -86,6 +106,151 @@ const genderLabel = (g?: string) =>
   g === 'f' || g === 'Female' ? 'Female' :
   g === 'o' || g === 'Other'  ? 'Other'  : ''
 
+function AsyncSearchSelect({
+  value,
+  onChange,
+  fetchOptions,
+  placeholder,
+  disabled = false,
+  minChars = 2,
+  disabledText = 'Select a role first',
+}: {
+  value: SearchOption | null
+  onChange: (option: SearchOption | null) => void
+  fetchOptions: (search: string) => Promise<SearchOption[]>
+  placeholder: string
+  disabled?: boolean
+  minChars?: number
+  disabledText?: string
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState(value?.label ?? '')
+  const [options, setOptions] = useState<SearchOption[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setQuery(value?.label ?? '')
+  }, [value?.value, value?.label])
+
+  useEffect(() => {
+    if (!open) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  useEffect(() => {
+    if (!open || disabled) return
+
+    const term = query.trim()
+    if (term.length < minChars) {
+      setOptions([])
+      setLoading(false)
+      return
+    }
+
+    let active = true
+    const timer = window.setTimeout(async () => {
+      setLoading(true)
+      try {
+        const next = await fetchOptions(term)
+        if (active) setOptions(next)
+      } catch {
+        if (active) setOptions([])
+      } finally {
+        if (active) setLoading(false)
+      }
+    }, 300)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [open, disabled, query, fetchOptions, minChars])
+
+  const showMinChars = query.trim().length < minChars
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onFocus={() => !disabled && setOpen(true)}
+          onChange={(e) => {
+            const next = e.target.value
+            setQuery(next)
+            setOpen(true)
+            if (!next || next !== value?.label) onChange(null)
+          }}
+          placeholder={disabled ? disabledText : placeholder}
+          disabled={disabled}
+          className={`${inputCls} pr-8 ${disabled ? 'bg-[#f0f4f8] text-muted cursor-not-allowed' : ''}`}
+        />
+        {loading ? (
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted">
+            <i className="ph ph-spinner-gap animate-spin text-[14px]" />
+          </span>
+        ) : query ? (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery('')
+              setOptions([])
+              onChange(null)
+              setOpen(true)
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-heading"
+          >
+            <i className="ph ph-x text-[12px]" />
+          </button>
+        ) : (
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted">
+            <i className="ph ph-caret-down text-[12px]" />
+          </span>
+        )}
+      </div>
+
+      {open && !disabled && (
+        <div className="absolute z-20 mt-1 w-full rounded-lg border border-border bg-white shadow-card overflow-hidden">
+          {showMinChars ? (
+            <div className="px-3 py-2.5 text-[11px] text-muted">
+              Type at least {minChars} characters to search
+            </div>
+          ) : loading ? (
+            <div className="px-3 py-2.5 text-[11px] text-muted">Loading...</div>
+          ) : options.length === 0 ? (
+            <div className="px-3 py-2.5 text-[11px] text-muted">No data found</div>
+          ) : (
+            <div className="max-h-56 overflow-y-auto py-1">
+              {options.map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onChange(option)
+                    setQuery(option.label)
+                    setOpen(false)
+                  }}
+                  className="w-full px-3 py-2 text-left text-[12px] text-heading hover:bg-surface-alt transition-colors"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ════════════════════════════════════════════════════════════
    Main component
 ════════════════════════════════════════════════════════════ */
@@ -104,7 +269,6 @@ export default function FieldActivityEntry() {
   const [masterBooths,     setMasterBooths]     = useState<{ id: number; number: string; name: string; panchayat_name?: string }[]>([])
   const [masterPanchayats, setMasterPanchayats] = useState<{ id: number; name: string; union_name?: string }[]>([])
   const [masterParties,    setMasterParties]    = useState<{ id: number; name: string; abbreviation?: string }[]>([])
-  const [volunteers,       setVolunteers]       = useState<{ id: number; name?: string; phone?: string; role?: string }[]>([])
 
   useEffect(() => {
     // Fetch all surveys
@@ -148,9 +312,6 @@ export default function FieldActivityEntry() {
     masterApi.fetchBooths().then(d => d && setMasterBooths(d))
     masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
     masterApi.fetchParties().then(d => d && setMasterParties(d))
-    apiClient.get('/volunteers/volunteers/', { params: { status: 'active', limit: 500 } })
-      .then(res => setVolunteers(res.data.results ?? []))
-      .catch(() => {})
   }, [])
 
   /* ── Lookup maps ── */
@@ -230,6 +391,9 @@ export default function FieldActivityEntry() {
   const [editingId,        setEditingId]      = useState<number | null>(null)
   const [awareOfCandidate, setAwareOfCandidate] = useState<YNS>('')
   const [likelyToVote,     setLikelyToVote]     = useState<YNS>('')
+  const [selectedVolunteerRole, setSelectedVolunteerRole] = useState<SearchOption | null>(null)
+  const [selectedVolunteer, setSelectedVolunteer] = useState<SearchOption | null>(null)
+  const [currentAssignedVolunteer, setCurrentAssignedVolunteer] = useState('')
   const pendingFill = useRef<FieldSurveyRecord | null>(null)
   const [fillKey,   setFillKey] = useState(0)
 
@@ -244,7 +408,6 @@ export default function FieldActivityEntry() {
     gender:         useRef<HTMLSelectElement>(null),
     phone:          useRef<HTMLInputElement>(null),
     address:        useRef<HTMLInputElement>(null),
-    volunteer:      useRef<HTMLSelectElement>(null),
     supportLevel:   useRef<HTMLSelectElement>(null),
     partyPref:      useRef<HTMLSelectElement>(null),
     responseStatus: useRef<HTMLSelectElement>(null),
@@ -267,7 +430,6 @@ export default function FieldActivityEntry() {
     if (r.gender.current)         r.gender.current.value         = genderLabel(d.gender)    ?? ''
     if (r.phone.current)          r.phone.current.value          = d.phone                  ?? ''
     if (r.address.current)        r.address.current.value        = d.address                ?? ''
-    if (r.volunteer.current)      r.volunteer.current.value      = d.assigned_volunteer     ?? ''
     if (r.supportLevel.current)   r.supportLevel.current.value   = d.support_level          ?? ''
     if (r.partyPref.current)      r.partyPref.current.value      = d.party_preference       ?? ''
     if (r.responseStatus.current) r.responseStatus.current.value = d.response_status        ?? ''
@@ -279,6 +441,9 @@ export default function FieldActivityEntry() {
 
   const openForm = (survey: FieldSurveyRecord) => {
     pendingFill.current = survey
+    setSelectedVolunteerRole(null)
+    setSelectedVolunteer(null)
+    setCurrentAssignedVolunteer(survey.assigned_volunteer ?? '')
     setEditingId(survey.id)
     setFormOpen(true)
     setFillKey(k => k + 1)
@@ -289,14 +454,15 @@ export default function FieldActivityEntry() {
     setEditingId(null)
     setAwareOfCandidate('')
     setLikelyToVote('')
+    setSelectedVolunteerRole(null)
+    setSelectedVolunteer(null)
+    setCurrentAssignedVolunteer('')
   }
 
   const handleSave = async () => {
     if (editingId === null) return
     const str = (v?: string) => v?.trim() || undefined
-    const volunteerName = volunteers.find(v => String(v.id) === r.volunteer.current?.value)?.name
-      ?? r.volunteer.current?.value
-      ?? undefined
+    const volunteerName = str(selectedVolunteer?.label) ?? str(currentAssignedVolunteer)
 
     const original = records.find(rec => rec.id === editingId)
     const payload: Partial<FieldSurveyRecord> = {
@@ -320,6 +486,34 @@ export default function FieldActivityEntry() {
       showToast('<i class="ph ph-x-circle"></i> Failed to update survey.', '#dc2626')
     }
   }
+
+  const fetchVolunteerRoleOptions = useCallback(async (term: string): Promise<SearchOption[]> => {
+    const { data } = await apiClient.get<{ results?: VolunteerRoleLookup[] }>('/masters/volunteer-roles/lookup/', {
+      params: { search: term, limit: 20 },
+    })
+    return (data.results ?? []).map(role => ({
+      value: String(role.id),
+      label: role.name,
+    }))
+  }, [])
+
+  const fetchVolunteerOptions = useCallback(async (term: string): Promise<SearchOption[]> => {
+    if (!selectedVolunteerRole) return []
+    const { data } = await apiClient.get<{ results?: VolunteerLookup[] }>('/volunteers/volunteers/lookup/', {
+      params: {
+        role_id: selectedVolunteerRole.value,
+        search: term,
+        status: 'active',
+        limit: 20,
+      },
+    })
+    return (data.results ?? []).map(volunteer => ({
+      value: String(volunteer.id),
+      label: volunteer.label || (volunteer.phone
+        ? `${volunteer.user_name} (${volunteer.phone})`
+        : volunteer.user_name),
+    }))
+  }, [selectedVolunteerRole])
 
   /* ── Survey row ── */
   const SurveyRow = ({ survey }: { survey: FieldSurveyRecord }) => {
@@ -688,7 +882,7 @@ export default function FieldActivityEntry() {
         isEditing={editingId !== null}
         onClose={closeForm}
       >
-        <FormRow cols={2}>
+        <FormRow cols={3}>
           <FormGroup label="Survey Date">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none">
@@ -697,15 +891,34 @@ export default function FieldActivityEntry() {
               <input ref={r.surveyDate} type="date" className={inputCls + ' pl-9'} defaultValue={todayISO()} />
             </div>
           </FormGroup>
-          <FormGroup label="Assign Volunteer" required>
-            <select ref={r.volunteer} className={selectCls}>
-              <option value="">— Select volunteer —</option>
-              {volunteers.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.name ?? `Volunteer #${v.id}`}{v.role ? ` (${v.role})` : ''}
-                </option>
-              ))}
-            </select>
+          <FormGroup label="Volunteer Role" required>
+            <AsyncSearchSelect
+              value={selectedVolunteerRole}
+              onChange={(option) => {
+                setSelectedVolunteerRole(option)
+                setSelectedVolunteer(null)
+              }}
+              fetchOptions={fetchVolunteerRoleOptions}
+              placeholder="Search volunteer role..."
+              minChars={0}
+              disabledText="Select volunteer role"
+            />
+          </FormGroup>
+          <FormGroup label="Volunteer Name" required>
+            <AsyncSearchSelect
+              value={selectedVolunteer}
+              onChange={setSelectedVolunteer}
+              fetchOptions={fetchVolunteerOptions}
+              placeholder="Search volunteer name or mobile..."
+              disabled={!selectedVolunteerRole}
+              minChars={0}
+              disabledText="Select volunteer role first"
+            />
+            {currentAssignedVolunteer && !selectedVolunteer && (
+              <p className="text-[10px] text-muted mt-1">
+                Current: <span className="font-medium text-heading">{currentAssignedVolunteer}</span>
+              </p>
+            )}
           </FormGroup>
         </FormRow>
 

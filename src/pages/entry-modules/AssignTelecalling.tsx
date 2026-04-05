@@ -52,7 +52,6 @@ interface WorkflowInfo {
 }
 
 /* ─── Constants ──────────────────────────────────────────── */
-const PAGE_SIZE = 30
 const genderLabel = (g?: string) => g === 'm' ? 'Male' : g === 'f' ? 'Female' : g === 'o' ? 'Other' : '—'
 const WORKFLOW_LABELS: Record<WorkflowStatus, string> = {
   assigned: 'Assigned',
@@ -186,6 +185,7 @@ export default function AssignTelecalling() {
   const [rawCount, setRawCount] = useState(0)
   const [total,    setTotal]    = useState(0)
   const [page,     setPage]     = useState(1)
+  const [pageSize, setPageSize] = useState(30)
   const [loading,  setLoading]  = useState(false)
   const [assigning, setAssigning] = useState(false)
 
@@ -288,8 +288,8 @@ export default function AssignTelecalling() {
     setSelected(new Set())
 
     const params: Record<string, any> = {
-      limit:  PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
+      limit:  pageSize,
+      offset: (page - 1) * pageSize,
       sort: 'address_asc',
     }
     if (filterBooths.size === 1) params.booth = [...filterBooths][0]
@@ -318,7 +318,7 @@ export default function AssignTelecalling() {
       .finally(() => setLoading(false))
 
     return () => controller.abort()
-  }, [page, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus])
+  }, [page, pageSize, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus])
 
   useEffect(() => {
     if (!filterWorkflowStatus) return
@@ -375,7 +375,7 @@ export default function AssignTelecalling() {
       })
     : []
   const visibleVoters = filterWorkflowStatus
-    ? workflowFilteredVoters.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    ? workflowFilteredVoters.slice((page - 1) * pageSize, page * pageSize)
     : voters
   const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
   const isAllSelected  = selectableVoters.length > 0 && selectableVoters.every(v => selected.has(v.id))
@@ -455,9 +455,9 @@ export default function AssignTelecalling() {
 
   /* ── Pagination ── */
   const effectiveTotal = filterWorkflowStatus ? workflowFilteredVoters.length : total
-  const totalPages = Math.max(1, Math.ceil(effectiveTotal / PAGE_SIZE))
-  const pageStart  = (page - 1) * PAGE_SIZE + 1
-  const pageEnd    = Math.min(page * PAGE_SIZE, effectiveTotal)
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize))
+  const pageStart  = (page - 1) * pageSize + 1
+  const pageEnd    = Math.min(page * pageSize, effectiveTotal)
   const goTo       = (p: number) => setPage(Math.max(1, Math.min(p, totalPages)))
 
   const pageNumbers: (number | '...')[] = (() => {
@@ -479,6 +479,7 @@ export default function AssignTelecalling() {
   }
   const applyDate    = (v: string)          => { setFilterDate(v) }
   const applySearch  = (v: string)          => { setFilterSearch(v) }
+  useEffect(() => { setPage(1) }, [pageSize])
   const clearAll     = () => {
     setFilterBooths(new Set())
     setFilterWorkflowStatus('')
@@ -754,24 +755,40 @@ export default function AssignTelecalling() {
         {/* Pagination */}
         {!loading && effectiveTotal > 0 && (
           <div className="flex items-center justify-between px-5 py-2 border-t border-border bg-surface-alt text-[11px] text-muted flex-wrap gap-2">
-            <span className="font-medium">{pageStart}–{pageEnd} <span className="font-normal">of {effectiveTotal.toLocaleString('en-IN')} voters</span></span>
-            <div className="flex items-center gap-1">
-              {[{ label: '«', go: 1 }, { label: '‹', go: page - 1 }].map(({ label, go }) => (
-                <button key={label} onClick={() => goTo(go)} disabled={page === 1}
-                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30">{label}</button>
-              ))}
-              {pageNumbers.map((p, i) =>
-                p === '...'
-                  ? <span key={`e${i}`} className="w-7 text-center">…</span>
-                  : <button key={p} onClick={() => goTo(p as number)}
-                      className={`w-7 h-7 flex items-center justify-center rounded text-[11px] font-semibold
-                        ${page === p ? 'bg-navy text-white' : 'hover:bg-border'}`}>{p}</button>
-              )}
-              {[{ label: '›', go: page + 1 }, { label: '»', go: totalPages }].map(({ label, go }) => (
-                <button key={label} onClick={() => goTo(go)} disabled={page === totalPages}
-                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30">{label}</button>
-              ))}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="font-medium">{pageStart}–{pageEnd} <span className="font-normal">of {effectiveTotal.toLocaleString('en-IN')} voters</span></span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted">Rows</span>
+                <select
+                  value={pageSize}
+                  onChange={e => setPageSize(Number(e.target.value))}
+                  className={`${selectCls} w-[84px] py-[6px] text-[11px]`}
+                >
+                  {[10, 20, 30, 50, 75, 100].map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+            {effectiveTotal > pageSize && (
+              <div className="flex items-center gap-1">
+                {[{ label: '«', go: 1 }, { label: '‹', go: page - 1 }].map(({ label, go }) => (
+                  <button key={label} onClick={() => goTo(go)} disabled={page === 1}
+                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30">{label}</button>
+                ))}
+                {pageNumbers.map((p, i) =>
+                  p === '...'
+                    ? <span key={`e${i}`} className="w-7 text-center">…</span>
+                    : <button key={p} onClick={() => goTo(p as number)}
+                        className={`w-7 h-7 flex items-center justify-center rounded text-[11px] font-semibold
+                          ${page === p ? 'bg-navy text-white' : 'hover:bg-border'}`}>{p}</button>
+                )}
+                {[{ label: '›', go: page + 1 }, { label: '»', go: totalPages }].map(({ label, go }) => (
+                  <button key={label} onClick={() => goTo(go)} disabled={page === totalPages}
+                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30">{label}</button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

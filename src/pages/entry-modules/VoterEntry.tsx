@@ -83,6 +83,16 @@ const SENTIMENT_REVERSE: Record<string, string> = {
   neutral:  'Neutral / Undecided',
   negative: 'Against',
 }
+const VOLUNTEER_STATUS_LABEL: Record<string, string> = {
+  active: 'Active',
+  inactive: 'Inactive',
+  on_leave: 'On Leave',
+}
+const VOLUNTEER_STATUS_COLOR: Record<string, string> = {
+  active: 'bg-kampgreen-light text-kampgreen-dark',
+  inactive: 'bg-kampr-light text-kampr',
+  on_leave: 'bg-saffron-light text-saffron-dark',
+}
 
 const EDU_CHOICES = [
   { value: 'illiterate',    label: 'Illiterate' },
@@ -1039,78 +1049,111 @@ export default function VoterEntry() {
             const vols  = volunteers.filter(v =>
               v.booth === boothVolModal || v.booths?.includes(boothVolModal)
             )
-            const STATUS_COLOR: Record<string, string> = {
-              active:   'bg-green-100 text-green-700',
-              inactive: 'bg-gray-100 text-gray-500',
-              on_leave: 'bg-yellow-100 text-yellow-700',
-            }
+            const groupedVols = vols.reduce<Record<string, VolunteerRecord[]>>((acc, volunteer) => {
+              const key = volunteer.role || 'General Volunteer'
+              if (!acc[key]) acc[key] = []
+              acc[key].push(volunteer)
+              return acc
+            }, {})
             return (
               <div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4"
-                style={{ background: 'rgba(0,0,0,0.45)' }}
-                onClick={() => setBoothVolModal(null)}
+                style={{ background: 'rgba(11,29,69,0.55)', backdropFilter: 'blur(2px)' }}
+                onClick={e => { if (e.target === e.currentTarget) setBoothVolModal(null) }}
               >
                 <div
-                  className="bg-surface rounded-card shadow-card w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+                  className="bg-surface rounded-card shadow-2xl w-full max-w-[480px] max-h-[80vh] flex flex-col overflow-hidden"
                   onClick={e => e.stopPropagation()}
                 >
                   {/* Header */}
-                  <div className="bg-navy text-white px-5 py-3 flex items-center justify-between flex-shrink-0">
-                    <div className="flex items-center gap-2">
-                      <i className="ph ph-users text-saffron text-[14px]" />
-                      <div>
-                        <div className="text-[12px] font-bold leading-tight">
-                          Volunteers — Booth {booth?.number}
-                        </div>
-                        <div className="text-[9.5px] text-white/60 mt-[1px]">{booth?.name}</div>
+                  <div className="bg-navy px-5 py-3 flex items-center justify-between flex-shrink-0">
+                    <div>
+                      <div className="text-white text-[12px] font-bold tracking-[0.6px]">
+                        <i className="ph ph-users-three mr-2 text-saffron" />
+                        Volunteers — {booth?.number ? `#${booth.number} — ` : ''}{booth?.name || 'Booth'}
+                      </div>
+                      <div className="text-white/50 text-[9px] mt-[2px]">
+                        {vols.length} volunteer{vols.length !== 1 ? 's' : ''}
                       </div>
                     </div>
                     <button
                       onClick={() => setBoothVolModal(null)}
-                      className="w-7 h-7 rounded-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all text-[14px]"
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors"
                     >
-                      <i className="ph ph-x" />
+                      <i className="ph ph-x text-[14px]" />
                     </button>
                   </div>
 
                   {/* Body */}
-                  <div className="overflow-y-auto flex-1">
+                  <div className="overflow-y-auto flex-1 px-5 py-4">
                     {vols.length === 0 ? (
                       <p className="text-muted text-[11px] text-center py-8 italic">
                         No volunteers assigned to this booth.
                       </p>
                     ) : (
-                      <div className="divide-y divide-border">
-                        {vols.map(v => {
-                          const displayName = v.name || v.user_name || v.username || `Volunteer #${v.id}`
-                          const statusCls   = STATUS_COLOR[v.status ?? ''] ?? 'bg-gray-100 text-gray-500'
-                          return (
-                            <div key={v.id} className="flex items-center gap-3 px-5 py-3">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                                style={{ background: '#e8f0fe' }}>
-                                <i className="ph ph-user text-[14px]" style={{ color: '#1a56db' }} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[12px] font-semibold text-body">{displayName}</p>
-                                <p className="text-[10px] text-muted truncate">
-                                  {[v.phone, v.role, v.volunteer_type].filter(Boolean).join(' · ')}
-                                </p>
-                              </div>
-                              {v.status && (
-                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded capitalize flex-shrink-0 ${statusCls}`}>
-                                  {v.status.replace('_', ' ')}
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
+                      Object.entries(groupedVols).map(([role, list]) => (
+                        <div key={role} className="mb-4 last:mb-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-[9px] font-bold tracking-[0.8px] uppercase text-muted">{role}</span>
+                            <span className="bg-navy/10 text-navy text-[9px] font-bold px-[6px] py-[1px] rounded-full">
+                              {list.length}
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-[6px]">
+                            {list.map(v => {
+                              const displayName = v.name || v.user_name || v.username || `Volunteer #${v.id}`
+                              const designation = v.volunteer_type || v.skills || ''
+                              return (
+                                <div key={v.id} className="flex items-start gap-3 bg-[#f7f9fc] rounded-lg px-3 py-[8px] border border-border">
+                                  <div className="w-7 h-7 rounded-full bg-navy/10 flex items-center justify-center flex-shrink-0 mt-[1px]">
+                                    <i className="ph ph-user text-navy text-[13px]" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[11px] font-bold text-textMain truncate">
+                                      {displayName}
+                                    </div>
+                                    <div className="flex flex-col gap-[2px] mt-[3px]">
+                                      <div className="flex flex-wrap gap-x-3 gap-y-[2px]">
+                                        {v.phone && (
+                                          <span className="text-[9.5px] text-muted flex items-center gap-1">
+                                            <i className="ph ph-phone text-[9px]" />
+                                            <span className="text-[8.5px] font-semibold text-navy/50 uppercase tracking-wide">Ph:</span>
+                                            {v.phone}
+                                          </span>
+                                        )}
+                                        {v.phone2 && (
+                                          <span className="text-[9.5px] text-muted flex items-center gap-1">
+                                            <i className="ph ph-phone text-[9px]" />
+                                            <span className="text-[8.5px] font-semibold text-navy/50 uppercase tracking-wide">Alt:</span>
+                                            {v.phone2}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {designation && (
+                                        <span className="text-[9.5px] text-muted flex items-center gap-1">
+                                          <i className="ph ph-briefcase text-[9px]" />
+                                          <span className="text-[8.5px] font-semibold text-navy/50 uppercase tracking-wide">Designation:</span>
+                                          {designation}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {v.status && (
+                                    <span className={`text-[8px] font-bold px-[6px] py-[2px] rounded-full flex-shrink-0 mt-[1px] ${VOLUNTEER_STATUS_COLOR[v.status] ?? 'bg-border text-muted'}`}>
+                                      {VOLUNTEER_STATUS_LABEL[v.status] ?? v.status}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
 
                   {/* Footer */}
-                  <div className="border-t border-border px-5 py-3 flex items-center justify-between flex-shrink-0">
-                    <span className="text-[10px] text-muted">{vols.length} volunteer{vols.length !== 1 ? 's' : ''}</span>
+                  <div className="border-t border-border px-5 py-3 flex justify-end flex-shrink-0">
                     <button
                       onClick={() => setBoothVolModal(null)}
                       className="px-4 py-[6px] rounded-md bg-navy text-white text-[11px] font-bold hover:bg-navy/80 transition-all"

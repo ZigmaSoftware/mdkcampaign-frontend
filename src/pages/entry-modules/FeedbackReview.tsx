@@ -5,6 +5,13 @@ import { selectCls, inputCls } from '../../components/entry/FormGroup'
 import { useToast } from '../../context/ToastContext'
 import { exportToCsv } from '../../utils/exportCsv'
 
+interface ApiResponse<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
 /* ── Types ── */
 interface SurveyRecord {
   id:                  number
@@ -96,6 +103,38 @@ function SectionLabel({ icon, label, count, color }: {
   )
 }
 
+const API_BATCH_SIZE = 500
+
+async function fetchAllPages<T>(
+  url: string,
+  params: Record<string, string | number> = {},
+): Promise<T[]> {
+  const { data: firstPage } = await apiClient.get<ApiResponse<T>>(url, {
+    params: { ...params, limit: API_BATCH_SIZE, offset: 0 },
+  })
+
+  const firstResults = firstPage.results ?? []
+  const totalCount = firstPage.count ?? firstResults.length
+
+  if (!firstPage.next || firstResults.length >= totalCount) {
+    return firstResults
+  }
+
+  const offsets: number[] = []
+  for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
+    offsets.push(offset)
+  }
+
+  const remainingPages = await Promise.all(offsets.map(async offset => {
+    const { data } = await apiClient.get<ApiResponse<T>>(url, {
+      params: { ...params, limit: API_BATCH_SIZE, offset },
+    })
+    return data.results ?? []
+  }))
+
+  return firstResults.concat(...remainingPages)
+}
+
 /* ════════════════════════════════════════════════════════════
    Main component
 ════════════════════════════════════════════════════════════ */
@@ -124,19 +163,19 @@ export default function FeedbackReview() {
   const fetchAll = useCallback(() => {
     setLoading(true)
     Promise.allSettled([
-      apiClient.get('/activities/surveys/',      { params: { limit: 1000 } }),
-      apiClient.get('/telecalling/assignments/', { params: { limit: 1000 } }),
-      apiClient.get('/telecalling/feedbacks/',   { params: { limit: 1000 } }),
-      apiClient.get('/activities/logs/',         { params: { limit: 1000, category: 'field' } }),
+      fetchAllPages<SurveyRecord>('/activities/surveys/'),
+      fetchAllPages<Assignment>('/telecalling/assignments/'),
+      fetchAllPages<FeedbackDecision>('/telecalling/feedbacks/'),
+      fetchAllPages<{ notes?: string }>('/activities/logs/', { category: 'field' }),
     ]).then(([s, a, f, l]) => {
-      if (s.status === 'fulfilled') setSurveys(s.value.data.results ?? [])
-      if (a.status === 'fulfilled') setAssignments(a.value.data.results ?? [])
+      if (s.status === 'fulfilled') setSurveys(s.value ?? [])
+      if (a.status === 'fulfilled') setAssignments(a.value ?? [])
 
       // Build survey_id → followup_type map from activity log notes
       // (used to enrich decisions when backend doesn't persist followup_type)
       const logFollowupMap = new Map<number, 'field_survey'>()
       if (l.status === 'fulfilled') {
-        const logs: { notes?: string }[] = l.value.data.results ?? []
+        const logs = l.value ?? []
         logs.forEach(log => {
           const match = log.notes?.match(/\[survey_id:(\d+)\]/)
           if (match) logFollowupMap.set(parseInt(match[1]), 'field_survey')
@@ -144,7 +183,7 @@ export default function FeedbackReview() {
       }
 
       if (f.status === 'fulfilled') {
-        const raw: FeedbackDecision[] = f.value.data.results ?? []
+        const raw = f.value ?? []
         // Merge: use backend's followup_type if present, otherwise infer from activity logs
         setDecisions(raw.map(d => ({
           ...d,
@@ -203,6 +242,9 @@ export default function FeedbackReview() {
   const [filterTelecaller,   setFilterTelecaller]   = useState('')
   const [search,             setSearch]             = useState('')
   const [filterSupportLevel, setFilterSupportLevel] = useState('')
+  const [filterResponseStatus, setFilterResponseStatus] = useState('')
+  const [filterAwareOfCandidate, setFilterAwareOfCandidate] = useState('')
+  const [filterLikelyToVote, setFilterLikelyToVote] = useState('')
   const [filterParty,        setFilterParty]        = useState('')
   const [filterBlock,        setFilterBlock]        = useState('')
   const [filterUnion,        setFilterUnion]        = useState('')
@@ -211,10 +253,13 @@ export default function FeedbackReview() {
   const [filterDateFrom,     setFilterDateFrom]     = useState('')
   const [filterDateTo,       setFilterDateTo]       = useState('')
   const [page,               setPage]               = useState(1)
-  const PAGE_SIZE = 10
+  const [pageSize,           setPageSize]           = useState(10)
 
   const clearAdvancedFilters = () => {
     setFilterSupportLevel('')
+    setFilterResponseStatus('')
+    setFilterAwareOfCandidate('')
+    setFilterLikelyToVote('')
     setFilterParty('')
     setFilterBlock('')
     setFilterUnion('')
@@ -227,7 +272,8 @@ export default function FeedbackReview() {
   }
 
   const hasAdvancedFilters = !!(
-    filterSupportLevel || filterParty || filterBlock || filterUnion ||
+    filterSupportLevel || filterResponseStatus || filterAwareOfCandidate ||
+    filterLikelyToVote || filterParty || filterBlock || filterUnion ||
     filterPanchayat || filterBooth || filterDateFrom || filterDateTo ||
     filterTelecaller || search
   )
@@ -276,6 +322,18 @@ export default function FeedbackReview() {
 
     if (filterSupportLevel) {
       list = list.filter(s => s.support_level === filterSupportLevel)
+    }
+
+    if (filterResponseStatus) {
+      list = list.filter(s => s.response_status === filterResponseStatus)
+    }
+
+    if (filterAwareOfCandidate) {
+      list = list.filter(s => s.aware_of_candidate === filterAwareOfCandidate)
+    }
+
+    if (filterLikelyToVote) {
+      list = list.filter(s => s.likely_to_vote === filterLikelyToVote)
     }
 
     if (filterParty) {
@@ -327,8 +385,9 @@ export default function FeedbackReview() {
 
     return list
   }, [
-    surveys, search, filterTelecaller, filterTab, filterSupportLevel, filterParty,
-    filterBlock, filterBooth, filterPanchayat, filterUnion, filterDateFrom, filterDateTo,
+    surveys, search, filterTelecaller, filterTab, filterSupportLevel, filterResponseStatus,
+    filterAwareOfCandidate, filterLikelyToVote, filterParty, filterBlock, filterBooth,
+    filterPanchayat, filterUnion, filterDateFrom, filterDateTo,
     decisionMap, telecallerByVoterName, boothPanchayatMap, panchayatUnionMap,
   ])
 
@@ -344,9 +403,14 @@ export default function FeedbackReview() {
   useEffect(() => {
     setPage(1)
   }, [
-    filterTab, filterTelecaller, search, filterSupportLevel, filterParty,
-    filterBlock, filterUnion, filterPanchayat, filterBooth, filterDateFrom, filterDateTo,
+    filterTab, filterTelecaller, search, filterSupportLevel, filterResponseStatus,
+    filterAwareOfCandidate, filterLikelyToVote, filterParty, filterBlock,
+    filterUnion, filterPanchayat, filterBooth, filterDateFrom, filterDateTo,
   ])
+
+  useEffect(() => {
+    setPage(1)
+  }, [pageSize])
 
   /* ── Action handler ── */
   const handleAction = async (
@@ -589,13 +653,13 @@ export default function FeedbackReview() {
   const telephonicReq    = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'telephonic'    })
   const followupReqOther = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && !d?.followup_type                   })
   const followupNotReq   = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
-  const pagedSurveys     = filteredSurveys.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pagedSurveys     = filteredSurveys.slice((page - 1) * pageSize, page * pageSize)
   const pagedPending     = pagedSurveys.filter(s => !decisionMap.has(s.id))
   const pagedFieldSurveyReq = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'field_survey' })
   const pagedTelephonicReq  = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'telephonic' })
   const pagedFollowupReqOther = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && !d?.followup_type })
   const pagedFollowupNotReq = pagedSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
-  const totalPages      = Math.max(1, Math.ceil(filteredSurveys.length / PAGE_SIZE))
+  const totalPages      = Math.max(1, Math.ceil(filteredSurveys.length / pageSize))
   const pageNums: (number | '...')[] = (() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
     const nums: (number | '...')[] = [1]
@@ -753,7 +817,7 @@ export default function FeedbackReview() {
             <span className="text-[10px] font-bold text-navy uppercase tracking-[0.8px]">Filters</span>
           </div>
 
-          {/* Row 1: Support Level · Party Reference · Block · Booth */}
+          {/* Row 1: Support Level · Response Status · Aware · Likely */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
             {/* Support Level */}
             <div>
@@ -767,7 +831,47 @@ export default function FeedbackReview() {
               </select>
             </div>
 
-            {/* Party Reference */}
+            {/* Response Status */}
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Response Status</label>
+              <select value={filterResponseStatus} onChange={e => setFilterResponseStatus(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterResponseStatus ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Statuses</option>
+                <option value="not_reach">Not Reach</option>
+                <option value="no_answer">No Answer</option>
+                <option value="need_followup">Need Followup</option>
+                <option value="answered">Answered</option>
+                <option value="wrong_number">Wrong Number</option>
+              </select>
+            </div>
+
+            {/* Aware of our candidate */}
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Aware of Our Candidate?</label>
+              <select value={filterAwareOfCandidate} onChange={e => setFilterAwareOfCandidate(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterAwareOfCandidate ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="Not Sure">Not Sure</option>
+              </select>
+            </div>
+
+            {/* Likely to vote */}
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Likely to Vote?</label>
+              <select value={filterLikelyToVote} onChange={e => setFilterLikelyToVote(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterLikelyToVote ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="Not Sure">Not Sure</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2: Party · Block · Booth · Union · Panchayat */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
             <div>
               <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Party Reference</label>
               <select value={filterParty} onChange={e => setFilterParty(e.target.value)}
@@ -800,10 +904,7 @@ export default function FeedbackReview() {
                 ))}
               </select>
             </div>
-          </div>
 
-          {/* Row 2: Union · Panchayat · Telecaller · Date From · Date To */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {/* Union */}
             <div>
               <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Union</label>
@@ -824,6 +925,10 @@ export default function FeedbackReview() {
               </select>
             </div>
 
+          </div>
+
+          {/* Row 3: Telecaller · Date From · Date To */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {/* Telecaller */}
             <div>
               <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Telecaller</label>
@@ -849,6 +954,9 @@ export default function FeedbackReview() {
               <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
                 className={`${inputCls} w-full text-[11px] ${filterDateTo ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`} />
             </div>
+
+            <div />
+            <div />
           </div>
         </div>
 
@@ -913,45 +1021,61 @@ export default function FeedbackReview() {
               </>
             )}
 
-            {filteredSurveys.length > PAGE_SIZE && (
+            {filteredSurveys.length > 0 && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-alt">
-                <span className="text-[11px] text-muted">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredSurveys.length)} of {filteredSurveys.length}
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
-                               hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <i className="ph ph-caret-left" />
-                  </button>
-
-                  {pageNums.map((n, i) =>
-                    n === '...'
-                      ? <span key={`ellipsis-${i}`} className="px-1 text-[11px] text-muted">…</span>
-                      : <button
-                          key={n}
-                          onClick={() => setPage(n)}
-                          className={`min-w-[28px] px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors
-                            ${page === n
-                              ? 'bg-navy text-white border-navy'
-                              : 'border-border text-muted hover:bg-border'}`}
-                        >
-                          {n}
-                        </button>
-                  )}
-
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                    className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
-                               hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <i className="ph ph-caret-right" />
-                  </button>
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-muted">
+                    Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredSurveys.length)} of {filteredSurveys.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted">Rows</span>
+                    <select
+                      value={pageSize}
+                      onChange={e => setPageSize(Number(e.target.value))}
+                      className={`${selectCls} w-[84px] py-[6px] text-[11px]`}
+                    >
+                      {[10, 20, 30, 50, 75, 100].map(size => (
+                        <option key={size} value={size}>{size}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+                {filteredSurveys.length > pageSize && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
+                                 hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <i className="ph ph-caret-left" />
+                    </button>
+
+                    {pageNums.map((n, i) =>
+                      n === '...'
+                        ? <span key={`ellipsis-${i}`} className="px-1 text-[11px] text-muted">…</span>
+                        : <button
+                            key={n}
+                            onClick={() => setPage(n)}
+                            className={`min-w-[28px] px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors
+                              ${page === n
+                                ? 'bg-navy text-white border-navy'
+                                : 'border-border text-muted hover:bg-border'}`}
+                          >
+                            {n}
+                          </button>
+                    )}
+
+                    <button
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
+                                 hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <i className="ph ph-caret-right" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>

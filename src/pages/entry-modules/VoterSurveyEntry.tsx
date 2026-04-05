@@ -11,7 +11,7 @@ import { exportToCsv } from '../../utils/exportCsv'
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 type SupportLevel = 'positive' | 'negative' | 'neutral' | ''
-type ResponseStatus = 'not_reach' | 'no_answer' | 'need_followup' | ''
+type ResponseStatus = 'not_reach' | 'no_answer' | 'need_followup' | 'answered' | 'wrong_number' | ''
 
 function ToggleGroup({ label, value, onChange }: {
   label: string; value: YNS; onChange: (v: YNS) => void
@@ -63,6 +63,7 @@ function ChoiceToggleGroup<T extends string>({ value, onChange, options }: {
 }
 
 interface FlatVoter {
+  assignment_id:    number
   id:               number   // assignment voter row id
   voter:            number | null
   voter_name:       string
@@ -77,6 +78,31 @@ interface FlatVoter {
   telecaller_name:  string
   telecaller_phone: string
   assigned_date:    string
+  assignment_time:  string
+}
+
+interface TelecallingAssignmentVoter {
+  id:          number
+  voter:       number | null
+  voter_name:  string
+  voter_id_no: string
+  phone:       string
+  address:     string
+  booth_name:  string
+  booth_no:    string
+  age:         number | null
+  gender:      string
+}
+
+interface TelecallingAssignment {
+  id:               number
+  telecaller_id:    number | null
+  telecaller_name:  string
+  telecaller_phone: string
+  assigned_date:    string
+  assignment_time?: string
+  created_at:       string
+  voters:           TelecallingAssignmentVoter[]
 }
 
 /* ── Badge helpers ── */
@@ -93,6 +119,8 @@ const responseColor = (s?: string) => {
   if (s === 'not_reach')     return 'bg-red-100 text-red-600'
   if (s === 'no_answer')     return 'bg-orange-100 text-orange-600'
   if (s === 'need_followup') return 'bg-purple-100 text-purple-700'
+  if (s === 'answered')      return 'bg-green-100 text-green-700'
+  if (s === 'wrong_number')  return 'bg-rose-100 text-rose-700'
   return 'bg-border text-muted'
 }
 
@@ -100,10 +128,36 @@ const responseLabel = (s?: string) => {
   if (s === 'not_reach')     return 'Not Reach'
   if (s === 'no_answer')     return 'No Answer'
   if (s === 'need_followup') return 'Need Followup'
+  if (s === 'answered')      return 'Answered'
+  if (s === 'wrong_number')  return 'Wrong Number'
   return s || ''
 }
 
 const sortText = (value?: string) => (value ?? '').trim().toLowerCase()
+const assignmentTimeFromValue = (assignment: Pick<TelecallingAssignment, 'assignment_time' | 'created_at'>) =>
+  assignment.assignment_time || assignment.created_at.match(/(\d{2}:\d{2})/)?.[1] || ''
+
+const flattenAssignments = (assignments: TelecallingAssignment[]): FlatVoter[] =>
+  assignments.flatMap(a =>
+    (a.voters ?? []).map(v => ({
+      assignment_id:    a.id,
+      id:               v.id,
+      voter:            v.voter,
+      voter_name:       v.voter_name,
+      voter_id_no:      v.voter_id_no ?? '',
+      phone:            v.phone ?? '',
+      address:          v.address ?? '',
+      booth_name:       v.booth_name ?? '',
+      booth_no:         v.booth_no ?? '',
+      age:              v.age ?? null,
+      gender:           v.gender ?? '',
+      telecaller_id:    a.telecaller_id ?? 0,
+      telecaller_name:  a.telecaller_name,
+      telecaller_phone: a.telecaller_phone ?? '',
+      assigned_date:    a.assigned_date,
+      assignment_time:  assignmentTimeFromValue(a),
+    }))
+  )
 
 /* ── Section header ── */
 function SectionLabel({ icon, label, count, color }: {
@@ -123,40 +177,47 @@ export default function VoterSurveyEntry() {
   const { showToast } = useToast()
 
   /* ── Assignments from API ── */
-  const [allVoters, setAllVoters] = useState<FlatVoter[]>([])
+  const [allAssignments, setAllAssignments] = useState<TelecallingAssignment[]>([])
+  const [assignmentScope, setAssignmentScope] = useState<TelecallingAssignment[]>([])
+  const [displayAssignments, setDisplayAssignments] = useState<TelecallingAssignment[]>([])
+  const [telecallerOptions, setTelecallerOptions] = useState<{ id: number; name: string }[]>([])
+
   useEffect(() => {
+    let ignore = false
+
     apiClient.get('/telecalling/assignments/', { params: { limit: 1000 } })
       .then(r => {
-        const assignments: any[] = r.data.results ?? []
-        setAllVoters(
-          assignments.flatMap(a =>
-            (a.voters ?? []).map((v: any) => ({
-              id:               v.id,
-              voter:            v.voter,
-              voter_name:       v.voter_name,
-              voter_id_no:      v.voter_id_no ?? '',
-              phone:            v.phone ?? '',
-              address:          v.address ?? '',
-              booth_name:       v.booth_name ?? '',
-              booth_no:         v.booth_no ?? '',
-              age:              v.age ?? null,
-              gender:           v.gender ?? '',
-              telecaller_id:    a.telecaller_id ?? 0,
-              telecaller_name:  a.telecaller_name,
-              telecaller_phone: a.telecaller_phone ?? '',
-              assigned_date:    a.assigned_date,
-            }))
-          )
+        if (ignore) return
+        const assignments: TelecallingAssignment[] = r.data.results ?? []
+        setAllAssignments(assignments)
+        setAssignmentScope(assignments)
+        setDisplayAssignments(assignments)
+
+        const seen = new Map<number, string>()
+        assignments.forEach(a => {
+          if (a.telecaller_id != null) {
+            seen.set(a.telecaller_id, a.telecaller_name)
+          }
+        })
+        setTelecallerOptions(
+          [...seen.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
         )
       })
-      .catch(() => {})
+      .catch(() => {
+        if (ignore) return
+        setAllAssignments([])
+        setAssignmentScope([])
+        setDisplayAssignments([])
+        setTelecallerOptions([])
+      })
+
+    return () => { ignore = true }
   }, [])
 
-  const telecallerOptions = useMemo(() => {
-    const seen = new Map<number, string>()
-    allVoters.forEach(v => seen.set(v.telecaller_id, v.telecaller_name))
-    return [...seen.entries()].map(([id, name]) => ({ id, name }))
-  }, [allVoters])
+  const allAssignmentVoters = useMemo(() => flattenAssignments(allAssignments), [allAssignments])
+  const allVoters = useMemo(() => flattenAssignments(displayAssignments), [displayAssignments])
 
   /* ── Feedback records ── */
   const [records, setRecords]     = useState<FieldSurveyRecord[]>([])
@@ -164,7 +225,9 @@ export default function VoterSurveyEntry() {
   const [editingId, setEditingId] = useState<number | null>(null)
 
   /* ── Filters ── */
+  const [filterDate,       setFilterDate]       = useState('')
   const [filterTelecaller, setFilterTelecaller] = useState('')
+  const [filterAssignedList, setFilterAssignedList] = useState('')
   const [filterStatus,     setFilterStatus]     = useState<'all' | 'pending' | 'done'>('all')
   const [search, setSearch]                     = useState('')
 
@@ -196,6 +259,68 @@ export default function VoterSurveyEntry() {
   useEffect(() => {
     fetchFieldSurveys().then(res => { if (res) setRecords(res) })
   }, [])
+
+  useEffect(() => {
+    if (!filterDate && !filterTelecaller) {
+      setAssignmentScope(allAssignments)
+      return
+    }
+
+    let ignore = false
+    const params: Record<string, string | number> = { limit: 1000 }
+    if (filterDate) params.date = filterDate
+    if (filterTelecaller) params.telecaller = filterTelecaller
+
+    apiClient.get('/telecalling/assignments/', { params })
+      .then(r => {
+        if (ignore) return
+        setAssignmentScope(r.data.results ?? [])
+      })
+      .catch(() => {
+        if (ignore) return
+        setAssignmentScope([])
+      })
+
+    return () => { ignore = true }
+  }, [allAssignments, filterDate, filterTelecaller])
+
+  const assignedListOptions = useMemo(() => {
+    if (!filterDate || !filterTelecaller) return []
+
+    const counts = new Map<string, number>()
+    assignmentScope.forEach(a => {
+      const time = assignmentTimeFromValue(a)
+      if (!time) return
+      counts.set(time, (counts.get(time) ?? 0) + (a.voters?.length ?? 0))
+    })
+
+    return [...counts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([value, count]) => ({
+        value,
+        label: `${value} / ${count} ${count === 1 ? 'voter' : 'voters'}`,
+      }))
+  }, [assignmentScope, filterDate, filterTelecaller])
+
+  useEffect(() => {
+    setFilterAssignedList('')
+  }, [filterDate, filterTelecaller])
+
+  useEffect(() => {
+    if (!filterAssignedList || assignedListOptions.some(option => option.value === filterAssignedList)) return
+    setFilterAssignedList('')
+  }, [assignedListOptions, filterAssignedList])
+
+  useEffect(() => {
+    if (!filterAssignedList || !filterDate || !filterTelecaller) {
+      setDisplayAssignments(assignmentScope)
+      return
+    }
+
+    setDisplayAssignments(
+      assignmentScope.filter(a => assignmentTimeFromValue(a) === filterAssignedList)
+    )
+  }, [assignmentScope, filterDate, filterTelecaller, filterAssignedList])
 
   /* Normalize gender codes → display values */
   const toGenderDisplay = (g?: string) => {
@@ -410,7 +535,9 @@ export default function VoterSurveyEntry() {
   /* Filtered voter list */
   const filteredVoters = useMemo(() => {
     let list = [...allVoters]
+    if (filterDate) list = list.filter(v => v.assigned_date === filterDate)
     if (filterTelecaller) list = list.filter(v => String(v.telecaller_id) === filterTelecaller)
+    if (filterAssignedList) list = list.filter(v => v.assignment_time === filterAssignedList)
     if (search) {
       const q = search.toLowerCase().trim()
       list = list.filter(v =>
@@ -421,24 +548,21 @@ export default function VoterSurveyEntry() {
       )
     }
     return list.sort((a, b) => {
-      const addressCompare = sortText(a.address).localeCompare(sortText(b.address), undefined, {
-        numeric: true,
+      const leftAddress = (a.address ?? '').trim()
+      const rightAddress = (b.address ?? '').trim()
+
+      const leftBlank = leftAddress === ''
+      const rightBlank = rightAddress === ''
+      if (leftBlank !== rightBlank) return leftBlank ? 1 : -1
+
+      const addressCompare = leftAddress.localeCompare(rightAddress, 'en', {
         sensitivity: 'base',
       })
       if (addressCompare !== 0) return addressCompare
 
-      const boothCompare = sortText(a.booth_name).localeCompare(sortText(b.booth_name), undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      })
-      if (boothCompare !== 0) return boothCompare
-
-      return sortText(a.voter_name).localeCompare(sortText(b.voter_name), undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      })
+      return a.id - b.id
     })
-  }, [allVoters, filterTelecaller, search])
+  }, [allVoters, filterDate, filterTelecaller, filterAssignedList, search])
 
   const pendingVoters = filteredVoters.filter(v => !getRecordForVoter(v))
   const doneVoters    = filteredVoters.filter(v =>  getRecordForVoter(v))
@@ -451,7 +575,7 @@ export default function VoterSurveyEntry() {
   const [page, setPage] = useState(1)
 
   // Reset page when filters change
-  useEffect(() => { setPage(1) }, [filterStatus, filterTelecaller, search])
+  useEffect(() => { setPage(1) }, [filterStatus, filterDate, filterTelecaller, filterAssignedList, search])
 
   const activeList = filterStatus === 'pending' ? pendingVoters
                    : filterStatus === 'done'    ? doneVoters
@@ -609,7 +733,7 @@ export default function VoterSurveyEntry() {
 
   const handleExport = () => {
     if (!records.length) return
-    const voterMap = new Map(allVoters.map(v => [v.voter_name.toLowerCase(), v]))
+    const voterMap = new Map(allAssignmentVoters.map(v => [v.voter_name.toLowerCase(), v]))
     const headers = [
       'Survey Date', 'Voter Name', 'Voter ID No', 'Phone', 'Address', 'Booth',
       'Age', 'Gender', 'Telecaller Name', 'Telecaller Phone',
@@ -665,6 +789,8 @@ export default function VoterSurveyEntry() {
                     {allVoters.filter(v => getRecordForVoter(v)).length} Action Taken
                   </span>
                 </div>
+              ) : allAssignments.length > 0 ? (
+                <p className="text-[11px] text-muted">No voters match the selected assignment filters</p>
               ) : (
                 <p className="text-[11px] text-muted">No assigned voters yet</p>
               )}
@@ -708,12 +834,35 @@ export default function VoterSurveyEntry() {
             ))}
           </div>
 
+          {/* Date filter */}
+          <input
+            type="date"
+            value={filterDate}
+            onChange={e => setFilterDate(e.target.value)}
+            className={`${inputCls} w-[160px]`}
+          />
+
           {/* Telecaller filter */}
           <select value={filterTelecaller} onChange={e => setFilterTelecaller(e.target.value)}
             className={`${selectCls} w-[180px]`}>
             <option value="">All Telecallers</option>
             {telecallerOptions.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+
+          {/* Assigned List filter */}
+          <select
+            value={filterAssignedList}
+            onChange={e => setFilterAssignedList(e.target.value)}
+            disabled={!filterDate || !filterTelecaller}
+            className={`${selectCls} w-[180px] disabled:bg-surface disabled:text-muted disabled:cursor-not-allowed`}
+          >
+            <option value="">
+              {!filterDate || !filterTelecaller ? 'Select date + telecaller' : 'All Assigned Lists'}
+            </option>
+            {assignedListOptions.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
 
@@ -740,7 +889,7 @@ export default function VoterSurveyEntry() {
         </div>
 
         {/* ── List ── */}
-        {allVoters.length === 0 ? (
+        {allAssignments.length === 0 ? (
           <div className="px-5 py-14 text-center">
             <i className="ph ph-phone-slash text-[36px] text-border block mb-3" />
             <p className="text-[13px] font-semibold text-heading mb-1">No assigned voters yet</p>
@@ -928,6 +1077,8 @@ export default function VoterSurveyEntry() {
                   { value: 'not_reach', label: 'Not Reach', activeClass: 'bg-kampr text-white border-kampr' },
                   { value: 'no_answer', label: 'No Answer', activeClass: 'bg-saffron-dark text-white border-saffron-dark' },
                   { value: 'need_followup', label: 'Need Followup', activeClass: 'bg-navy text-white border-navy' },
+                  { value: 'answered', label: 'Answered', activeClass: 'bg-kampgreen text-white border-kampgreen' },
+                  { value: 'wrong_number', label: 'Wrong Number', activeClass: 'bg-rose-600 text-white border-rose-600' },
                 ]}
               />
             </FormGroup>

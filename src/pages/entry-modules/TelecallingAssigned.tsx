@@ -93,6 +93,8 @@ function openPrintWindow(
             <label><input type="checkbox"> Not Reach</label>
             <label><input type="checkbox"> No Answer</label>
             <label><input type="checkbox"> Need Followup</label>
+            <label><input type="checkbox"> Answered</label>
+            <label><input type="checkbox"> Wrong Number</label>
           </div>
           <div class="remark-group">
             <div class="remark-label">Aware of Candidate</div>

@@ -43,6 +43,8 @@ type WorkflowStatus =
   | 'reassigned'
   | 'completed'
 
+type StatusFilterValue = WorkflowStatus | 'unassigned' | ''
+
 interface WorkflowInfo {
   status: WorkflowStatus
   label: string
@@ -59,6 +61,15 @@ const WORKFLOW_LABELS: Record<WorkflowStatus, string> = {
   reassigned: 'Reassigned',
   completed: 'Completed',
 }
+
+const STATUS_FILTER_OPTIONS: { value: Exclude<StatusFilterValue, ''>; label: string }[] = [
+  { value: 'unassigned', label: 'Unassigned' },
+  { value: 'assigned', label: 'Assigned' },
+  { value: 'pending_followup', label: 'Pending Follow-up' },
+  { value: 'pending_field_survey', label: 'Pending Field Survey' },
+  { value: 'reassigned', label: 'Reassigned' },
+  { value: 'completed', label: 'Completed' },
+]
 
 /* ─── Booth multi-select ─────────────────────────────────── */
 function BoothMultiSelect({
@@ -161,6 +172,7 @@ export default function AssignTelecalling() {
   const [assignableVolunteers, setAssignableVolunteers] = useState<Telecaller[]>([])
 
   const [filterBooths,     setFilterBooths]     = useState<Set<number>>(new Set())
+  const [filterWorkflowStatus, setFilterWorkflowStatus] = useState<StatusFilterValue>('')
   const [filterContactStatus, setFilterContactStatus] = useState('')
   const [filterTelecaller, setFilterTelecaller] = useState('')
   const [filterVolunteerRole, setFilterVolunteerRole] = useState('')
@@ -169,6 +181,7 @@ export default function AssignTelecalling() {
   const [debouncedSearch,  setDebouncedSearch]  = useState('')
 
   const [voters,   setVoters]   = useState<VoterRow[]>([])
+  const [statusSourceVoters, setStatusSourceVoters] = useState<VoterRow[]>([])
   const rawVotersRef             = useRef<VoterRow[]>([])
   const [rawCount, setRawCount] = useState(0)
   const [total,    setTotal]    = useState(0)
@@ -259,8 +272,11 @@ export default function AssignTelecalling() {
 
   /* ── Fetch voters ── */
   useEffect(() => {
+    if (filterWorkflowStatus) return
+
     if (filterBooths.size === 0) {
       setVoters([])
+      setStatusSourceVoters([])
       rawVotersRef.current = []
       setRawCount(0)
       setTotal(0)
@@ -293,6 +309,7 @@ export default function AssignTelecalling() {
           age: v.age, gender: v.gender,
         }))
         rawVotersRef.current = all
+        setStatusSourceVoters([])
         setRawCount(apiCount)
         setVoters(all)
         setTotal(apiCount)
@@ -301,9 +318,65 @@ export default function AssignTelecalling() {
       .finally(() => setLoading(false))
 
     return () => controller.abort()
-  }, [page, filterBooths, debouncedSearch, filterContactStatus])
+  }, [page, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus])
 
-  const visibleVoters = voters
+  useEffect(() => {
+    if (!filterWorkflowStatus) return
+
+    if (filterBooths.size === 0) {
+      setVoters([])
+      setStatusSourceVoters([])
+      rawVotersRef.current = []
+      setRawCount(0)
+      setTotal(0)
+      return
+    }
+
+    const controller = new AbortController()
+    setLoading(true)
+    setSelected(new Set())
+
+    const params: Record<string, any> = {
+      limit: 10000,
+      sort: 'address_asc',
+    }
+    if (filterBooths.size === 1) params.booth = [...filterBooths][0]
+    else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')
+    if (debouncedSearch) params.search = debouncedSearch
+    if (filterContactStatus) params.contact_status = filterContactStatus
+
+    apiClient.get('/voters/voters/', { params, signal: controller.signal })
+      .then(r => {
+        const apiCount = r.data.count ?? 0
+        const all: VoterRow[] = (r.data.results ?? []).map((v: any) => ({
+          id: v.id, name: v.name, voter_id: v.voter_id,
+          phone: v.phone ?? '', phone2: v.phone2 ?? '',
+          alt_phoneno2: v.alt_phoneno2 ?? '', alt_phoneno3: v.alt_phoneno3 ?? '',
+          address: v.address ?? '',
+          booth: v.booth, booth_name: v.booth_name ?? v.booth_number ?? '',
+          age: v.age, gender: v.gender,
+        }))
+        rawVotersRef.current = all
+        setStatusSourceVoters(all)
+        setRawCount(apiCount)
+        setVoters([])
+        setTotal(apiCount)
+      })
+      .catch(err => { if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast('Failed to load voters', 'error') })
+      .finally(() => setLoading(false))
+
+    return () => controller.abort()
+  }, [filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus])
+
+  const workflowFilteredVoters = filterWorkflowStatus
+    ? statusSourceVoters.filter(v => {
+        const status = workflowByVoterId.get(v.id)?.status ?? 'unassigned'
+        return status === filterWorkflowStatus
+      })
+    : []
+  const visibleVoters = filterWorkflowStatus
+    ? workflowFilteredVoters.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    : voters
   const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
   const isAllSelected  = selectableVoters.length > 0 && selectableVoters.every(v => selected.has(v.id))
   const toggleAll      = () => {
@@ -327,7 +400,7 @@ export default function AssignTelecalling() {
     if (!telecaller) { showToast('Telecaller not found — please re-select', 'error'); return }
 
     const date        = filterDate || new Date().toISOString().slice(0, 10)
-    const groupVoters = voters.filter(v => {
+    const groupVoters = visibleVoters.filter(v => {
       if (!selected.has(v.id)) return false
       return !(workflowByVoterRef.current.get(v.id)?.is_locked ?? false)
     })
@@ -381,9 +454,10 @@ export default function AssignTelecalling() {
   }
 
   /* ── Pagination ── */
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const effectiveTotal = filterWorkflowStatus ? workflowFilteredVoters.length : total
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / PAGE_SIZE))
   const pageStart  = (page - 1) * PAGE_SIZE + 1
-  const pageEnd    = Math.min(page * PAGE_SIZE, total)
+  const pageEnd    = Math.min(page * PAGE_SIZE, effectiveTotal)
   const goTo       = (p: number) => setPage(Math.max(1, Math.min(p, totalPages)))
 
   const pageNumbers: (number | '...')[] = (() => {
@@ -397,6 +471,7 @@ export default function AssignTelecalling() {
   })()
 
   const applyBooths  = (next: Set<number>) => { setFilterBooths(next); setPage(1) }
+  const applyWorkflowStatus = (value: StatusFilterValue) => { setFilterWorkflowStatus(value); setPage(1) }
   const applyContactStatus = (value: string) => { setFilterContactStatus(value); setPage(1) }
   const applyVolunteerRole = (value: string) => {
     setFilterVolunteerRole(value)
@@ -406,6 +481,7 @@ export default function AssignTelecalling() {
   const applySearch  = (v: string)          => { setFilterSearch(v) }
   const clearAll     = () => {
     setFilterBooths(new Set())
+    setFilterWorkflowStatus('')
     setFilterContactStatus('')
     setFilterDate('')
     setFilterTelecaller('')
@@ -415,7 +491,7 @@ export default function AssignTelecalling() {
     setAssignTo('')
     setPage(1)
   }
-  const hasFilters   = filterBooths.size > 0 || !!filterContactStatus || !!filterTelecaller || !!filterVolunteerRole || !!filterSearch
+  const hasFilters   = filterBooths.size > 0 || !!filterWorkflowStatus || !!filterContactStatus || !!filterTelecaller || !!filterVolunteerRole || !!filterSearch
   const assignName   = assignableVolunteers.find(t => String(t.id) === assignTo)?.name ?? ''
   const workflowCounts = [...workflowByVoterId.values()].reduce(
     (acc, info) => {
@@ -495,6 +571,20 @@ export default function AssignTelecalling() {
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Booth</label>
             <BoothMultiSelect booths={booths} selected={filterBooths} onChange={applyBooths} />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Status</label>
+            <select
+              value={filterWorkflowStatus}
+              onChange={e => applyWorkflowStatus(e.target.value as StatusFilterValue)}
+              className={`${selectCls} w-[180px]`}
+            >
+              <option value="">All</option>
+              {STATUS_FILTER_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -662,9 +752,9 @@ export default function AssignTelecalling() {
         </div>
 
         {/* Pagination */}
-        {!loading && total > 0 && (
+        {!loading && effectiveTotal > 0 && (
           <div className="flex items-center justify-between px-5 py-2 border-t border-border bg-surface-alt text-[11px] text-muted flex-wrap gap-2">
-            <span className="font-medium">{pageStart}–{pageEnd} <span className="font-normal">of {total.toLocaleString('en-IN')} voters</span></span>
+            <span className="font-medium">{pageStart}–{pageEnd} <span className="font-normal">of {effectiveTotal.toLocaleString('en-IN')} voters</span></span>
             <div className="flex items-center gap-1">
               {[{ label: '«', go: 1 }, { label: '‹', go: page - 1 }].map(({ label, go }) => (
                 <button key={label} onClick={() => goTo(go)} disabled={page === 1}

@@ -17,6 +17,7 @@ import MastersConfigPage from './pages/MastersConfigPage'
 import ReportsPage from './pages/ReportsPage'
 import OpinionPollPage from './pages/OpinionPollPage'
 import UserSettingsPage from './pages/UserSettingsPage'
+import TaskManagementDashboardPage from './pages/TaskManagementDashboardPage'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import PublicPollPage from './pages/PublicPollPage'
@@ -38,7 +39,8 @@ function AppShell() {
       tab.id === 'masters-config' ||
       tab.id === 'report' ||
       tab.id === 'opinion-poll' ||
-      tab.id === 'user-settings'
+      tab.id === 'user-settings' ||
+      tab.id === 'task-dashboard'
   )
 
   useEffect(() => {
@@ -89,6 +91,16 @@ function AppShell() {
         return <OpinionPollPage />
       case 'user-settings':
         return <UserSettingsPage />
+      case 'task-dashboard':
+        return (
+          <TaskManagementDashboardPage
+            onOpenTaskEntry={() => {
+              setActivePage('entry')
+              setActiveEntryTab('event')
+              window.scrollTo(0, 0)
+            }}
+          />
+        )
       default:
         return <DashboardPage />
     }

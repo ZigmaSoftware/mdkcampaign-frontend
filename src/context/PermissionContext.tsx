@@ -180,10 +180,16 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
     const base = fromBackend.length > 0 ? fromBackend : fallback
     const showUserSettings = canView('user-mgmt') || canView('permissions')
+    const showTaskDashboard = canView('event')
 
-    return showUserSettings
-      ? [...base, { id: 'user-settings', label: 'User Settings', icon: 'ph ph-user-gear' }]
-      : base
+    const tabs = [...base]
+    if (showUserSettings) {
+      tabs.push({ id: 'user-settings', label: 'User Settings', icon: 'ph ph-user-gear' })
+    }
+    if (showTaskDashboard) {
+      tabs.push({ id: 'task-dashboard', label: 'Task Dashboard', icon: 'ph ph-kanban' })
+    }
+    return tabs
   }, [mainScreens, canAccess, canView])
 
   return (

@@ -6,6 +6,7 @@ export type PageId =
   | 'report'
   | 'opinion-poll'
   | 'user-settings'
+  | 'task-dashboard'
 
 export type EntryModuleId =
   | 'voter'

@@ -206,6 +206,8 @@ export default function FeedbackReview() {
   const [filterBooth,        setFilterBooth]        = useState('')
   const [filterDateFrom,     setFilterDateFrom]     = useState('')
   const [filterDateTo,       setFilterDateTo]       = useState('')
+  const [page,               setPage]               = useState(1)
+  const PAGE_SIZE = 10
 
   const clearAdvancedFilters = () => {
     setFilterSupportLevel('')
@@ -334,6 +336,13 @@ export default function FeedbackReview() {
     telephonic:            surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required' && decisionMap.get(s.id)?.followup_type === 'telephonic').length,
     followup_not_required: surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required').length,
   }), [surveys, decisionMap])
+
+  useEffect(() => {
+    setPage(1)
+  }, [
+    filterTab, filterTelecaller, search, filterSupportLevel, filterParty,
+    filterBlock, filterUnion, filterPanchayat, filterBooth, filterDateFrom, filterDateTo,
+  ])
 
   /* ── Action handler ── */
   const handleAction = async (
@@ -576,6 +585,22 @@ export default function FeedbackReview() {
   const telephonicReq    = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'telephonic'    })
   const followupReqOther = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && !d?.followup_type                   })
   const followupNotReq   = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
+  const pagedSurveys     = filteredSurveys.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pagedPending     = pagedSurveys.filter(s => !decisionMap.has(s.id))
+  const pagedFieldSurveyReq = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'field_survey' })
+  const pagedTelephonicReq  = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'telephonic' })
+  const pagedFollowupReqOther = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && !d?.followup_type })
+  const pagedFollowupNotReq = pagedSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
+  const totalPages      = Math.max(1, Math.ceil(filteredSurveys.length / PAGE_SIZE))
+  const pageNums: (number | '...')[] = (() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
+    const nums: (number | '...')[] = [1]
+    if (page > 3) nums.push('...')
+    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) nums.push(i)
+    if (page < totalPages - 2) nums.push('...')
+    nums.push(totalPages)
+    return nums
+  })()
   const timelineEventLabel = (eventType: string) => {
     if (eventType === 'telephonic_assignment') return 'Telephonic Assignment'
     if (eventType === 'telephonic_entry') return 'Telephonic Entry'
@@ -845,43 +870,85 @@ export default function FeedbackReview() {
         ) : (
           <>
             {/* ── Pending Review ── */}
-            {(filterTab === 'all' || filterTab === 'pending') && pending.length > 0 && (
+            {(filterTab === 'all' || filterTab === 'pending') && pagedPending.length > 0 && (
               <>
                 <SectionLabel icon="ph ph-clock text-[13px] text-gray-500" label="Pending Review" count={pending.length} color="bg-gray-50 text-gray-600" />
-                {pending.map(s => <SurveyRow key={s.id} survey={s} />)}
+                {pagedPending.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
 
             {/* ── Field Survey Required ── */}
-            {(filterTab === 'all' || filterTab === 'followup_required' || filterTab === 'field_survey') && fieldSurveyReq.length > 0 && (
+            {(filterTab === 'all' || filterTab === 'followup_required' || filterTab === 'field_survey') && pagedFieldSurveyReq.length > 0 && (
               <>
                 <SectionLabel icon="ph ph-map-trifold text-[13px] text-amber-600" label="Field Survey Required" count={fieldSurveyReq.length} color="bg-amber-50 text-amber-700" />
-                {fieldSurveyReq.map(s => <SurveyRow key={s.id} survey={s} />)}
+                {pagedFieldSurveyReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
 
             {/* ── Telephonic Required ── */}
-            {(filterTab === 'all' || filterTab === 'followup_required' || filterTab === 'telephonic') && telephonicReq.length > 0 && (
+            {(filterTab === 'all' || filterTab === 'followup_required' || filterTab === 'telephonic') && pagedTelephonicReq.length > 0 && (
               <>
                 <SectionLabel icon="ph ph-phone text-[13px] text-blue-600" label="Telephonic Required" count={telephonicReq.length} color="bg-blue-50 text-blue-700" />
-                {telephonicReq.map(s => <SurveyRow key={s.id} survey={s} />)}
+                {pagedTelephonicReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
 
             {/* ── Followup Required (no type — legacy records) ── */}
-            {(filterTab === 'all' || filterTab === 'followup_required') && followupReqOther.length > 0 && (
+            {(filterTab === 'all' || filterTab === 'followup_required') && pagedFollowupReqOther.length > 0 && (
               <>
                 <SectionLabel icon="ph ph-arrow-clockwise text-[13px] text-orange-500" label="Followup Required" count={followupReqOther.length} color="bg-orange-50 text-orange-600" />
-                {followupReqOther.map(s => <SurveyRow key={s.id} survey={s} />)}
+                {pagedFollowupReqOther.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
 
             {/* ── Followup Not Required ── */}
-            {(filterTab === 'all' || filterTab === 'followup_not_required') && followupNotReq.length > 0 && (
+            {(filterTab === 'all' || filterTab === 'followup_not_required') && pagedFollowupNotReq.length > 0 && (
               <>
                 <SectionLabel icon="ph ph-check-circle text-[13px] text-green-600" label="Followup Not Required" count={followupNotReq.length} color="bg-green-50 text-green-700" />
-                {followupNotReq.map(s => <SurveyRow key={s.id} survey={s} />)}
+                {pagedFollowupNotReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
+            )}
+
+            {filteredSurveys.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-alt">
+                <span className="text-[11px] text-muted">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredSurveys.length)} of {filteredSurveys.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
+                               hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <i className="ph ph-caret-left" />
+                  </button>
+
+                  {pageNums.map((n, i) =>
+                    n === '...'
+                      ? <span key={`ellipsis-${i}`} className="px-1 text-[11px] text-muted">…</span>
+                      : <button
+                          key={n}
+                          onClick={() => setPage(n)}
+                          className={`min-w-[28px] px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors
+                            ${page === n
+                              ? 'bg-navy text-white border-navy'
+                              : 'border-border text-muted hover:bg-border'}`}
+                        >
+                          {n}
+                        </button>
+                  )}
+
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
+                               hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <i className="ph ph-caret-right" />
+                  </button>
+                </div>
+              </div>
             )}
           </>
         )}

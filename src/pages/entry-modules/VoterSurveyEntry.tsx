@@ -10,6 +10,8 @@ import apiClient from '../../utils/api'
 import { exportToCsv } from '../../utils/exportCsv'
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
+type SupportLevel = 'positive' | 'negative' | 'neutral' | ''
+type ResponseStatus = 'not_reach' | 'no_answer' | 'need_followup' | ''
 
 function ToggleGroup({ label, value, onChange }: {
   label: string; value: YNS; onChange: (v: YNS) => void
@@ -27,6 +29,32 @@ function ToggleGroup({ label, value, onChange }: {
                   : 'bg-navy text-white border-navy shadow-sm'
                 : 'bg-white text-muted border-border hover:border-navy hover:text-navy'}`}>
             {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ChoiceToggleGroup<T extends string>({ value, onChange, options }: {
+  value: T | ''
+  onChange: (v: T | '') => void
+  options: { value: T; label: string; activeClass: string }[]
+}) {
+  return (
+    <div className="flex flex-col gap-[5px]">
+      <div className="flex gap-2 flex-wrap">
+        {options.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(value === opt.value ? '' : opt.value)}
+            className={`px-4 py-[7px] rounded-lg text-[12px] font-semibold border transition-all duration-150
+              ${value === opt.value
+                ? `${opt.activeClass} shadow-sm`
+                : 'bg-white text-muted border-border hover:border-navy hover:text-navy'}`}
+          >
+            {opt.label}
           </button>
         ))}
       </div>
@@ -144,6 +172,8 @@ export default function VoterSurveyEntry() {
   const [registered,       setRegistered]       = useState<YNS>('')
   const [awareOfCandidate, setAwareOfCandidate] = useState<YNS>('')
   const [likelyToVote,     setLikelyToVote]     = useState<YNS>('')
+  const [supportLevel,     setSupportLevel]     = useState<SupportLevel>('')
+  const [responseStatus,   setResponseStatus]   = useState<ResponseStatus>('')
 
   const pendingFill       = useRef<FieldSurveyRecord | null>(null)
   const selectedVoterRef  = useRef<FlatVoter | null>(null)
@@ -159,9 +189,7 @@ export default function VoterSurveyEntry() {
     gender:          useRef<HTMLSelectElement>(null),
     phone:           useRef<HTMLInputElement>(null),
     address:         useRef<HTMLInputElement>(null),
-    supportLevel:    useRef<HTMLSelectElement>(null),
     partyPref:       useRef<HTMLSelectElement>(null),
-    responseStatus:  useRef<HTMLSelectElement>(null),
     remarks:         useRef<HTMLTextAreaElement>(null),
   }
 
@@ -191,13 +219,13 @@ export default function VoterSurveyEntry() {
       if (r.gender.current)         r.gender.current.value         = toGenderDisplay(d.gender)
       if (r.phone.current)          r.phone.current.value          = d.phone             ?? ''
       if (r.address.current)        r.address.current.value        = d.address           ?? ''
-      if (r.supportLevel.current)   r.supportLevel.current.value   = d.support_level     ?? ''
       if (r.partyPref.current)      r.partyPref.current.value      = d.party_preference  ?? ''
-      if (r.responseStatus.current) r.responseStatus.current.value = d.response_status   ?? ''
       if (r.remarks.current)        r.remarks.current.value        = d.remarks           ?? ''
       setRegistered((d.is_registered as YNS) ?? '')
       setAwareOfCandidate((d.aware_of_candidate as YNS) ?? '')
       setLikelyToVote((d.likely_to_vote as YNS) ?? '')
+      setSupportLevel((d.support_level as SupportLevel) ?? '')
+      setResponseStatus((d.response_status as ResponseStatus) ?? '')
       pendingFill.current = null
     } else if (selectedVoterRef.current) {
       const v = selectedVoterRef.current
@@ -210,16 +238,21 @@ export default function VoterSurveyEntry() {
       if (r.gender.current)         r.gender.current.value     = toGenderDisplay(v.gender)
       if (r.phone.current)          r.phone.current.value      = v.phone ?? ''
       if (r.address.current)        r.address.current.value    = v.address ?? ''
-      if (r.supportLevel.current)   r.supportLevel.current.value   = ''
       if (r.partyPref.current)      r.partyPref.current.value      = ''
-      if (r.responseStatus.current) r.responseStatus.current.value = ''
       if (r.remarks.current)        r.remarks.current.value        = ''
       setRegistered(''); setAwareOfCandidate(''); setLikelyToVote('')
+      setSupportLevel(''); setResponseStatus('')
       selectedVoterRef.current = null
     }
   }, [fillKey, isFormOpen])
 
-  const resetToggles = () => { setRegistered(''); setAwareOfCandidate(''); setLikelyToVote('') }
+  const resetToggles = () => {
+    setRegistered('')
+    setAwareOfCandidate('')
+    setLikelyToVote('')
+    setSupportLevel('')
+    setResponseStatus('')
+  }
   const clear = () => {
     if (r.surveyDate.current)     r.surveyDate.current.value     = todayISO()
     if (r.booth.current)          r.booth.current.value          = ''
@@ -229,9 +262,7 @@ export default function VoterSurveyEntry() {
     if (r.gender.current)         r.gender.current.value         = ''
     if (r.phone.current)          r.phone.current.value          = ''
     if (r.address.current)        r.address.current.value        = ''
-    if (r.supportLevel.current)   r.supportLevel.current.value   = ''
     if (r.partyPref.current)      r.partyPref.current.value      = ''
-    if (r.responseStatus.current) r.responseStatus.current.value = ''
     if (r.remarks.current)        r.remarks.current.value        = ''
     resetToggles()
   }
@@ -249,9 +280,9 @@ export default function VoterSurveyEntry() {
       gender:             str(r.gender.current?.value),
       phone:              str(r.phone.current?.value),
       address:            str(r.address.current?.value),
-      support_level:      str(r.supportLevel.current?.value),
+      support_level:      supportLevel || undefined,
       party_preference:   str(r.partyPref.current?.value),
-      response_status:    str(r.responseStatus.current?.value),
+      response_status:    responseStatus || undefined,
       remarks:            str(r.remarks.current?.value),
       surveyed_by:        str(r.telecaller.current?.value),
       is_registered:      registered      || undefined,
@@ -700,8 +731,8 @@ export default function VoterSurveyEntry() {
             )}
           </div>
 
-          {(filterTelecaller || search) && (
-            <button onClick={() => { setFilterTelecaller(''); setSearch('') }}
+          {search && (
+            <button onClick={() => setSearch('')}
               className="flex items-center gap-1 px-3 py-[6px] rounded-lg border border-rose-200 bg-rose-50 text-rose-500 text-[11px] font-medium hover:bg-rose-100 transition-colors">
               <i className="ph ph-x text-[11px]" /> Clear
             </button>
@@ -879,20 +910,26 @@ export default function VoterSurveyEntry() {
         <div className="mt-4">
           <FormRow cols={2}>
             <FormGroup label="Voter Support Level">
-              <select ref={r.supportLevel} className={selectCls}>
-                <option value="">Select support level</option>
-                <option value="positive">Positive</option>
-                <option value="negative">Negative</option>
-                <option value="neutral">Neutral</option>
-              </select>
+              <ChoiceToggleGroup
+                value={supportLevel}
+                onChange={setSupportLevel}
+                options={[
+                  { value: 'positive', label: 'Positive', activeClass: 'bg-kampgreen text-white border-kampgreen' },
+                  { value: 'negative', label: 'Negative', activeClass: 'bg-kampr text-white border-kampr' },
+                  { value: 'neutral', label: 'Neutral', activeClass: 'bg-navy text-white border-navy' },
+                ]}
+              />
             </FormGroup>
             <FormGroup label="Response Status">
-              <select ref={r.responseStatus} className={selectCls}>
-                <option value="">Select status</option>
-                <option value="not_reach">Not Reach</option>
-                <option value="no_answer">No Answer</option>
-                <option value="need_followup">Need Followup</option>
-              </select>
+              <ChoiceToggleGroup
+                value={responseStatus}
+                onChange={setResponseStatus}
+                options={[
+                  { value: 'not_reach', label: 'Not Reach', activeClass: 'bg-kampr text-white border-kampr' },
+                  { value: 'no_answer', label: 'No Answer', activeClass: 'bg-saffron-dark text-white border-saffron-dark' },
+                  { value: 'need_followup', label: 'Need Followup', activeClass: 'bg-navy text-white border-navy' },
+                ]}
+              />
             </FormGroup>
           </FormRow>
           <div className="grid grid-cols-2 gap-4 mt-4">

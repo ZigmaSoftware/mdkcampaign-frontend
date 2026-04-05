@@ -7,6 +7,7 @@ export const TOP_NAV_TABS: { id: PageId; label: string; icon: string }[] = [
   { id: 'report',         label: 'Reports',       icon: 'ph ph-chart-bar'      },
   { id: 'opinion-poll',   label: 'Opinion Poll',  icon: 'ph ph-megaphone'      },
   { id: 'user-settings',  label: 'User Settings', icon: 'ph ph-user-gear'      },
+  { id: 'task-dashboard', label: 'Task Dashboard', icon: 'ph ph-kanban'        },
 ]
 
 export const ENTRY_TABS: { id: EntryModuleId; label: string; icon: string }[] = [

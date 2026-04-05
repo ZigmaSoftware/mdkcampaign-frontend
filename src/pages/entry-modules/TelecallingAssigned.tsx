@@ -27,6 +27,12 @@ interface Assignment {
   created_at:       string
 }
 
+function formatAssignedDateTime(assignment: Assignment) {
+  const time = assignment.created_at.match(/(\d{2}:\d{2}:\d{2})/)?.[1]
+  if (!time) return assignment.assigned_date
+  return `${assignment.assigned_date} ${time}`
+}
+
 /* ─── Print helpers ──────────────────────────────────────── */
 function esc(s: string | number | undefined) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -159,6 +165,8 @@ export default function TelecallingAssigned() {
   const [printingId,  setPrintingId]  = useState<number | null>(null)
   const [filterTelecaller, setFilterTelecaller] = useState('')
   const [filterDate, setFilterDate] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 10
 
   useEffect(() => {
     setLoading(true)
@@ -187,7 +195,22 @@ export default function TelecallingAssigned() {
     })
   }, [assignments, filterTelecaller, filterDate])
 
+  useEffect(() => {
+    setPage(1)
+  }, [filterTelecaller, filterDate])
+
   const totalVoters = filteredAssignments.reduce((s, a) => s + a.voters.length, 0)
+  const totalPages  = Math.max(1, Math.ceil(filteredAssignments.length / PAGE_SIZE))
+  const pagedAssignments = filteredAssignments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pageNums: (number | '...')[] = (() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
+    const nums: (number | '...')[] = [1]
+    if (page > 3) nums.push('...')
+    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) nums.push(i)
+    if (page < totalPages - 2) nums.push('...')
+    nums.push(totalPages)
+    return nums
+  })()
 
   /* Fetch fresh voter phone data, then open print window */
   const handlePrint = async (a: Assignment) => {
@@ -306,63 +329,107 @@ export default function TelecallingAssigned() {
             </p>
           </div>
         ) : (
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="bg-surface-alt border-b border-border text-left">
-                <th className="px-5 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">#</th>
-                <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Telecalling Person</th>
-                <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Voters Assigned</th>
-                <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Date</th>
-                <th className="px-4 py-[10px]" />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAssignments.map((a, idx) => (
-                <tr key={a.id} className="border-b border-border last:border-0 hover:bg-surface-alt transition-colors">
-                  <td className="px-5 py-3 text-muted">{idx + 1}</td>
-
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                        <i className="ph ph-phone-outgoing text-green-600 text-[13px]" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-heading">{a.telecaller_name}</p>
-                        {a.telecaller_phone && (
-                          <p className="text-[11px] text-muted">{a.telecaller_phone}</p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full
-                                     bg-green-100 text-green-700 text-[11px] font-bold">
-                      <i className="ph ph-users text-[11px]" />
-                      {a.voters.length} voters
-                    </span>
-                  </td>
-
-                  <td className="px-4 py-3 text-muted">{a.assigned_date}</td>
-
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handlePrint(a)}
-                      disabled={printingId === a.id}
-                      className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg
-                                 bg-navy text-white text-[11px] font-semibold
-                                 hover:bg-navy/90 transition-colors disabled:opacity-60"
-                    >
-                      {printingId === a.id
-                        ? <><i className="ph ph-spinner-gap animate-spin text-[13px]" />Loading…</>
-                        : <><i className="ph ph-printer text-[13px]" />Print</>
-                      }
-                    </button>
-                  </td>
+          <>
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="bg-surface-alt border-b border-border text-left">
+                  <th className="px-5 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">#</th>
+                  <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Telecalling Person</th>
+                  <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Voters Assigned</th>
+                  <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Date</th>
+                  <th className="px-4 py-[10px]" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pagedAssignments.map((a, idx) => (
+                  <tr key={a.id} className="border-b border-border last:border-0 hover:bg-surface-alt transition-colors">
+                    <td className="px-5 py-3 text-muted">{(page - 1) * PAGE_SIZE + idx + 1}</td>
+
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                          <i className="ph ph-phone-outgoing text-green-600 text-[13px]" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-heading">{a.telecaller_name}</p>
+                          {a.telecaller_phone && (
+                            <p className="text-[11px] text-muted">{a.telecaller_phone}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+                                       bg-green-100 text-green-700 text-[11px] font-bold">
+                        <i className="ph ph-users text-[11px]" />
+                        {a.voters.length} voters
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-3 text-muted">{formatAssignedDateTime(a)}</td>
+
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handlePrint(a)}
+                        disabled={printingId === a.id}
+                        className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg
+                                   bg-navy text-white text-[11px] font-semibold
+                                   hover:bg-navy/90 transition-colors disabled:opacity-60"
+                      >
+                        {printingId === a.id
+                          ? <><i className="ph ph-spinner-gap animate-spin text-[13px]" />Loading…</>
+                          : <><i className="ph ph-printer text-[13px]" />Print</>
+                        }
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {filteredAssignments.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-alt">
+                <span className="text-[11px] text-muted">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredAssignments.length)} of {filteredAssignments.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
+                               hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <i className="ph ph-caret-left" />
+                  </button>
+
+                  {pageNums.map((n, i) =>
+                    n === '...'
+                      ? <span key={`ellipsis-${i}`} className="px-1 text-[11px] text-muted">…</span>
+                      : <button
+                          key={n}
+                          onClick={() => setPage(n)}
+                          className={`min-w-[28px] px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors
+                            ${page === n
+                              ? 'bg-navy text-white border-navy'
+                              : 'border-border text-muted hover:bg-border'}`}
+                        >
+                          {n}
+                        </button>
+                  )}
+
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-medium text-muted
+                               hover:bg-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <i className="ph ph-caret-right" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

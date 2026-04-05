@@ -13,7 +13,8 @@ const isPageId = (id: string): id is PageId => (
   id === 'masters-config' ||
   id === 'report' ||
   id === 'opinion-poll' ||
-  id === 'user-settings'
+  id === 'user-settings' ||
+  id === 'task-dashboard'
 )
 
 export default function NavTabs({ activePage, onPageChange }: NavTabsProps) {

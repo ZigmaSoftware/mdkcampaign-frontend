@@ -2,6 +2,7 @@ import type { PageId, EntryModuleId, MasterModuleId } from '../types/nav.types'
 
 export const TOP_NAV_TABS: { id: PageId; label: string; icon: string }[] = [
   { id: 'dashboard',      label: 'Dashboard',    icon: 'ph ph-gauge'          },
+  { id: 'campaign-dashboard', label: 'Activity Dashboard', icon: 'ph ph-chart-pie-slice' },
   { id: 'entry',          label: 'Entry',        icon: 'ph ph-pencil-simple'  },
   { id: 'masters-config', label: 'Masters',       icon: 'ph ph-sliders'        },
   { id: 'report',         label: 'Reports',       icon: 'ph ph-chart-bar'      },

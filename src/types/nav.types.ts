@@ -1,5 +1,6 @@
 export type PageId =
   | 'dashboard'
+  | 'campaign-dashboard'
   | 'master'
   | 'entry'
   | 'masters-config'

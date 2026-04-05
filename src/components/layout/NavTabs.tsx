@@ -9,6 +9,7 @@ interface NavTabsProps {
 
 const isPageId = (id: string): id is PageId => (
   id === 'dashboard' ||
+  id === 'campaign-dashboard' ||
   id === 'entry' ||
   id === 'masters-config' ||
   id === 'report' ||

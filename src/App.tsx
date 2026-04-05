@@ -11,6 +11,7 @@ import NavTabs from './components/layout/NavTabs'
 import Footer from './components/layout/Footer'
 
 import DashboardPage from './pages/DashboardPage'
+import CampaignDashboardPage from './modules/dashboard/DashboardPage'
 import OverviewPage from './pages/OverviewPage'
 import EntryPage from './pages/EntryPage'
 import MastersConfigPage from './pages/MastersConfigPage'
@@ -24,17 +25,27 @@ import PublicPollPage from './pages/PublicPollPage'
 
 import type { PageId, EntryModuleId, MasterModuleId } from './types/nav.types'
 
+function pageFromPath(pathname: string): PageId | null {
+  if (pathname === '/dashboard' || pathname === '/activity-dashboard') return 'campaign-dashboard'
+  return null
+}
+
+function pathFromPage(pageId: PageId): string {
+  return pageId === 'campaign-dashboard' ? '/activity-dashboard' : '/'
+}
+
 function AppShell() {
   const { user, isAuthenticated, logout } = useAuthContext()
   const { topTabs, loaded } = usePermissions()
 
-  const [activePage,       setActivePage]       = useState<PageId>('dashboard')
+  const [activePage,       setActivePage]       = useState<PageId>(() => pageFromPath(window.location.pathname) ?? 'dashboard')
   const [activeEntryTab,   setActiveEntryTab]   = useState<EntryModuleId>('voter')
   const [activeMasterTab,  setActiveMasterTab]  = useState<MasterModuleId>('area')
   const [showSignup,       setShowSignup]       = useState(false)
   const visibleTopTabs = topTabs.filter(
     (tab): tab is (typeof tab & { id: PageId }) =>
       tab.id === 'dashboard' ||
+      tab.id === 'campaign-dashboard' ||
       tab.id === 'entry' ||
       tab.id === 'masters-config' ||
       tab.id === 'report' ||
@@ -50,6 +61,30 @@ function AppShell() {
     }
   }, [loaded, visibleTopTabs, activePage])
 
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const targetPath = pathFromPage(activePage)
+    if (window.location.pathname !== targetPath) {
+      window.history.replaceState({}, '', targetPath)
+    }
+  }, [activePage, isAuthenticated])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const mapped = pageFromPath(window.location.pathname)
+      if (mapped) {
+        setActivePage(mapped)
+        return
+      }
+      if (activePage === 'campaign-dashboard') {
+        setActivePage('dashboard')
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [activePage])
+
   // ── Public poll (no auth needed) ────────────────────────
   if (window.location.hash === '#modakurichi' || window.location.hash === '#poll' || window.location.hash === '#mkpoll') return <PublicPollPage />
 
@@ -62,6 +97,10 @@ function AppShell() {
   // ── Logged in → main app ────────────────────────────────
   const handlePageChange = (id: PageId) => {
     setActivePage(id)
+    const targetPath = pathFromPage(id)
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath)
+    }
     window.scrollTo(0, 0)
   }
 
@@ -69,6 +108,8 @@ function AppShell() {
     switch (activePage) {
       case 'dashboard':
         return <DashboardPage />
+      case 'campaign-dashboard':
+        return <CampaignDashboardPage />
       case 'master':
         return <OverviewPage />
       case 'entry':

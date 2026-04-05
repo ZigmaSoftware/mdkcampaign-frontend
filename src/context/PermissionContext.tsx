@@ -181,8 +181,15 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     const base = fromBackend.length > 0 ? fromBackend : fallback
     const showUserSettings = canView('user-mgmt') || canView('permissions')
     const showTaskDashboard = canView('event')
+    const showCampaignDashboard = canAccess('report')
 
     const tabs = [...base]
+    if (showCampaignDashboard) {
+      const analyticsTab = { id: 'campaign-dashboard', label: 'Activity Dashboard', icon: 'ph ph-chart-pie-slice' }
+      const reportIndex = tabs.findIndex(tab => tab.id === 'report')
+      if (reportIndex >= 0) tabs.splice(reportIndex + 1, 0, analyticsTab)
+      else tabs.push(analyticsTab)
+    }
     if (showUserSettings) {
       tabs.push({ id: 'user-settings', label: 'User Settings', icon: 'ph ph-user-gear' })
     }

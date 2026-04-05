@@ -23,6 +23,7 @@ interface InlineSurveyDraft {
   aware_of_candidate: YNS
   likely_to_vote: YNS
   party_preference: string
+  remarks: string
 }
 
 const EMPTY_INLINE_DRAFT: InlineSurveyDraft = {
@@ -31,6 +32,7 @@ const EMPTY_INLINE_DRAFT: InlineSurveyDraft = {
   aware_of_candidate: '',
   likely_to_vote: '',
   party_preference: '',
+  remarks: '',
 }
 
 function ToggleGroup({ label, value, onChange }: {
@@ -629,6 +631,7 @@ export default function VoterSurveyEntry() {
     support_level: draft.support_level || undefined,
     party_preference: draft.party_preference.trim() || undefined,
     response_status: draft.response_status || undefined,
+    remarks: draft.remarks.trim() || undefined,
     surveyed_by: voter.telecaller_name || undefined,
     aware_of_candidate: draft.aware_of_candidate || undefined,
     likely_to_vote: draft.likely_to_vote || undefined,
@@ -887,6 +890,17 @@ export default function VoterSurveyEntry() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="mt-3 flex flex-col gap-1.5">
+                <label className="text-[9px] font-bold text-navy uppercase tracking-[0.6px]">Remarks / Observations</label>
+                <textarea
+                  value={inlineDraft.remarks}
+                  disabled={isSaving}
+                  onChange={e => updateInlineDraft(voter, { remarks: e.target.value })}
+                  className={`${textareaCls} text-[11px] min-h-[70px] ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  placeholder="Type any remarks or observations..."
+                />
               </div>
 
               <div className="mt-2 text-[10px] text-orange-700/80 flex items-center gap-1.5">

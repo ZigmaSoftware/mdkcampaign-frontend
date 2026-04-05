@@ -13,6 +13,10 @@ import { exportToCsv } from '../../utils/exportCsv'
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 
+const PARTY_PREFERENCE_OPTIONS = [
+  'BJP', 'AIADMK', 'DMK', 'Congress', 'PMK', 'DMDK', 'TVK', 'Other', 'No Preference',
+] as const
+
 interface FeedbackDecision {
   survey: number
   action: 'followup_required' | 'followup_not_required'
@@ -311,6 +315,20 @@ export default function FieldActivityEntry() {
     masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
     masterApi.fetchParties().then(d => d && setMasterParties(d))
   }, [])
+
+  const partyOptions = useMemo<{ id: number; name: string; abbreviation?: string }[]>(() => {
+    if (masterParties.length === 0) {
+      return PARTY_PREFERENCE_OPTIONS.map((name, index) => ({
+        id: -(index + 1),
+        name,
+      }))
+    }
+
+    const names = new Set(masterParties.map(p => (p.name || '').trim().toLowerCase()))
+    return names.has('tvk')
+      ? masterParties
+      : [...masterParties, { id: -1, name: 'TVK', abbreviation: 'TVK' }]
+  }, [masterParties])
 
   /* ── Lookup maps ── */
   const boothPanchayatMap = useMemo(() => {
@@ -1023,15 +1041,15 @@ export default function FieldActivityEntry() {
             <select ref={r.partyPref} className={selectCls}>
               <option value="">Select party</option>
               {masterParties.length > 0
-                ? masterParties.map(p => (
+                ? partyOptions.map(p => (
                     <option key={p.id} value={p.name}>
                       {p.abbreviation ? `${p.abbreviation} — ${p.name}` : p.name}
                     </option>
                   ))
                 : <>
-                    <option>BJP</option><option>AIADMK</option><option>DMK</option>
-                    <option>Congress</option><option>PMK</option><option>DMDK</option>
-                    <option>Other</option><option>No Preference</option>
+                    {PARTY_PREFERENCE_OPTIONS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                   </>
               }
             </select>

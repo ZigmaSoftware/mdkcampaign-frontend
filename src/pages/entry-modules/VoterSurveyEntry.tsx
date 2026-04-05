@@ -14,7 +14,14 @@ type SupportLevel = 'positive' | 'negative' | 'neutral' | ''
 type ResponseStatus = 'not_reach' | 'no_answer' | 'need_followup' | 'answered' | 'wrong_number' | ''
 
 const PARTY_PREFERENCE_OPTIONS = [
-  'BJP', 'AIADMK', 'DMK', 'Congress', 'PMK', 'DMDK', 'Other', 'No Preference',
+  'BJP', 'AIADMK', 'DMK', 'Congress', 'PMK', 'DMDK', 'TVK', 'Other', 'No Preference',
+] as const
+
+const RESPONSE_STATUS_BUTTON_OPTIONS = [
+  { value: 'not_reach', label: 'Not Reach', activeClass: 'bg-kampr text-white border-kampr' },
+  { value: 'no_answer', label: 'No Ans', activeClass: 'bg-saffron-dark text-white border-saffron-dark' },
+  { value: 'need_followup', label: 'Followup', activeClass: 'bg-navy text-white border-navy' },
+  { value: 'wrong_number', label: 'Wrong Num', activeClass: 'bg-rose-600 text-white border-rose-600' },
 ] as const
 
 interface InlineSurveyDraft {
@@ -179,6 +186,11 @@ const responseLabel = (s?: string) => {
   if (s === 'wrong_number')  return 'Wrong Number'
   return s || ''
 }
+
+const genderLabel = (g?: string) =>
+  g === 'm' || g === 'Male' ? 'Male' :
+  g === 'f' || g === 'Female' ? 'Female' :
+  g === 'o' || g === 'Other' ? 'Other' : ''
 
 const sortText = (value?: string) => (value ?? '').trim().toLowerCase()
 const assignmentTimeFromValue = (assignment: Pick<TelecallingAssignment, 'assignment_time' | 'created_at'>) =>
@@ -738,13 +750,8 @@ export default function VoterSurveyEntry() {
     return nums
   })()
 
-  const genderLabel = (g?: string) =>
-    g === 'm' || g === 'Male' ? 'Male' :
-    g === 'f' || g === 'Female' ? 'Female' :
-    g === 'o' || g === 'Other' ? 'Other' : ''
-
   /* ── Voter row ── */
-  const VoterRow = ({ voter }: { voter: FlatVoter }) => {
+  const renderVoterRow = (voter: FlatVoter) => {
     const rec  = getRecordForVoter(voter)
     const done = !!rec
     const rowKey = getVoterRowKey(voter)
@@ -753,7 +760,7 @@ export default function VoterSurveyEntry() {
     const hasInlineSelections = Object.values(inlineDraft).some(value => String(value ?? '').trim() !== '')
 
     return (
-      <div className={`border-b border-border ${done ? 'bg-green-50/30' : ''}`}>
+      <div key={rowKey} className={`border-b border-border ${done ? 'bg-green-50/30' : ''}`}>
 
         {/* ── Main row ── */}
         <div className="flex items-center gap-3 px-5 py-3">
@@ -834,18 +841,12 @@ export default function VoterSurveyEntry() {
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[9px] font-bold text-navy uppercase tracking-[0.6px]">Response Status</label>
-                  <select
+                  <CompactChoiceToggleGroup
                     value={inlineDraft.response_status}
                     disabled={isSaving}
-                    onChange={e => updateInlineDraft(voter, { response_status: e.target.value as ResponseStatus })}
-                    className={`${selectCls} text-[11px] py-[7px] ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
-                  >
-                    <option value="">Select status</option>
-                    <option value="not_reach">Not Reach</option>
-                    <option value="no_answer">No Answer</option>
-                    <option value="need_followup">Need Followup</option>
-                    <option value="wrong_number">Wrong Number</option>
-                  </select>
+                    onChange={(value) => updateInlineDraft(voter, { response_status: value as ResponseStatus })}
+                    options={[...RESPONSE_STATUS_BUTTON_OPTIONS]}
+                  />
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -1145,9 +1146,7 @@ export default function VoterSurveyEntry() {
                   count={pendingVoters.length}
                   color="bg-orange-50 text-orange-600"
                 />
-                {pagedPending.map((voter, i) => (
-                  <VoterRow key={`p-${voter.telecaller_id}-${voter.id}-${i}`} voter={voter} />
-                ))}
+                {pagedPending.map(voter => renderVoterRow(voter))}
               </>
             )}
 
@@ -1160,9 +1159,7 @@ export default function VoterSurveyEntry() {
                   count={doneVoters.length}
                   color="bg-green-50 text-green-700"
                 />
-                {pagedDone.map((voter, i) => (
-                  <VoterRow key={`d-${voter.telecaller_id}-${voter.id}-${i}`} voter={voter} />
-                ))}
+                {pagedDone.map(voter => renderVoterRow(voter))}
               </>
             )}
 
@@ -1312,12 +1309,7 @@ export default function VoterSurveyEntry() {
               <ChoiceToggleGroup
                 value={responseStatus}
                 onChange={setResponseStatus}
-                options={[
-                  { value: 'not_reach', label: 'Not Reach', activeClass: 'bg-kampr text-white border-kampr' },
-                  { value: 'no_answer', label: 'No Answer', activeClass: 'bg-saffron-dark text-white border-saffron-dark' },
-                  { value: 'need_followup', label: 'Need Followup', activeClass: 'bg-navy text-white border-navy' },
-                  { value: 'wrong_number', label: 'Wrong Number', activeClass: 'bg-rose-600 text-white border-rose-600' },
-                ]}
+                options={[...RESPONSE_STATUS_BUTTON_OPTIONS]}
               />
             </FormGroup>
           </FormRow>

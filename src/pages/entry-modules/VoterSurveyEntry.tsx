@@ -135,7 +135,7 @@ const responseLabel = (s?: string) => {
 
 const sortText = (value?: string) => (value ?? '').trim().toLowerCase()
 const assignmentTimeFromValue = (assignment: Pick<TelecallingAssignment, 'assignment_time' | 'created_at'>) =>
-  assignment.assignment_time || assignment.created_at.match(/(\d{2}:\d{2})/)?.[1] || ''
+  assignment.assignment_time || assignment.created_at.match(/(\d{2}:\d{2}:\d{2})/)?.[1] || ''
 
 const flattenAssignments = (assignments: TelecallingAssignment[]): FlatVoter[] =>
   assignments.flatMap(a =>

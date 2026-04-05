@@ -463,11 +463,18 @@ export default function FieldActivityEntry() {
     if (editingId === null) return
     const str = (v?: string) => v?.trim() || undefined
     const volunteerName = str(selectedVolunteer?.label) ?? str(currentAssignedVolunteer)
-
     const original = records.find(rec => rec.id === editingId)
-    const payload: Partial<FieldSurveyRecord> = {
-      ...original,
+
+    const draft: Partial<FieldSurveyRecord> = {
+      ...(original?.voter != null ? { voter: original.voter } : {}),
       survey_date:        r.surveyDate.current?.value?.trim()     || todayISO(),
+      voter_name:         r.voterName.current?.value?.trim()      || original?.voter_name || '',
+      booth_no:           str(r.booth.current?.value),
+      block:              str(r.block.current?.value),
+      age:                r.age.current?.value ? Number(r.age.current.value) : undefined,
+      gender:             str(r.gender.current?.value),
+      phone:              str(r.phone.current?.value),
+      address:            str(r.address.current?.value),
       support_level:      str(r.supportLevel.current?.value),
       party_preference:   str(r.partyPref.current?.value),
       response_status:    str(r.responseStatus.current?.value),
@@ -476,9 +483,23 @@ export default function FieldActivityEntry() {
       likely_to_vote:     likelyToVote      || undefined,
       assigned_volunteer: str(volunteerName),
     }
+    const payload = original
+      ? { ...original, ...Object.fromEntries(Object.entries(draft).filter(([, value]) => value !== undefined)) }
+      : draft
 
     const updated = await updateFieldSurvey(editingId, payload)
     if (updated) {
+      const currentDecision = decisionBySurvey.get(editingId)
+      setDecisionBySurvey(prev => {
+        const next = new Map(prev)
+        next.set(editingId, {
+          survey: editingId,
+          action: 'followup_not_required',
+          followup_type: currentDecision?.followup_type ?? 'field_survey',
+        })
+        return next
+      })
+
       setRecords(prev => prev.map(rec => rec.id === editingId ? updated : rec))
       showToast('<i class="ph ph-check-circle"></i> Field survey updated!', '#138808')
       closeForm()

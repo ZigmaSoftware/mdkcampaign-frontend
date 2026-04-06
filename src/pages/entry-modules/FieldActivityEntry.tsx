@@ -108,6 +108,151 @@ const genderLabel = (g?: string) =>
   g === 'f' || g === 'Female' ? 'Female' :
   g === 'o' || g === 'Other'  ? 'Other'  : ''
 
+function esc(value: string | number | undefined | null) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function openFieldSurveyPrintWindow({
+  surveys,
+  getPanchayat,
+  getUnion,
+  filters,
+}: {
+  surveys: FieldSurveyRecord[]
+  getPanchayat: (survey: FieldSurveyRecord) => string | undefined
+  getUnion: (survey: FieldSurveyRecord) => string | undefined
+  filters: { status: string; booth: string; volunteer: string; search: string }
+}) {
+  const rows = surveys.map((survey, index) => {
+    const panchayat = getPanchayat(survey)
+    const union = getUnion(survey)
+    const location = [survey.block, panchayat, union].filter(Boolean).join(' / ')
+
+    return `
+      <tr class="survey-row">
+        <td>${index + 1}</td>
+        <td>
+          <div class="primary-text">${esc(survey.voter_name) || '—'}</div>
+          <div class="secondary-text">
+            ${genderLabel(survey.gender) ? esc(genderLabel(survey.gender)) : ''}
+            ${survey.age ? `${genderLabel(survey.gender) ? ' · ' : ''}${esc(survey.age)}` : ''}
+          </div>
+        </td>
+        <td>${esc(survey.phone) || '—'}</td>
+        <td>${esc(survey.booth_no) || '—'}</td>
+        <td>${esc(location) || '—'}</td>
+        <td>${esc(survey.assigned_volunteer) || '—'}</td>
+        <td>${esc(survey.address) || '—'}</td>
+        <td class="remarks-col">
+          <div class="two-col">
+            <div class="remark-group">
+              <div class="remark-label">Voter Support Level</div>
+              <label><input type="checkbox"> Positive</label>
+              <label><input type="checkbox"> Negative</label>
+              <label><input type="checkbox"> Neutral</label>
+            </div>
+            <div class="remark-group">
+              <div class="remark-label">Response Status</div>
+              <label><input type="checkbox"> Not Reach</label>
+              <label><input type="checkbox"> No Answer</label>
+              <label><input type="checkbox"> Need Followup</label>
+              <label><input type="checkbox"> Wrong Number</label>
+            </div>
+            <div class="remark-group">
+              <div class="remark-label">Aware of Candidate</div>
+              <label><input type="checkbox"> Yes</label>
+              <label><input type="checkbox"> No</label>
+              <label><input type="checkbox"> Not Sure</label>
+            </div>
+            <div class="remark-group">
+              <div class="remark-label">Likely to Vote</div>
+              <label><input type="checkbox"> Yes</label>
+              <label><input type="checkbox"> No</label>
+              <label><input type="checkbox"> Not Sure</label>
+            </div>
+          </div>
+          <div class="note-box">
+            <div class="remark-label">Remarks / Observations</div>
+            <div class="note-lines"></div>
+          </div>
+        </td>
+      </tr>
+    `
+  }).join('')
+
+  const activeFilters = [
+    filters.status && `Status: ${filters.status}`,
+    filters.booth && `Booth: ${filters.booth}`,
+    filters.volunteer && `Volunteer: ${filters.volunteer}`,
+    filters.search && `Search: ${filters.search}`,
+  ].filter(Boolean)
+
+  const win = window.open('', '_blank')
+  if (!win) return
+
+  win.document.write(`<!DOCTYPE html><html><head>
+    <title>Field Survey Print</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:11px;padding:24px;color:#1e293b}
+      h2{color:#0d2455;border-bottom:2px solid #FF9933;padding-bottom:6px;margin-bottom:4px}
+      .meta{font-size:10px;color:#64748b;margin-bottom:8px}
+      .filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
+      .filter-chip{padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;
+        font-size:10px;font-weight:600;border:1px solid #bfdbfe}
+      table{width:100%;border-collapse:collapse}
+      th{background:#0d2455;color:#fff;padding:7px 9px;text-align:left;font-size:10px}
+      td{padding:6px 9px;border-bottom:1px solid #e2e8f0;font-size:10px;vertical-align:top}
+      tr:nth-child(even) td{background:#f8faff}
+      .survey-row td{padding-top:10px;padding-bottom:14px}
+      .primary-text{font-weight:700;color:#0f172a}
+      .secondary-text{margin-top:4px;font-size:9px;color:#64748b}
+      .remarks-col{min-width:420px}
+      .two-col{display:grid;grid-template-columns:repeat(4, minmax(90px, 1fr));gap:10px}
+      .remark-group{display:flex;flex-direction:column;gap:3px}
+      .remark-label{font-size:9px;font-weight:700;color:#0d2455;text-transform:uppercase;
+        letter-spacing:0.5px;margin-bottom:3px;padding-bottom:2px;border-bottom:1px solid #e2e8f0}
+      label{display:flex;align-items:center;gap:5px;font-size:10px;cursor:pointer}
+      input[type=checkbox]{width:11px;height:11px;flex-shrink:0}
+      .note-box{margin-top:10px;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 10px;min-height:92px}
+      .note-lines{height:58px;background-image:repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 16px,
+        #dbeafe 16px,
+        #dbeafe 17px
+      )}
+      @media print{body{padding:16px}}
+    </style>
+  </head><body>
+    <h2>Field Survey</h2>
+    <p class="meta">
+      ${surveys.length} records
+      &middot; Printed: ${new Date().toLocaleString('en-IN')}
+    </p>
+    ${activeFilters.length ? `<div class="filters">${activeFilters.map(filter => `<span class="filter-chip">${esc(filter)}</span>`).join('')}</div>` : ''}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Voter Name</th>
+          <th>Phone</th>
+          <th>Booth</th>
+          <th>Location</th>
+          <th>Assigned Volunteer</th>
+          <th>Address</th>
+          <th class="remarks-col">Field Visit Notes</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </body></html>`)
+  win.document.close()
+  win.print()
+}
+
 function AsyncSearchSelect({
   value,
   onChange,
@@ -357,6 +502,7 @@ export default function FieldActivityEntry() {
 
   /* ── Filters ── */
   const [filterStatus,    setFilterStatus]    = useState<'all' | 'pending' | 'done'>('all')
+  const [filterBooth,     setFilterBooth]     = useState('')
   const [filterVolunteer, setFilterVolunteer] = useState('')
   const [search,          setSearch]          = useState('')
 
@@ -373,6 +519,9 @@ export default function FieldActivityEntry() {
     if (filterVolunteer) {
       list = list.filter(s => s.assigned_volunteer === filterVolunteer)
     }
+    if (filterBooth) {
+      list = list.filter(s => (s.booth_no ?? '').trim() === filterBooth)
+    }
     if (filterStatus === 'pending') {
       list = list.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
     }
@@ -380,7 +529,7 @@ export default function FieldActivityEntry() {
       list = list.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
     }
     return list
-  }, [fieldSurveys, search, filterVolunteer, filterStatus, decisionBySurvey])
+  }, [fieldSurveys, search, filterVolunteer, filterBooth, filterStatus, decisionBySurvey])
 
   const pendingList = filtered.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
   const completedList = filtered.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
@@ -391,16 +540,54 @@ export default function FieldActivityEntry() {
     return [...seen]
   }, [fieldSurveys])
 
+  const boothOptions = useMemo(() => {
+    const boothNameMap = new Map(masterBooths.map(booth => [booth.number, booth.name]))
+    const seen = new Set<string>()
+    fieldSurveys.forEach(survey => {
+      const booth = (survey.booth_no ?? '').trim()
+      if (booth) seen.add(booth)
+    })
+
+    return [...seen]
+      .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' }))
+      .map(booth => ({
+        value: booth,
+        label: boothNameMap.get(booth) ? `${booth} - ${boothNameMap.get(booth)}` : `Booth ${booth}`,
+      }))
+  }, [fieldSurveys, masterBooths])
+
   /* ── Pagination ── */
   const PAGE_SIZE = 10
   const [page, setPage] = useState(1)
-  useEffect(() => { setPage(1) }, [filterStatus, filterVolunteer, search])
+  useEffect(() => { setPage(1) }, [filterStatus, filterBooth, filterVolunteer, search])
 
   const activeList  = filterStatus === 'pending' ? pendingList : filterStatus === 'done' ? completedList : filtered
   const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
   const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const pagedPending = pagedList.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
   const pagedCompleted = pagedList.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
+
+  const handlePrint = () => {
+    if (!activeList.length) return
+    const boothLabel = boothOptions.find(option => option.value === filterBooth)?.label ?? filterBooth
+    const statusLabel = filterStatus === 'pending'
+      ? 'Not Yet Action Taken'
+      : filterStatus === 'done'
+        ? 'Action Taken'
+        : 'All'
+
+    openFieldSurveyPrintWindow({
+      surveys: activeList,
+      getPanchayat,
+      getUnion,
+      filters: {
+        status: statusLabel,
+        booth: boothLabel,
+        volunteer: filterVolunteer,
+        search: search.trim(),
+      },
+    })
+  }
 
   /* ── Form ── */
   const [isFormOpen,       setFormOpen]       = useState(false)
@@ -760,14 +947,25 @@ export default function FieldActivityEntry() {
             </div>
           </div>
           {fieldSurveys.length > 0 && (
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
-              title="Download all field survey records as CSV"
-            >
-              <i className="ph ph-file-csv text-[13px]" />
-              Export CSV
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrint}
+                disabled={activeList.length === 0}
+                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Print the current filtered field survey list"
+              >
+                <i className="ph ph-printer text-[13px]" />
+                Print
+              </button>
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
+                title="Download all field survey records as CSV"
+              >
+                <i className="ph ph-file-csv text-[13px]" />
+                Export CSV
+              </button>
+            </div>
           )}
         </div>
 
@@ -797,6 +995,17 @@ export default function FieldActivityEntry() {
             ))}
           </div>
 
+          {/* Booth filter */}
+          {boothOptions.length > 0 && (
+            <select value={filterBooth} onChange={e => setFilterBooth(e.target.value)}
+              className={`${selectCls} w-[190px]`}>
+              <option value="">All Booths</option>
+              {boothOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          )}
+
           {/* Volunteer filter */}
           {volunteerOptions.length > 0 && (
             <select value={filterVolunteer} onChange={e => setFilterVolunteer(e.target.value)}
@@ -820,8 +1029,8 @@ export default function FieldActivityEntry() {
             )}
           </div>
 
-          {(filterVolunteer || search) && (
-            <button onClick={() => { setFilterVolunteer(''); setSearch('') }}
+          {(filterBooth || filterVolunteer || search) && (
+            <button onClick={() => { setFilterBooth(''); setFilterVolunteer(''); setSearch('') }}
               className="flex items-center gap-1 px-3 py-[6px] rounded-lg border border-rose-200 bg-rose-50 text-rose-500 text-[11px] font-medium hover:bg-rose-100 transition-colors">
               <i className="ph ph-x text-[11px]" /> Clear
             </button>

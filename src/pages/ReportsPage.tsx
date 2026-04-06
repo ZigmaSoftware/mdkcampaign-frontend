@@ -4,8 +4,53 @@ import Badge from '../components/ui/Badge'
 import { useAnalyticsAPI } from '../hooks/useAnalyticsAPI'
 import type { WardStat, BoothStat, VolunteerInfo, VoterBasicInfo } from '../hooks/useAnalyticsAPI'
 import { useToast } from '../context/ToastContext'
+import SummaryCards from '../modules/dashboard/components/SummaryCards'
+import { getBoothRanking, getSummary, type BoothRankingRow, type DashboardKpis } from '../modules/dashboard/services/dashboardApi'
 
 const PAGE_SIZE = 10
+
+const EMPTY_ACTIVITY_KPIS: DashboardKpis = {
+  total_voters: 0,
+  surveyed_voters: 0,
+  total_surveyed: 0,
+  assigned_voters: 0,
+  coverage_pct: 0,
+  positive_pct: 0,
+  positive_percent: 0,
+  negative_risk_pct: 0,
+  not_reachable_pct: 0,
+  followup_pct: 0,
+  followup_not_required_pct: 0,
+  telecaller_count: 0,
+}
+
+function mapDashboardBoothToReportBooth(row: BoothRankingRow): BoothStat {
+  const surveyed = row.surveyed_voters || 0
+  const neutralPct = surveyed > 0 ? Math.round(((row.neutral || 0) * 1000) / surveyed) / 10 : 0
+
+  return {
+    id: row.id,
+    name: row.booth_name || '',
+    number: row.booth_number || '',
+    address: '',
+    constituency_name: null,
+    panchayat_name: row.panchayat || '',
+    union_name: row.union || '',
+    block_name: row.block || '',
+    total_voters: row.total_voters || 0,
+    voters_contacted: surveyed,
+    coverage_percentage: row.coverage_pct || 0,
+    volunteer_count: 0,
+    positive_pct: row.positive_pct || 0,
+    neutral_pct: neutralPct,
+    negative_pct: row.negative_pct || 0,
+    survey_count: surveyed,
+    survey_positive: row.positive || 0,
+    survey_neutral: row.neutral || 0,
+    survey_negative: row.negative || 0,
+    survey_coverage_pct: row.coverage_pct || 0,
+  }
+}
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 function pctColor(pct: number) {
@@ -261,10 +306,29 @@ const SENTIMENT_COLOR: Record<string, string> = {
 const POPUP_PAGE = 20
 
 /* ── Mini sentiment bar (contacted voters) ──────────────────────── */
-function SentimentBar({ pos, neu, neg }: { pos: number; neu: number; neg: number }) {
-  if (pos === 0 && neu === 0 && neg === 0) return <span className="text-muted text-[10px]">—</span>
+function SentimentBar({
+  pos,
+  neu,
+  neg,
+  posCount = 0,
+  neuCount = 0,
+  negCount = 0,
+}: {
+  pos: number
+  neu: number
+  neg: number
+  posCount?: number
+  neuCount?: number
+  negCount?: number
+}) {
+  if (posCount === 0 && neuCount === 0 && negCount === 0) return <span className="text-muted text-[10px]">—</span>
   return (
-    <div className="flex flex-col gap-[2px] min-w-[70px]">
+    <div className="flex flex-col gap-[3px] min-w-[118px]">
+      <div className="flex flex-wrap gap-[6px] text-[8.5px] font-bold">
+        <span className="text-kampgreen">P {posCount}</span>
+        <span className="text-saffron-dark">Neu {neuCount}</span>
+        <span className="text-kampr">Neg {negCount}</span>
+      </div>
       <div className="flex h-[5px] rounded overflow-hidden gap-[1px]">
         {pos > 0 && <div style={{ flex: pos }} className="bg-kampgreen rounded-l" />}
         {neu > 0 && <div style={{ flex: neu }} className="bg-saffron" />}
@@ -646,6 +710,16 @@ export default function ReportsPage() {
   const [unionFilter,     setUnionFilter]     = useState('')
   const [blockFilter,     setBlockFilter]     = useState('')
   const [boothFilter,     setBoothFilter]     = useState('')
+  const [activityKpis, setActivityKpis] = useState<DashboardKpis>(EMPTY_ACTIVITY_KPIS)
+  const [showActivityHighlights, setShowActivityHighlights] = useState(false)
+
+  const clearReportFilters = useCallback(() => {
+    setBlockFilter('')
+    setUnionFilter('')
+    setPanchayatFilter('')
+    setBoothFilter('')
+    setBoothSearch('')
+  }, [])
 
   const reload = () => {
     setLoad(true)
@@ -654,13 +728,48 @@ export default function ReportsPage() {
       .then(w => setVillages(w))
       .finally(() => setLoad(false))
     api.fetchBoothStats()
-      .then(b => setBooths(b))
+      .then(async b => {
+        if (Array.isArray(b) && b.length > 0) {
+          setBooths(b)
+          return
+        }
+
+        try {
+          const fallback = await getBoothRanking({ limit: 500 })
+          setBooths((fallback?.rows ?? []).map(mapDashboardBoothToReportBooth))
+        } catch {
+          setBooths([])
+        }
+      })
       .finally(() => setBoothLoad(false))
     api.fetchDashboardStats()
       .then(s => { if (s) setSurveyCount(s.surveys_conducted ?? null) })
   }
 
   useEffect(() => { reload() }, [])
+
+  useEffect(() => {
+    let ignore = false
+
+    getSummary({
+      block: blockFilter,
+      union: unionFilter,
+      panchayat: panchayatFilter,
+      booth: boothFilter,
+    })
+      .then(summary => {
+        if (ignore) return
+        setActivityKpis(summary?.kpis || EMPTY_ACTIVITY_KPIS)
+        setShowActivityHighlights(true)
+      })
+      .catch(() => {
+        if (ignore) return
+        setActivityKpis(EMPTY_ACTIVITY_KPIS)
+        setShowActivityHighlights(false)
+      })
+
+    return () => { ignore = true }
+  }, [blockFilter, unionFilter, panchayatFilter, boothFilter])
 
   const handleFixLinks = async () => {
     setFixing(true)
@@ -739,8 +848,29 @@ export default function ReportsPage() {
         : blockFilter
           ? boothData.filter(b => b.block_name === blockFilter)
           : boothData
-    return pool.sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0'))
+    return [...pool].sort((a, b) => parseInt(a.number || '0') - parseInt(b.number || '0'))
   }, [boothData, blockFilter, unionFilter, panchayatFilter])
+
+  useEffect(() => {
+    if (!unionFilter) return
+    if (uniqueUnions.includes(unionFilter)) return
+    setUnionFilter('')
+    setPanchayatFilter('')
+    setBoothFilter('')
+  }, [unionFilter, uniqueUnions])
+
+  useEffect(() => {
+    if (!panchayatFilter) return
+    if (uniquePanchayats.includes(panchayatFilter)) return
+    setPanchayatFilter('')
+    setBoothFilter('')
+  }, [panchayatFilter, uniquePanchayats])
+
+  useEffect(() => {
+    if (!boothFilter) return
+    if (availableBooths.some(b => String(b.id) === boothFilter)) return
+    setBoothFilter('')
+  }, [boothFilter, availableBooths])
 
   /* ── CSV exports ─────────────────────────────────────────────────── */
   const exportBooths = () => {
@@ -829,7 +959,7 @@ export default function ReportsPage() {
             </span>
           ))}
           <button
-            onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilter('') }}
+            onClick={clearReportFilters}
             className="ml-1 text-[9px] text-kampr hover:underline flex items-center gap-[3px]"
           >
             <i className="ph ph-x-circle" /> Reset
@@ -837,23 +967,26 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-[10px] mb-5">
-        {[
-          { label: 'Total Voters',    value: totalVoters.toLocaleString(),        color: '#0d2455' },
-          { label: 'Contacted',       value: totalSurveyed.toLocaleString(),      color: '#138808' },
-          { label: 'Coverage',        value: `${overallPct}%`,                   color: overallPct >= 70 ? '#138808' : '#FF9933' },
-          { label: 'Total Booths',    value: String(totalBooths),                 color: '#7c3aed' },
-          { label: 'Favourable',      value: totalFavourable.toLocaleString(),    color: '#138808' },
-          { label: 'Non-Favourable',  value: totalNonFavourable.toLocaleString(), color: '#dc2626' },
-          { label: 'Voter Surveys',   value: surveyCount !== null ? surveyCount.toLocaleString() : '—', color: '#0369a1' },
-        ].map(k => (
-          <div key={k.label} className="bg-surface rounded-[10px] px-[14px] py-3 shadow-card text-center">
-            <div className="font-inter text-[22px] font-extrabold" style={{ color: k.color }}>{k.value}</div>
-            <div className="text-[9px] text-muted uppercase tracking-[0.5px] mt-[3px]">{k.label}</div>
-          </div>
-        ))}
-      </div>
+      {showActivityHighlights ? (
+        <SummaryCards kpis={activityKpis} />
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-[10px] mb-5">
+          {[
+            { label: 'Total Voters',    value: totalVoters.toLocaleString(),        color: '#0d2455' },
+            { label: 'Contacted',       value: totalSurveyed.toLocaleString(),      color: '#138808' },
+            { label: 'Coverage',        value: `${overallPct}%`,                    color: overallPct >= 70 ? '#138808' : '#FF9933' },
+            { label: 'Total Booths',    value: String(totalBooths),                 color: '#7c3aed' },
+            { label: 'Favourable',      value: totalFavourable.toLocaleString(),    color: '#138808' },
+            { label: 'Non-Favourable',  value: totalNonFavourable.toLocaleString(), color: '#dc2626' },
+            { label: 'Voter Surveys',   value: surveyCount !== null ? surveyCount.toLocaleString() : '—', color: '#0369a1' },
+          ].map(k => (
+            <div key={k.label} className="bg-surface rounded-[10px] px-[14px] py-3 shadow-card text-center">
+              <div className="font-inter text-[22px] font-extrabold" style={{ color: k.color }}>{k.value}</div>
+              <div className="text-[9px] text-muted uppercase tracking-[0.5px] mt-[3px]">{k.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Booth-wise table card */}
       <div className="bg-surface rounded-card shadow-card overflow-hidden mb-5">
@@ -956,7 +1089,7 @@ export default function ReportsPage() {
             {/* Clear all filters */}
             {(blockFilter || unionFilter || panchayatFilter || boothFilter || boothSearch) && (
               <button
-                onClick={() => { setBlockFilter(''); setUnionFilter(''); setPanchayatFilter(''); setBoothFilter(''); setBoothSearch('') }}
+                onClick={clearReportFilters}
                 className="text-[10px] font-bold text-kampr flex items-center gap-1"
               >
                 <i className="ph ph-x-circle" /> Clear
@@ -986,7 +1119,7 @@ function BoothTable({
 }: {
   rows: BoothStat[]
   fetchVolunteers: (id: number) => Promise<VolunteerInfo[]>
-  fetchVoters: (id: number) => Promise<VoterBasicInfo[]>
+  fetchVoters: (id: number, options?: { contactedOnly?: boolean }) => Promise<VoterBasicInfo[]>
 }) {
   const [page, setPage]           = useState(1)
   const [sortKey, setSortKey]     = useState<BoothSortKey>('number')
@@ -1021,7 +1154,7 @@ function BoothTable({
     setVoterPopupContactedOnly(contactedOnly)
     setVoterLoad(true)
     setVoterList([])
-    fetchVoters(b.id)
+    fetchVoters(b.id, { contactedOnly })
       .then(v => setVoterList(Array.isArray(v) ? v : []))
       .catch(() => setVoterList([]))
       .finally(() => setVoterLoad(false))
@@ -1117,6 +1250,9 @@ function BoothTable({
                     pos={b.positive_pct ?? 0}
                     neu={b.neutral_pct  ?? 0}
                     neg={b.negative_pct ?? 0}
+                    posCount={b.survey_positive ?? 0}
+                    neuCount={b.survey_neutral ?? 0}
+                    negCount={b.survey_negative ?? 0}
                   />
                 </td>
                 <td className="text-center">

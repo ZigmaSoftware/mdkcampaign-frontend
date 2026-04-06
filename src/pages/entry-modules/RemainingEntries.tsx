@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { usePermissions } from '../../context/PermissionContext'
 import { useEntryStore } from '../../context/EntryStoreContext'
 import { useEntryModule } from '../../hooks/useEntryModule'
@@ -66,6 +66,11 @@ export function CampaignEntry() {
   const [activityTypes, setActivityTypes] = useState<CampaignActivityType[]>([])
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo,   setFilterDateTo]   = useState('')
+  const [filterActivityType, setFilterActivityType] = useState('')
+  const [filterBoothId, setFilterBoothId] = useState('')
+  const [filterOutcome, setFilterOutcome] = useState('')
+  const [filterVolunteerRoleId, setFilterVolunteerRoleId] = useState('')
+  const [filterVolunteerId, setFilterVolunteerId] = useState('')
   const [volunteerRoles,    setVolunteerRoles]    = useState<VolunteerRole[]>([])
   const [teamRoleId,        setTeamRoleId]        = useState('')
   const [teamVolunteerId,   setTeamVolunteerId]   = useState('')
@@ -332,12 +337,95 @@ export function CampaignEntry() {
     }
   }
 
-  const dateFiltered = em.filtered.filter(rec => {
+  const campaignActivityOptions = useMemo(() => {
+    const names = new Set<string>()
+    activityTypes.forEach(activity => {
+      const name = activity.name?.trim()
+      if (name) names.add(name)
+    })
+    em.records.forEach(record => {
+      const name = record.data?.type?.trim()
+      if (name) names.add(name)
+    })
+    return [...names].sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }))
+  }, [activityTypes, em.records])
+
+  const boothFilterOptions = useMemo(() => {
+    const mapped = new Map<string, string>()
+    em.records.forEach(record => {
+      const boothId = (record.data?.boothId || record.data?.booth || '').trim()
+      if (!boothId) return
+      const matchedBooth = booths.find(booth => String(booth.id) === boothId)
+      const label = matchedBooth ? `${matchedBooth.number} — ${matchedBooth.name}` : boothId
+      mapped.set(boothId, label)
+    })
+    return [...mapped.entries()]
+      .sort((left, right) => left[1].localeCompare(right[1], undefined, { numeric: true, sensitivity: 'base' }))
+      .map(([value, label]) => ({ value, label }))
+  }, [booths, em.records])
+
+  const outcomeOptions = useMemo(() => {
+    const values = new Set<string>(['Pending', 'Successful', 'Partial', 'Follow-up Needed', 'Not Available'])
+    em.records.forEach(record => {
+      const outcome = record.data?.outcome?.trim()
+      if (outcome) values.add(outcome)
+    })
+    return [...values]
+  }, [em.records])
+
+  const volunteerRoleFilterOptions = useMemo(() => {
+    const mapped = new Map<string, string>()
+    volunteerRoles.forEach(role => mapped.set(String(role.id), role.name))
+    em.records.forEach(record => {
+      const roleId = (record.data?.teamRole || '').trim()
+      const roleLabel = (record.data?.teamRoleLabel || '').trim()
+      if (roleId) {
+        mapped.set(roleId, roleLabel || mapped.get(roleId) || roleId)
+      }
+    })
+    return [...mapped.entries()]
+      .sort((left, right) => left[1].localeCompare(right[1], undefined, { sensitivity: 'base' }))
+      .map(([value, label]) => ({ value, label }))
+  }, [em.records, volunteerRoles])
+
+  const dateFiltered = useMemo(() => em.filtered.filter(rec => {
     const d = rec.data?.date || ''
     if (filterDateFrom && d < filterDateFrom) return false
     if (filterDateTo   && d > filterDateTo)   return false
     return true
-  })
+  }), [em.filtered, filterDateFrom, filterDateTo])
+
+  const preVolunteerFiltered = useMemo(() => dateFiltered.filter(record => {
+    if (filterActivityType && (record.data?.type || '') !== filterActivityType) return false
+    if (filterBoothId && (record.data?.boothId || record.data?.booth || '') !== filterBoothId) return false
+    if (filterOutcome && (record.data?.outcome || '') !== filterOutcome) return false
+    if (filterVolunteerRoleId && (record.data?.teamRole || '') !== filterVolunteerRoleId) return false
+    return true
+  }), [dateFiltered, filterActivityType, filterBoothId, filterOutcome, filterVolunteerRoleId])
+
+  const volunteerFilterOptions = useMemo(() => {
+    const mapped = new Map<string, string>()
+    preVolunteerFiltered.forEach(record => {
+      const volunteerId = (record.data?.team || '').trim()
+      if (!volunteerId) return
+      const volunteerLabel = (record.data?.teamLabel || '').trim() || `Volunteer #${volunteerId}`
+      mapped.set(volunteerId, volunteerLabel)
+    })
+    return [...mapped.entries()]
+      .sort((left, right) => left[1].localeCompare(right[1], undefined, { sensitivity: 'base' }))
+      .map(([value, label]) => ({ value, label }))
+  }, [preVolunteerFiltered])
+
+  useEffect(() => {
+    if (filterVolunteerId && !volunteerFilterOptions.some(option => option.value === filterVolunteerId)) {
+      setFilterVolunteerId('')
+    }
+  }, [filterVolunteerId, volunteerFilterOptions])
+
+  const filteredRecords = useMemo(() => preVolunteerFiltered.filter(record => {
+    if (filterVolunteerId && (record.data?.team || '') !== filterVolunteerId) return false
+    return true
+  }), [preVolunteerFiltered, filterVolunteerId])
 
   const teamVolunteerOptions = teamRoleVolunteers.map(v => {
     const name = v.user_name || `Volunteer #${v.id}`
@@ -406,7 +494,84 @@ export function CampaignEntry() {
               )}
             </div>
           </div>
-          <RecordList records={dateFiltered} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={canEdit('campaign') ? handleEdit : undefined} onDelete={canDelete('campaign') ? handleDelete : undefined} />
+          <div className="grid grid-cols-1 gap-3 mb-3 md:grid-cols-2 xl:grid-cols-5">
+            <select
+              value={filterActivityType}
+              onChange={e => setFilterActivityType(e.target.value)}
+              className={selectCls}
+            >
+              <option value="">All Campaign Activities</option>
+              {campaignActivityOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+
+            <select
+              value={filterBoothId}
+              onChange={e => setFilterBoothId(e.target.value)}
+              className={selectCls}
+            >
+              <option value="">All Booths</option>
+              {boothFilterOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={filterOutcome}
+              onChange={e => setFilterOutcome(e.target.value)}
+              className={selectCls}
+            >
+              <option value="">All Outcomes</option>
+              {outcomeOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+
+            <select
+              value={filterVolunteerRoleId}
+              onChange={e => {
+                setFilterVolunteerRoleId(e.target.value)
+                setFilterVolunteerId('')
+              }}
+              className={selectCls}
+            >
+              <option value="">All Volunteer Roles</option>
+              {volunteerRoleFilterOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={filterVolunteerId}
+              onChange={e => setFilterVolunteerId(e.target.value)}
+              className={selectCls}
+            >
+              <option value="">All Volunteers</option>
+              {volunteerFilterOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {(filterActivityType || filterBoothId || filterOutcome || filterVolunteerRoleId || filterVolunteerId) && (
+            <div className="flex items-center justify-end mb-3">
+              <button
+                onClick={() => {
+                  setFilterActivityType('')
+                  setFilterBoothId('')
+                  setFilterOutcome('')
+                  setFilterVolunteerRoleId('')
+                  setFilterVolunteerId('')
+                }}
+                className="text-xs text-saffron hover:text-navy font-semibold px-2 py-1 rounded"
+              >
+                Clear Additional Filters
+              </button>
+            </div>
+          )}
+
+          <RecordList records={filteredRecords} editingId={em.editingId} emptyMsg='No campaign activities logged yet. Click "Add Activity" to begin.' icon="ph ph-megaphone" iconBg="#fff3e0" iconColor="#e07010" onEdit={canEdit('campaign') ? handleEdit : undefined} onDelete={canDelete('campaign') ? handleDelete : undefined} />
         </div>
       </div>
       <EntryFormPanel id="campaign-form" title="Campaign Activity" icon="ph ph-megaphone" isOpen={em.isFormOpen} isEditing={em.isEditing} onClose={em.closeForm}>

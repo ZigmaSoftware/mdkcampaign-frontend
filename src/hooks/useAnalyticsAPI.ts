@@ -55,6 +55,7 @@ interface BoothStat {
   negative_pct?: number
   survey_count?: number
   survey_positive?: number
+  survey_neutral?: number
   survey_negative?: number
   survey_coverage_pct?: number
 }
@@ -109,7 +110,7 @@ interface UseAnalyticsAPIReturn {
   fetchWardStats: (constituencyId?: number) => Promise<WardStat[]>
   fetchBoothVolunteers: (boothId: number) => Promise<VolunteerInfo[]>
   fetchWardVolunteers: (wardId: number) => Promise<VolunteerInfo[]>
-  fetchBoothVoters: (boothId: number) => Promise<VoterBasicInfo[]>
+  fetchBoothVoters: (boothId: number, options?: { contactedOnly?: boolean }) => Promise<VoterBasicInfo[]>
   fixDataLinks: () => Promise<FixLinksResult | null>
 }
 
@@ -206,12 +207,15 @@ export function useAnalyticsAPI(): UseAnalyticsAPIReturn {
     }
   }, [])
 
-  const fetchBoothVoters = useCallback(async (boothId: number): Promise<VoterBasicInfo[]> => {
+  const fetchBoothVoters = useCallback(async (boothId: number, options?: { contactedOnly?: boolean }): Promise<VoterBasicInfo[]> => {
     try {
-      console.log('[fetchBoothVoters] Payload:', { booth_id: boothId })
+      console.log('[fetchBoothVoters] Payload:', { booth_id: boothId, contacted_only: !!options?.contactedOnly })
       const { data } = await apiClient.get<VoterBasicInfo[] | { results?: VoterBasicInfo[] }>(
         `/analytics/booth-voters/${boothId}/`,
-        { timeout: 90000 }
+        {
+          params: options?.contactedOnly ? { contacted_only: 1 } : undefined,
+          timeout: 90000,
+        }
       )
       if (Array.isArray(data)) return data
       if (data && Array.isArray(data.results)) return data.results
@@ -220,6 +224,7 @@ export function useAnalyticsAPI(): UseAnalyticsAPIReturn {
       const axiosErr = err as AxiosError<any>
       console.error('[fetchBoothVoters] Request failed:', {
         booth_id: boothId,
+        contacted_only: !!options?.contactedOnly,
         status: axiosErr.response?.status,
         data: axiosErr.response?.data,
       })

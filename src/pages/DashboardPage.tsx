@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Countdown from '../components/ui/Countdown'
 import StatCard from '../components/ui/StatCard'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
 import bjpLogo from '../assets/logo/logo.png'
 import profile from '../assets//pictures/kirthika.JPG.jpeg'
+import SummaryCards from '../modules/dashboard/components/SummaryCards'
+import { getSummary, type DashboardKpis } from '../modules/dashboard/services/dashboardApi'
 import {
   useDashboardData,
   getEventTypeBadge,
@@ -30,9 +32,43 @@ function PillarCard({ icon, value, label, sub, bg, border, valColor }: PillarPro
   )
 }
 
+const EMPTY_ACTIVITY_KPIS: DashboardKpis = {
+  total_voters: 0,
+  surveyed_voters: 0,
+  total_surveyed: 0,
+  assigned_voters: 0,
+  coverage_pct: 0,
+  positive_pct: 0,
+  positive_percent: 0,
+  negative_risk_pct: 0,
+  not_reachable_pct: 0,
+  followup_pct: 0,
+  followup_not_required_pct: 0,
+  telecaller_count: 0,
+}
 
 export default function DashboardPage() {
   const { tasks, events, analytics } = useDashboardData()
+  const [activityKpis, setActivityKpis] = useState<DashboardKpis>(EMPTY_ACTIVITY_KPIS)
+  const [showActivityHighlights, setShowActivityHighlights] = useState(false)
+
+  useEffect(() => {
+    let ignore = false
+
+    getSummary({})
+      .then(summary => {
+        if (ignore) return
+        setActivityKpis(summary?.kpis || EMPTY_ACTIVITY_KPIS)
+        setShowActivityHighlights(true)
+      })
+      .catch(() => {
+        if (ignore) return
+        setActivityKpis(EMPTY_ACTIVITY_KPIS)
+        setShowActivityHighlights(false)
+      })
+
+    return () => { ignore = true }
+  }, [])
 
   /* ── Task filters ── */
   const [taskStatusFilter,   setTaskStatusFilter]   = useState('')
@@ -223,17 +259,20 @@ export default function DashboardPage() {
       {/* ── MAIN CONTENT ────────────────────────────────────────────── */}
       <div className="max-w-[1440px] mx-auto px-6 py-5 md:px-[10px] sm:px-2">
 
-        {/* 8-stat row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-[10px] mb-5">
-          <StatCard label="Electorate"  value={totalVoters.toLocaleString('en-IN')}       sub="Registered voters"   color="n" />
-          <StatCard label="Booths"      value={String(totalBooths)}                        sub="Total booths"        color="s" />
-          <StatCard label="Coverage"    value={coverageStat}                               sub="Booths assigned"     color="g" progress={coverageProgress} />
-          <StatCard label="Volunteers"  value={activeVolunteers.toLocaleString('en-IN')}   sub="Active on ground"    color="n" />
-          <StatCard label="Contacted"   value={votersContacted.toLocaleString('en-IN')}    sub="Voters reached"      color="s" />
-          <StatCard label="Favourable"  value={favourablePct}                              sub="Win threshold: 50%"  color="g" progress={favourableProgress} />
-          <StatCard label="Undecided"   value={undecidedPct}                               sub="Persuadable"         color="r" />
-          <StatCard label="Campaign"      value={String(totalEvents)}                        sub="Total planned"       color="p" />
-        </div>
+        {showActivityHighlights ? (
+          <SummaryCards kpis={activityKpis} />
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-[10px] mb-5">
+            <StatCard label="Electorate"  value={totalVoters.toLocaleString('en-IN')}       sub="Registered voters"   color="n" />
+            <StatCard label="Booths"      value={String(totalBooths)}                        sub="Total booths"        color="s" />
+            <StatCard label="Coverage"    value={coverageStat}                               sub="Booths assigned"     color="g" progress={coverageProgress} />
+            <StatCard label="Volunteers"  value={activeVolunteers.toLocaleString('en-IN')}   sub="Active on ground"    color="n" />
+            <StatCard label="Contacted"   value={votersContacted.toLocaleString('en-IN')}    sub="Voters reached"      color="s" />
+            <StatCard label="Favourable"  value={favourablePct}                              sub="Win threshold: 50%"  color="g" progress={favourableProgress} />
+            <StatCard label="Undecided"   value={undecidedPct}                               sub="Persuadable"         color="r" />
+            <StatCard label="Campaign"    value={String(totalEvents)}                        sub="Total planned"       color="p" />
+          </div>
+        )}
 
         {/* 2-col grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

@@ -60,6 +60,9 @@ export default function UserEntryPage() {
   } = useUserAPI()
   const masterApi = useMasterAPI()
   const { canAdd, canEdit, canDelete } = usePermissions()
+  const canAddUser = canAdd('user') || canAdd('user-mgmt')
+  const canEditUser = canEdit('user') || canEdit('user-mgmt')
+  const canDeleteUser = canDelete('user') || canDelete('user-mgmt')
 
   const PAGE_SIZE = 10
 
@@ -260,7 +263,7 @@ export default function UserEntryPage() {
           <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
             <EntryListHeader
               title="Users" icon="ph ph-user-gear" count={users.length}
-              onAddNew={canAdd('user') ? () => { setEditingId(null); clear(); setFormOpen(true) } : undefined}
+              onAddNew={canAddUser ? () => { setEditingId(null); clear(); setFormOpen(true) } : undefined}
               addLabel="Add User"
             />
             <div className="px-[18px] py-[14px]">
@@ -361,14 +364,14 @@ export default function UserEntryPage() {
                             <p className="text-[11px] text-muted">@{u.username}{u.phone ? ` · ${u.phone}` : ''}{u.email ? ` · ${u.email}` : ''}</p>
                           </div>
                         </div>
-                        {(canEdit('user') || canDelete('user')) && (
+                        {(canEditUser || canDeleteUser) && (
                           <div className="flex gap-2">
-                            {canEdit('user') && (
+                            {canEditUser && (
                               <button onClick={() => handleEdit(u.id)} className="p-[7px] rounded-lg hover:bg-[#f0f4ff] text-navy transition-colors">
                                 <i className="ph ph-pencil text-[14px]" />
                               </button>
                             )}
-                            {canDelete('user') && (
+                            {canDeleteUser && (
                               <button
                                 onClick={() => handleDeactivateRequest(u)}
                                 disabled={u.id === currentUser?.id || u.role === 'admin'}

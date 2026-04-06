@@ -11,6 +11,13 @@ import { useToast } from '../../context/ToastContext'
 import { usePermissions } from '../../context/PermissionContext'
 import { exportToCsv } from '../../utils/exportCsv'
 
+interface ApiResponse<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 
 const PARTY_PREFERENCE_OPTIONS = [
@@ -21,6 +28,17 @@ interface FeedbackDecision {
   survey: number
   action: 'followup_required' | 'followup_not_required'
   followup_type?: 'telephonic' | 'field_survey'
+  date?: string
+}
+
+interface FieldFollowupCountSet {
+  all: number
+  pending: number
+  done: number
+}
+
+interface FieldFollowupRow extends FieldSurveyRecord {
+  decision?: FeedbackDecision | null
 }
 
 interface SearchOption {
@@ -126,62 +144,10 @@ function openFieldSurveyPrintWindow({
   getUnion: (survey: FieldSurveyRecord) => string | undefined
   filters: { status: string; booth: string; volunteer: string; search: string }
 }) {
-  const rows = surveys.map((survey, index) => {
-    const panchayat = getPanchayat(survey)
-    const union = getUnion(survey)
-    const location = [survey.block, panchayat, union].filter(Boolean).join(' / ')
-
-    return `
-      <tr class="survey-row">
-        <td>${index + 1}</td>
-        <td>
-          <div class="primary-text">${esc(survey.voter_name) || '—'}</div>
-          <div class="secondary-text">
-            ${genderLabel(survey.gender) ? esc(genderLabel(survey.gender)) : ''}
-            ${survey.age ? `${genderLabel(survey.gender) ? ' · ' : ''}${esc(survey.age)}` : ''}
-          </div>
-        </td>
-        <td>${esc(survey.phone) || '—'}</td>
-        <td>${esc(survey.booth_no) || '—'}</td>
-        <td>${esc(location) || '—'}</td>
-        <td>${esc(survey.assigned_volunteer) || '—'}</td>
-        <td>${esc(survey.address) || '—'}</td>
-        <td class="remarks-col">
-          <div class="two-col">
-            <div class="remark-group">
-              <div class="remark-label">Voter Support Level</div>
-              <label><input type="checkbox"> Positive</label>
-              <label><input type="checkbox"> Negative</label>
-              <label><input type="checkbox"> Neutral</label>
-            </div>
-            <div class="remark-group">
-              <div class="remark-label">Response Status</div>
-              <label><input type="checkbox"> Not Reach</label>
-              <label><input type="checkbox"> No Answer</label>
-              <label><input type="checkbox"> Need Followup</label>
-              <label><input type="checkbox"> Wrong Number</label>
-            </div>
-            <div class="remark-group">
-              <div class="remark-label">Aware of Candidate</div>
-              <label><input type="checkbox"> Yes</label>
-              <label><input type="checkbox"> No</label>
-              <label><input type="checkbox"> Not Sure</label>
-            </div>
-            <div class="remark-group">
-              <div class="remark-label">Likely to Vote</div>
-              <label><input type="checkbox"> Yes</label>
-              <label><input type="checkbox"> No</label>
-              <label><input type="checkbox"> Not Sure</label>
-            </div>
-          </div>
-          <div class="note-box">
-            <div class="remark-label">Remarks / Observations</div>
-            <div class="note-lines"></div>
-          </div>
-        </td>
-      </tr>
-    `
-  }).join('')
+  const pageSize = 5
+  const rowChunks = Array.from({ length: Math.ceil(surveys.length / pageSize) }, (_, chunkIndex) =>
+    surveys.slice(chunkIndex * pageSize, (chunkIndex + 1) * pageSize)
+  )
 
   const activeFilters = [
     filters.status && `Status: ${filters.status}`,
@@ -193,38 +159,135 @@ function openFieldSurveyPrintWindow({
   const win = window.open('', '_blank')
   if (!win) return
 
+  const tableHeader = `
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Voter Name</th>
+        <th>Phone</th>
+        <th>Booth</th>
+        <th>Location</th>
+        <th>Assigned Volunteer</th>
+        <th>Address</th>
+        <th class="remarks-col">Remarks</th>
+      </tr>
+    </thead>
+  `
+
+  const pageSections = rowChunks.map((chunk, chunkIndex) => {
+    const chunkRows = chunk.map((survey, rowIndex) => {
+      const index = chunkIndex * pageSize + rowIndex
+      const panchayat = getPanchayat(survey)
+      const union = getUnion(survey)
+      const location = [survey.block, panchayat, union].filter(Boolean).join(' / ')
+      const support = survey.support_level ?? ''
+      const response = survey.response_status ?? ''
+      const aware = survey.aware_of_candidate ?? ''
+      const likely = survey.likely_to_vote ?? ''
+      const partyPreference = survey.party_preference ?? ''
+      const remarks = survey.remarks ?? ''
+
+      return `
+        <tr class="survey-row">
+          <td>${index + 1}</td>
+          <td>
+            <div class="primary-text">${esc(survey.voter_name) || '—'}</div>
+            <div class="secondary-text">
+              ${genderLabel(survey.gender) ? esc(genderLabel(survey.gender)) : ''}
+              ${survey.age ? `${genderLabel(survey.gender) ? ' · ' : ''}${esc(survey.age)}` : ''}
+            </div>
+          </td>
+          <td>${esc(survey.phone) || '—'}</td>
+          <td>${esc(survey.booth_no) || '—'}</td>
+          <td>${esc(location) || '—'}</td>
+          <td>${esc(survey.assigned_volunteer) || '—'}</td>
+          <td>${esc(survey.address) || '—'}</td>
+          <td class="remarks-col">
+            <div class="two-col">
+              <div class="remark-group">
+                <div class="remark-label">Voter Support Level</div>
+                <label><input type="checkbox" ${support === 'positive' ? 'checked' : ''}> Positive</label>
+                <label><input type="checkbox" ${support === 'negative' ? 'checked' : ''}> Negative</label>
+                <label><input type="checkbox" ${support === 'neutral' ? 'checked' : ''}> Neutral</label>
+              </div>
+              <div class="remark-group">
+                <div class="remark-label">Response Status</div>
+                <label><input type="checkbox" ${response === 'not_reach' ? 'checked' : ''}> Not Reach</label>
+                <label><input type="checkbox" ${response === 'no_answer' ? 'checked' : ''}> No Answer</label>
+                <label><input type="checkbox" ${response === 'need_followup' ? 'checked' : ''}> Need Followup</label>
+                <label><input type="checkbox" ${response === 'wrong_number' ? 'checked' : ''}> Wrong Number</label>
+              </div>
+              <div class="remark-group">
+                <div class="remark-label">Aware of Candidate</div>
+                <label><input type="checkbox" ${aware === 'Yes' ? 'checked' : ''}> Yes</label>
+                <label><input type="checkbox" ${aware === 'No' ? 'checked' : ''}> No</label>
+                <label><input type="checkbox" ${aware === 'Not Sure' ? 'checked' : ''}> Not Sure</label>
+              </div>
+              <div class="remark-group">
+                <div class="remark-label">Likely to Vote</div>
+                <label><input type="checkbox" ${likely === 'Yes' ? 'checked' : ''}> Yes</label>
+                <label><input type="checkbox" ${likely === 'No' ? 'checked' : ''}> No</label>
+                <label><input type="checkbox" ${likely === 'Not Sure' ? 'checked' : ''}> Not Sure</label>
+              </div>
+            </div>
+            <div class="notes-row">
+              <div class="note-box compact-box">
+                <div class="remark-label">Party Preference</div>
+                <div class="note-text">${esc(partyPreference) || '—'}</div>
+              </div>
+              <div class="note-box">
+                <div class="remark-label">Remarks / Observations</div>
+                <div class="note-text">${esc(remarks) || '—'}</div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `
+    }).join('')
+
+    return `
+      <section class="print-page${chunkIndex < rowChunks.length - 1 ? ' page-break' : ''}">
+        <table>
+          ${tableHeader}
+          <tbody>${chunkRows}</tbody>
+        </table>
+      </section>
+    `
+  }).join('')
+
   win.document.write(`<!DOCTYPE html><html><head>
     <title>Field Survey Print</title>
     <style>
-      body{font-family:Arial,sans-serif;font-size:11px;padding:24px;color:#1e293b}
+      body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#1e293b}
       h2{color:#0d2455;border-bottom:2px solid #FF9933;padding-bottom:6px;margin-bottom:4px}
-      .meta{font-size:10px;color:#64748b;margin-bottom:8px}
+      .meta{font-size:11px;color:#64748b;margin-bottom:8px}
       .filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
       .filter-chip{padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;
-        font-size:10px;font-weight:600;border:1px solid #bfdbfe}
+        font-size:11px;font-weight:600;border:1px solid #bfdbfe}
       table{width:100%;border-collapse:collapse}
-      th{background:#0d2455;color:#fff;padding:7px 9px;text-align:left;font-size:10px}
-      td{padding:6px 9px;border-bottom:1px solid #e2e8f0;font-size:10px;vertical-align:top}
+      th{background:#0d2455;color:#fff;padding:7px 9px;text-align:left;font-size:11px}
+      td{padding:6px 9px;border-bottom:1px solid #e2e8f0;font-size:11px;vertical-align:top}
       tr:nth-child(even) td{background:#f8faff}
       .survey-row td{padding-top:10px;padding-bottom:14px}
       .primary-text{font-weight:700;color:#0f172a}
-      .secondary-text{margin-top:4px;font-size:9px;color:#64748b}
+      .secondary-text{margin-top:4px;font-size:10px;color:#64748b}
       .remarks-col{min-width:420px}
       .two-col{display:grid;grid-template-columns:repeat(4, minmax(90px, 1fr));gap:10px}
       .remark-group{display:flex;flex-direction:column;gap:3px}
-      .remark-label{font-size:9px;font-weight:700;color:#0d2455;text-transform:uppercase;
+      .remark-label{font-size:10px;font-weight:700;color:#0d2455;text-transform:uppercase;
         letter-spacing:0.5px;margin-bottom:3px;padding-bottom:2px;border-bottom:1px solid #e2e8f0}
-      label{display:flex;align-items:center;gap:5px;font-size:10px;cursor:pointer}
+      label{display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer}
       input[type=checkbox]{width:11px;height:11px;flex-shrink:0}
       .note-box{margin-top:10px;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 10px;min-height:92px}
-      .note-lines{height:58px;background-image:repeating-linear-gradient(
-        to bottom,
-        transparent 0,
-        transparent 16px,
-        #dbeafe 16px,
-        #dbeafe 17px
-      )}
-      @media print{body{padding:16px}}
+      .notes-row{display:grid;grid-template-columns:minmax(120px, 1fr) minmax(220px, 2fr);gap:10px;margin-top:10px}
+      .notes-row .note-box{margin-top:0}
+      .compact-box{min-height:unset}
+      .note-text{font-size:11px;line-height:1.5;min-height:48px;white-space:pre-wrap;word-break:break-word;color:#334155}
+      .print-page{margin-bottom:18px}
+      @media print{
+        body{padding:16px}
+        .page-break{break-after:page;page-break-after:always}
+      }
     </style>
   </head><body>
     <h2>Field Survey</h2>
@@ -233,24 +296,42 @@ function openFieldSurveyPrintWindow({
       &middot; Printed: ${new Date().toLocaleString('en-IN')}
     </p>
     ${activeFilters.length ? `<div class="filters">${activeFilters.map(filter => `<span class="filter-chip">${esc(filter)}</span>`).join('')}</div>` : ''}
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Voter Name</th>
-          <th>Phone</th>
-          <th>Booth</th>
-          <th>Location</th>
-          <th>Assigned Volunteer</th>
-          <th>Address</th>
-          <th class="remarks-col">Field Visit Notes</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    ${pageSections}
   </body></html>`)
   win.document.close()
   win.print()
+}
+
+async function fetchAllFieldFollowupRows(
+  params: Record<string, string | number> = {},
+): Promise<FieldFollowupRow[]> {
+  const batchSize = 500
+  const { data: firstPage } = await apiClient.get<ApiResponse<FieldFollowupRow>>(
+    '/activities/surveys/followup-list/',
+    { params: { ...params, limit: batchSize, offset: 0 } },
+  )
+
+  const firstResults = firstPage.results ?? []
+  const totalCount = firstPage.count ?? firstResults.length
+
+  if (!firstPage.next || firstResults.length >= totalCount) {
+    return firstResults
+  }
+
+  const offsets: number[] = []
+  for (let offset = batchSize; offset < totalCount; offset += batchSize) {
+    offsets.push(offset)
+  }
+
+  const remainingPages = await Promise.all(offsets.map(async offset => {
+    const { data } = await apiClient.get<ApiResponse<FieldFollowupRow>>(
+      '/activities/surveys/followup-list/',
+      { params: { ...params, limit: batchSize, offset } },
+    )
+    return data.results ?? []
+  }))
+
+  return firstResults.concat(...remainingPages)
 }
 
 function AsyncSearchSelect({
@@ -402,64 +483,78 @@ function AsyncSearchSelect({
    Main component
 ════════════════════════════════════════════════════════════ */
 export default function FieldActivityEntry() {
-  const { fetchFieldSurveys, updateFieldSurvey } = useEntryAPI()
+  const { updateFieldSurvey } = useEntryAPI()
   const masterApi = useMasterAPI()
   const { showToast } = useToast()
   const { canEdit } = usePermissions()
 
-  /* ── Data ── */
-  const [records,   setRecords]   = useState<FieldSurveyRecord[]>([])
-  const [fieldIds,  setFieldIds]  = useState<Set<number>>(new Set())   // survey IDs tracked in field flow
-  const [decisionBySurvey, setDecisionBySurvey] = useState<Map<number, FeedbackDecision>>(new Map())
+  const PAGE_SIZE = 10
+  const [page, setPage] = useState(1)
+  const [rows, setRows] = useState<FieldFollowupRow[]>([])
+  const [loadingRows, setLoadingRows] = useState(true)
+  const [totalRows, setTotalRows] = useState(0)
+  const [scopeCounts, setScopeCounts] = useState<FieldFollowupCountSet>({ all: 0, pending: 0, done: 0 })
+  const [filteredCounts, setFilteredCounts] = useState<FieldFollowupCountSet>({ all: 0, pending: 0, done: 0 })
+  const [volunteerOptions, setVolunteerOptions] = useState<string[]>([])
 
   /* ── Master data ── */
   const [masterBooths,     setMasterBooths]     = useState<{ id: number; number: string; name: string; panchayat_name?: string }[]>([])
   const [masterPanchayats, setMasterPanchayats] = useState<{ id: number; name: string; union_name?: string }[]>([])
   const [masterParties,    setMasterParties]    = useState<{ id: number; name: string; abbreviation?: string }[]>([])
 
+  /* ── Filters ── */
+  const [filterStatus,    setFilterStatus]    = useState<'all' | 'pending' | 'done'>('all')
+  const [filterBooth,     setFilterBooth]     = useState('')
+  const [filterVolunteer, setFilterVolunteer] = useState('')
+  const [search,          setSearch]          = useState('')
+
   useEffect(() => {
-    // Fetch all surveys
-    fetchFieldSurveys().then(res => { if (res) setRecords(res) })
-
-    // Build field-flow survey IDs + latest decision map.
-    Promise.allSettled([
-      apiClient.get('/activities/logs/', { params: { limit: 1000, category: 'field' } }),
-      apiClient.get('/telecalling/feedbacks/', { params: { limit: 1000 } }),
-    ]).then(([logsRes, decisionsRes]) => {
-      const ids = new Set<number>()
-
-      if (logsRes.status === 'fulfilled') {
-        const logs: { notes?: string }[] = logsRes.value.data.results ?? []
-        logs.forEach(log => {
-          const match = log.notes?.match(/\[survey_id:(\d+)\]/)
-          if (match) ids.add(parseInt(match[1]))
-        })
-      }
-
-      if (decisionsRes.status === 'fulfilled') {
-        const raw: FeedbackDecision[] = decisionsRes.value.data.results ?? []
-        const latestBySurvey = new Map<number, FeedbackDecision>()
-
-        raw.forEach(d => {
-          if (!latestBySurvey.has(d.survey)) {
-            latestBySurvey.set(d.survey, d)
-          }
-          if (d.followup_type === 'field_survey') {
-            ids.add(d.survey)
-          }
-        })
-
-        setDecisionBySurvey(latestBySurvey)
-      }
-
-      setFieldIds(ids)
-    })
-
-    // Master lookups
     masterApi.fetchBooths().then(d => d && setMasterBooths(d))
     masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
     masterApi.fetchParties().then(d => d && setMasterParties(d))
   }, [])
+
+  const reloadRows = useCallback((signal?: AbortSignal) => {
+    setLoadingRows(true)
+    const params: Record<string, string | number> = {
+      limit: PAGE_SIZE,
+      offset: (page - 1) * PAGE_SIZE,
+      status: filterStatus,
+    }
+    if (filterBooth) params.booth = filterBooth
+    if (filterVolunteer) params.volunteer = filterVolunteer
+    if (search.trim()) params.search = search.trim()
+
+    apiClient.get('/activities/surveys/followup-list/', { params, signal })
+      .then(response => {
+        const data = response.data as ApiResponse<FieldFollowupRow> & {
+          counts?: FieldFollowupCountSet
+          filtered_counts?: FieldFollowupCountSet
+          volunteers?: string[]
+        }
+        setRows(data.results ?? [])
+        setTotalRows(data.count ?? 0)
+        setScopeCounts(data.counts ?? { all: 0, pending: 0, done: 0 })
+        setFilteredCounts(data.filtered_counts ?? data.counts ?? { all: 0, pending: 0, done: 0 })
+        setVolunteerOptions(data.volunteers ?? [])
+      })
+      .catch(err => {
+        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return
+        setRows([])
+        setTotalRows(0)
+        setScopeCounts({ all: 0, pending: 0, done: 0 })
+        setFilteredCounts({ all: 0, pending: 0, done: 0 })
+        setVolunteerOptions([])
+        showToast('Failed to load field survey list', 'error')
+      })
+      .finally(() => setLoadingRows(false))
+  }, [PAGE_SIZE, page, filterStatus, filterBooth, filterVolunteer, search, showToast])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    reloadRows(controller.signal)
+    return () => controller.abort()
+  }, [reloadRows])
 
   const partyOptions = useMemo<{ id: number; name: string; abbreviation?: string }[]>(() => {
     if (masterParties.length === 0) {
@@ -494,90 +589,40 @@ export default function FieldActivityEntry() {
     return pan ? panchayatUnionMap.get(pan) : undefined
   }
 
-  /* ── Only show surveys flagged as field_survey ── */
-  const fieldSurveys = useMemo(
-    () => records.filter(r => fieldIds.has(r.id)),
-    [records, fieldIds]
-  )
-
-  /* ── Filters ── */
-  const [filterStatus,    setFilterStatus]    = useState<'all' | 'pending' | 'done'>('all')
-  const [filterBooth,     setFilterBooth]     = useState('')
-  const [filterVolunteer, setFilterVolunteer] = useState('')
-  const [search,          setSearch]          = useState('')
-
-  const filtered = useMemo(() => {
-    let list = fieldSurveys
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(s =>
-        s.voter_name?.toLowerCase().includes(q) ||
-        s.booth_no?.includes(q) ||
-        s.block?.toLowerCase().includes(q)
-      )
-    }
-    if (filterVolunteer) {
-      list = list.filter(s => s.assigned_volunteer === filterVolunteer)
-    }
-    if (filterBooth) {
-      list = list.filter(s => (s.booth_no ?? '').trim() === filterBooth)
-    }
-    if (filterStatus === 'pending') {
-      list = list.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
-    }
-    if (filterStatus === 'done') {
-      list = list.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
-    }
-    return list
-  }, [fieldSurveys, search, filterVolunteer, filterBooth, filterStatus, decisionBySurvey])
-
-  const pendingList = filtered.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
-  const completedList = filtered.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
-
-  const volunteerOptions = useMemo(() => {
-    const seen = new Set<string>()
-    fieldSurveys.forEach(s => { if (s.assigned_volunteer) seen.add(s.assigned_volunteer) })
-    return [...seen]
-  }, [fieldSurveys])
-
   const boothOptions = useMemo(() => {
-    const boothNameMap = new Map(masterBooths.map(booth => [booth.number, booth.name]))
-    const seen = new Set<string>()
-    fieldSurveys.forEach(survey => {
-      const booth = (survey.booth_no ?? '').trim()
-      if (booth) seen.add(booth)
-    })
-
-    return [...seen]
-      .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' }))
+    return [...masterBooths]
+      .sort((left, right) => left.number.localeCompare(right.number, undefined, { numeric: true, sensitivity: 'base' }))
       .map(booth => ({
-        value: booth,
-        label: boothNameMap.get(booth) ? `${booth} - ${boothNameMap.get(booth)}` : `Booth ${booth}`,
+        value: booth.number,
+        label: `${booth.number} - ${booth.name}`,
       }))
-  }, [fieldSurveys, masterBooths])
+  }, [masterBooths])
 
   /* ── Pagination ── */
-  const PAGE_SIZE = 10
-  const [page, setPage] = useState(1)
   useEffect(() => { setPage(1) }, [filterStatus, filterBooth, filterVolunteer, search])
 
-  const activeList  = filterStatus === 'pending' ? pendingList : filterStatus === 'done' ? completedList : filtered
-  const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
-  const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const pagedPending = pagedList.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required')
-  const pagedCompleted = pagedList.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required')
+  const activeList = rows
+  const totalPages  = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
+  const pagedPending = rows.filter(s => s.decision?.action !== 'followup_not_required')
+  const pagedCompleted = rows.filter(s => s.decision?.action === 'followup_not_required')
 
-  const handlePrint = () => {
-    if (!activeList.length) return
+  const handlePrint = async () => {
+    if (!filteredCounts.all) return
     const boothLabel = boothOptions.find(option => option.value === filterBooth)?.label ?? filterBooth
     const statusLabel = filterStatus === 'pending'
       ? 'Not Yet Action Taken'
       : filterStatus === 'done'
         ? 'Action Taken'
         : 'All'
+    const surveys = await fetchAllFieldFollowupRows({
+      ...(filterStatus ? { status: filterStatus } : {}),
+      ...(filterBooth ? { booth: filterBooth } : {}),
+      ...(filterVolunteer ? { volunteer: filterVolunteer } : {}),
+      ...(search.trim() ? { search: search.trim() } : {}),
+    })
 
     openFieldSurveyPrintWindow({
-      surveys: activeList,
+      surveys,
       getPanchayat,
       getUnion,
       filters: {
@@ -666,7 +711,7 @@ export default function FieldActivityEntry() {
     if (editingId === null) return
     const str = (v?: string) => v?.trim() || undefined
     const volunteerName = str(selectedVolunteer?.label) ?? str(currentAssignedVolunteer)
-    const original = records.find(rec => rec.id === editingId)
+    const original = rows.find(rec => rec.id === editingId)
 
     const draft: Partial<FieldSurveyRecord> = {
       ...(original?.voter != null ? { voter: original.voter } : {}),
@@ -692,18 +737,7 @@ export default function FieldActivityEntry() {
 
     const updated = await updateFieldSurvey(editingId, payload)
     if (updated) {
-      const currentDecision = decisionBySurvey.get(editingId)
-      setDecisionBySurvey(prev => {
-        const next = new Map(prev)
-        next.set(editingId, {
-          survey: editingId,
-          action: 'followup_not_required',
-          followup_type: currentDecision?.followup_type ?? 'field_survey',
-        })
-        return next
-      })
-
-      setRecords(prev => prev.map(rec => rec.id === editingId ? updated : rec))
+      reloadRows()
       showToast('<i class="ph ph-check-circle"></i> Field survey updated!', '#138808')
       closeForm()
     } else {
@@ -740,20 +774,21 @@ export default function FieldActivityEntry() {
   }, [selectedVolunteerRole])
 
   /* ── Survey row ── */
-  const SurveyRow = ({ survey }: { survey: FieldSurveyRecord }) => {
+  const SurveyRow = ({ survey }: { survey: FieldFollowupRow }) => {
     const pan       = getPanchayat(survey)
     const uni       = getUnion(survey)
-    const completed = decisionBySurvey.get(survey.id)?.action === 'followup_not_required'
+    const completed = survey.decision?.action === 'followup_not_required'
+    const locationTrail = [survey.block, pan, uni].filter(Boolean).join(' / ')
 
     return (
       <div className={`border-b border-border ${completed ? 'bg-green-50/30' : ''}`}>
 
         {/* Main row */}
-        <div className="flex items-start gap-3 px-5 py-3">
+        <div className="flex items-center gap-3 px-5 py-3">
 
           {/* Avatar */}
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[13px] font-bold mt-0.5
-            ${completed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[13px] font-bold
+            ${completed ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}`}>
             {completed
               ? <i className="ph ph-check-circle text-[18px]" />
               : <span>{survey.voter_name?.charAt(0)?.toUpperCase() ?? '?'}</span>
@@ -762,80 +797,63 @@ export default function FieldActivityEntry() {
 
           {/* Voter info */}
           <div className="flex-1 min-w-0">
-            {/* Name + badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] font-semibold text-heading">{survey.voter_name}</span>
+              {survey.phone && <span className="text-[10px] text-muted">· {survey.phone}</span>}
               {survey.booth_no && (
-                <span className="px-1.5 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-medium">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-navy/10 text-navy font-medium">
                   Booth {survey.booth_no}
                 </span>
               )}
-              {survey.support_level && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${supportColor(survey.support_level)}`}>
-                  {survey.support_level}
-                </span>
-              )}
-              {survey.party_preference && (
-                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-medium border border-blue-100">
-                  <i className="ph ph-flag mr-0.5" />{survey.party_preference}
-                </span>
-              )}
-              {responseLabel(survey.response_status) && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${responseColor(survey.response_status)}`}>
-                  {responseLabel(survey.response_status)}
-                </span>
-              )}
             </div>
 
-            {/* Location hierarchy */}
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {survey.block && (
-                <span className="flex items-center gap-1 text-[10px] text-muted">
-                  <i className="ph ph-squares-four text-[11px] text-navy/40" />
-                  <span className="font-medium text-navy/70">Block:</span> {survey.block}
-                </span>
-              )}
-              {pan && (
-                <span className="flex items-center gap-1 text-[10px] text-muted">
-                  <i className="ph ph-tree-structure text-[11px] text-navy/40" />
-                  <span className="font-medium text-navy/70">Panchayat:</span> {pan}
-                </span>
-              )}
-              {uni && (
-                <span className="flex items-center gap-1 text-[10px] text-muted">
-                  <i className="ph ph-buildings text-[11px] text-navy/40" />
-                  <span className="font-medium text-navy/70">Union:</span> {uni}
-                </span>
-              )}
-            </div>
-
-            {/* Voter details */}
             <div className="flex items-center gap-3 mt-0.5 flex-wrap text-[10px] text-muted">
               {genderLabel(survey.gender) && (
                 <span>{genderLabel(survey.gender)}{survey.age ? `, ${survey.age}` : ''}</span>
               )}
-              {survey.phone && <span><i className="ph ph-phone mr-0.5" />{survey.phone}</span>}
+              {survey.surveyed_by && (
+                <span className="hidden sm:inline">
+                  <i className="ph ph-headset mr-0.5" />{survey.surveyed_by}
+                </span>
+              )}
               {survey.survey_date && <span><i className="ph ph-calendar mr-0.5" />{survey.survey_date}</span>}
               {survey.assigned_volunteer && (
-                <span className="flex items-center gap-1 text-green-700 font-medium">
-                  <i className="ph ph-user-check text-[11px]" />
+                <span className="text-green-700 font-medium">
+                  <i className="ph ph-user-check mr-0.5 text-[11px]" />
                   {survey.assigned_volunteer}
                 </span>
               )}
             </div>
+
+            {survey.address && (
+              <div className="mt-1 text-[10px] text-muted truncate">
+                <i className="ph ph-map-pin mr-1" />
+                {survey.address}
+              </div>
+            )}
+
+            {locationTrail && (
+              <div className="mt-1 text-[10px] text-muted truncate">
+                <i className="ph ph-tree-structure mr-1" />
+                {locationTrail}
+              </div>
+            )}
           </div>
 
-          {/* Action button */}
-          {canEdit('field-activity') && (
+          {completed ? (
+            <span className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-green-200 bg-green-100 text-green-700 text-[11px] font-semibold flex-shrink-0">
+              <i className="ph ph-lock-key text-[12px]" />
+              Locked
+            </span>
+          ) : canEdit('field-activity') ? (
             <button
               onClick={() => openForm(survey)}
-              disabled={completed}
               className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0 disabled:opacity-45 disabled:cursor-not-allowed"
             >
               <i className="ph ph-pencil text-[12px]" />
-              {completed ? 'Completed' : 'Update'}
+              Update
             </button>
-          )}
+          ) : null}
         </div>
 
         {/* Inline completed record */}
@@ -845,6 +863,11 @@ export default function FieldActivityEntry() {
               <i className="ph ph-map-trifold text-[13px] text-green-600" />
               <span className="text-[10px] font-bold text-green-700 uppercase tracking-wide">Action Taken</span>
               <span className="text-[10px] text-muted">{survey.survey_date}</span>
+              {survey.surveyed_by && (
+                <span className="text-[10px] text-muted">
+                  · <i className="ph ph-headset" /> {survey.surveyed_by}
+                </span>
+              )}
               {survey.assigned_volunteer && (
                 <span className="text-[10px] text-muted">
                   · <i className="ph ph-user-check" /> {survey.assigned_volunteer}
@@ -887,18 +910,19 @@ export default function FieldActivityEntry() {
     )
   }
 
-  const handleExport = () => {
-    if (!fieldSurveys.length) return
+  const handleExport = async () => {
+    const surveys = await fetchAllFieldFollowupRows()
+    if (!surveys.length) return
     const headers = [
       'Survey Date', 'Voter Name', 'Phone', 'Address', 'Booth No', 'Block',
       'Panchayat', 'Union', 'Age', 'Gender', 'Support Level', 'Party Preference',
       'Response Status', 'Aware of Candidate', 'Likely to Vote',
       'Assigned Volunteer', 'Remarks', 'Followup Action', 'Followup Type',
     ]
-    const rows = fieldSurveys.map(s => {
+    const exportRows = surveys.map(s => {
       const pan = getPanchayat(s)
       const uni = getUnion(s)
-      const dec = decisionBySurvey.get(s.id)
+      const dec = s.decision
       const followupAction = dec?.action === 'followup_required'
         ? 'Followup Required'
         : dec?.action === 'followup_not_required'
@@ -919,7 +943,7 @@ export default function FieldActivityEntry() {
         followupAction, followupType,
       ]
     })
-    exportToCsv(headers, rows, `BJP_FieldSurvey_${new Date().toISOString().slice(0, 10)}.csv`)
+    exportToCsv(headers, exportRows, `BJP_FieldSurvey_${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
   /* ════════════════════════════════════════════════════════
@@ -936,21 +960,21 @@ export default function FieldActivityEntry() {
             <h2 className="text-[14px] font-bold text-heading">Field Survey</h2>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">
-                {fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required').length} Not Yet Action Taken
+                {scopeCounts.pending} Not Yet Action Taken
               </span>
               <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
-                {fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required').length} Action Taken
+                {scopeCounts.done} Action Taken
               </span>
               <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-semibold">
-                {fieldSurveys.length} Total Field Surveys
+                {scopeCounts.all} Total Field Surveys
               </span>
             </div>
           </div>
-          {fieldSurveys.length > 0 && (
+          {scopeCounts.all > 0 && (
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePrint}
-                disabled={activeList.length === 0}
+                disabled={filteredCounts.all === 0}
                 className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Print the current filtered field survey list"
               >
@@ -974,9 +998,9 @@ export default function FieldActivityEntry() {
           {/* Status tabs */}
           <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
             {([
-              { key: 'all',     label: 'All',             count: fieldSurveys.length },
-              { key: 'pending', label: 'Not Yet Action Taken', count: fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action !== 'followup_not_required').length },
-              { key: 'done',    label: 'Action Taken',         count: fieldSurveys.filter(s => decisionBySurvey.get(s.id)?.action === 'followup_not_required').length },
+              { key: 'all',     label: 'All',                  count: scopeCounts.all },
+              { key: 'pending', label: 'Not Yet Action Taken', count: scopeCounts.pending },
+              { key: 'done',    label: 'Action Taken',         count: scopeCounts.done },
             ] as const).map(tab => (
               <button key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
@@ -1038,7 +1062,12 @@ export default function FieldActivityEntry() {
         </div>
 
         {/* ── List ── */}
-        {fieldSurveys.length === 0 ? (
+        {loadingRows ? (
+          <div className="px-5 py-14 text-center text-muted">
+            <i className="ph ph-spinner-gap animate-spin text-[28px] block mb-2" />
+            Loading field surveys…
+          </div>
+        ) : scopeCounts.all === 0 ? (
           <div className="px-5 py-14 text-center">
             <i className="ph ph-map-trifold text-[36px] text-border block mb-3" />
             <p className="text-[13px] font-semibold text-heading mb-1">No field surveys yet</p>
@@ -1055,7 +1084,7 @@ export default function FieldActivityEntry() {
                 <SectionLabel
                   icon="ph ph-clock text-amber-500"
                   label="Not Yet Action Taken"
-                  count={pendingList.length}
+                  count={filteredCounts.pending}
                   color="bg-amber-50 text-amber-700"
                 />
                 {pagedPending.map(s => <SurveyRow key={s.id} survey={s} />)}
@@ -1068,14 +1097,14 @@ export default function FieldActivityEntry() {
                 <SectionLabel
                   icon="ph ph-check-circle text-green-600"
                   label="Action Taken"
-                  count={completedList.length}
+                  count={filteredCounts.done}
                   color="bg-green-50 text-green-700"
                 />
                 {pagedCompleted.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
 
-            {filtered.length === 0 && (
+            {filteredCounts.all === 0 && (
               <div className="px-5 py-10 text-center">
                 <i className="ph ph-funnel text-[28px] text-border block mb-2" />
                 <p className="text-[12px] text-muted">No records match your filter.</p>
@@ -1083,10 +1112,10 @@ export default function FieldActivityEntry() {
             )}
 
             {/* Pagination */}
-            {activeList.length > PAGE_SIZE && (
+            {totalRows > PAGE_SIZE && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-alt">
                 <span className="text-[11px] text-muted">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, activeList.length)} of {activeList.length}
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRows)} of {totalRows}
                 </span>
                 <div className="flex items-center gap-1">
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}

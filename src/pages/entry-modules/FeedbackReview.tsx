@@ -28,6 +28,9 @@ interface SurveyRecord {
   remarks?:            string
   surveyed_by?:        string
   survey_date?:        string
+  telecaller_name?:    string
+  telecaller_phone?:   string
+  decision?:           FeedbackDecision | null
 }
 
 interface Assignment {
@@ -46,6 +49,16 @@ interface FeedbackDecision {
   action:          'followup_required' | 'followup_not_required'
   followup_type?:  'telephonic' | 'field_survey'
   date:            string
+}
+
+interface ReviewCounts {
+  all: number
+  pending: number
+  followup_required: number
+  field_survey: number
+  telephonic: number
+  followup_required_other?: number
+  followup_not_required: number
 }
 
 interface TimelineEvent {
@@ -142,14 +155,31 @@ export default function FeedbackReview() {
 
   /* ── Core data ── */
   const [surveys,     setSurveys]     = useState<SurveyRecord[]>([])
-  const [assignments, setAssignments] = useState<Assignment[]>([])
-  const [decisions,   setDecisions]   = useState<FeedbackDecision[]>([])
   const [loading,     setLoading]     = useState(true)
   const [saving,      setSaving]      = useState<number | null>(null)
   const [expandedFollowup, setExpandedFollowup] = useState<number | null>(null)
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [timelineData, setTimelineData] = useState<TimelinePayload | null>(null)
+  const [counts, setCounts] = useState<ReviewCounts>({
+    all: 0,
+    pending: 0,
+    followup_required: 0,
+    field_survey: 0,
+    telephonic: 0,
+    followup_not_required: 0,
+  })
+  const [filteredCounts, setFilteredCounts] = useState<ReviewCounts>({
+    all: 0,
+    pending: 0,
+    followup_required: 0,
+    field_survey: 0,
+    telephonic: 0,
+    followup_required_other: 0,
+    followup_not_required: 0,
+  })
+  const [telecallerOptions, setTelecallerOptions] = useState<string[]>([])
+  const [totalRows, setTotalRows] = useState(0)
 
   /* ── Master data for filters ── */
   const [masterBooths,     setMasterBooths]     = useState<{ id: number; number: string; name: string; panchayat_name?: string }[]>([])
@@ -157,69 +187,6 @@ export default function FeedbackReview() {
   const [masterUnions,     setMasterUnions]     = useState<{ id: number; name: string }[]>([])
   const [masterPanchayats, setMasterPanchayats] = useState<{ id: number; name: string; union_name?: string }[]>([])
   const [masterParties,    setMasterParties]    = useState<{ id: number; name: string; abbreviation?: string }[]>([])
-
-  const fetchAll = useCallback(() => {
-    setLoading(true)
-    Promise.allSettled([
-      fetchAllPages<SurveyRecord>('/activities/surveys/'),
-      fetchAllPages<Assignment>('/telecalling/assignments/'),
-      fetchAllPages<FeedbackDecision>('/telecalling/feedbacks/'),
-      fetchAllPages<{ notes?: string }>('/activities/logs/', { category: 'field' }),
-    ]).then(([s, a, f, l]) => {
-      if (s.status === 'fulfilled') setSurveys(s.value ?? [])
-      if (a.status === 'fulfilled') setAssignments(a.value ?? [])
-
-      // Build survey_id → followup_type map from activity log notes
-      // (used to enrich decisions when backend doesn't persist followup_type)
-      const logFollowupMap = new Map<number, 'field_survey'>()
-      if (l.status === 'fulfilled') {
-        const logs = l.value ?? []
-        logs.forEach(log => {
-          const match = log.notes?.match(/\[survey_id:(\d+)\]/)
-          if (match) logFollowupMap.set(parseInt(match[1]), 'field_survey')
-        })
-      }
-
-      if (f.status === 'fulfilled') {
-        const raw = f.value ?? []
-        // Merge: use backend's followup_type if present, otherwise infer from activity logs
-        setDecisions(raw.map(d => ({
-          ...d,
-          followup_type: d.followup_type ?? logFollowupMap.get(d.survey),
-        })))
-      }
-    }).finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    fetchAll()
-    masterApi.fetchBooths().then(d => d && setMasterBooths(d))
-    masterApi.fetchAreas().then(d => d && setMasterBlocks(d))
-    masterApi.fetchUnions().then(d => d && setMasterUnions(d))
-    masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
-    masterApi.fetchParties().then(d => d && setMasterParties(d))
-  }, [fetchAll])
-
-  /* ── Derived maps ── */
-  const telecallerByVoterName = useMemo(() => {
-    const map = new Map<string, { name: string; phone: string }>()
-    assignments.forEach(a =>
-      a.voters.forEach(v =>
-        map.set(v.voter_name.toLowerCase(), { name: a.telecaller_name, phone: a.telecaller_phone })
-      )
-    )
-    return map
-  }, [assignments])
-
-  const decisionMap = useMemo(() => {
-    const m = new Map<number, FeedbackDecision>()
-    decisions.forEach(d => {
-      if (!m.has(d.survey)) {
-        m.set(d.survey, d)
-      }
-    })
-    return m
-  }, [decisions])
 
   // booth_no → panchayat_name
   const boothPanchayatMap = useMemo(() => {
@@ -253,6 +220,14 @@ export default function FeedbackReview() {
   const [page,               setPage]               = useState(1)
   const [pageSize,           setPageSize]           = useState(10)
 
+  useEffect(() => {
+    masterApi.fetchBooths().then(d => d && setMasterBooths(d))
+    masterApi.fetchAreas().then(d => d && setMasterBlocks(d))
+    masterApi.fetchUnions().then(d => d && setMasterUnions(d))
+    masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
+    masterApi.fetchParties().then(d => d && setMasterParties(d))
+  }, [])
+
   const clearAdvancedFilters = () => {
     setFilterSupportLevel('')
     setFilterResponseStatus('')
@@ -276,11 +251,92 @@ export default function FeedbackReview() {
     filterTelecaller || search
   )
 
-  const telecallerOptions = useMemo(() => {
-    const seen = new Set<string>()
-    assignments.forEach(a => seen.add(a.telecaller_name))
-    return [...seen]
-  }, [assignments])
+  const reloadRows = useCallback((signal?: AbortSignal) => {
+    setLoading(true)
+    const params: Record<string, string | number> = {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      tab: filterTab,
+    }
+    if (search.trim()) params.search = search.trim()
+    if (filterTelecaller) params.telecaller = filterTelecaller
+    if (filterSupportLevel) params.support_level = filterSupportLevel
+    if (filterResponseStatus) params.response_status = filterResponseStatus
+    if (filterAwareOfCandidate) params.aware_of_candidate = filterAwareOfCandidate
+    if (filterLikelyToVote) params.likely_to_vote = filterLikelyToVote
+    if (filterParty) params.party = filterParty
+    if (filterBlock) params.block = filterBlock
+    if (filterUnion) params.union = filterUnion
+    if (filterPanchayat) params.panchayat = filterPanchayat
+    if (filterBooth) params.booth = filterBooth
+    if (filterDateFrom) params.date_from = filterDateFrom
+    if (filterDateTo) params.date_to = filterDateTo
+
+    apiClient.get('/telecalling/feedbacks/review-list/', { params, signal })
+      .then(response => {
+        const data = response.data as ApiResponse<SurveyRecord> & {
+          counts?: ReviewCounts
+          filtered_counts?: ReviewCounts
+          telecallers?: string[]
+        }
+        setSurveys(data.results ?? [])
+        setCounts(data.counts ?? {
+          all: 0,
+          pending: 0,
+          followup_required: 0,
+          field_survey: 0,
+          telephonic: 0,
+          followup_not_required: 0,
+        })
+        setFilteredCounts(data.filtered_counts ?? {
+          all: 0,
+          pending: 0,
+          followup_required: 0,
+          field_survey: 0,
+          telephonic: 0,
+          followup_required_other: 0,
+          followup_not_required: 0,
+        })
+        setTelecallerOptions(data.telecallers ?? [])
+        setTotalRows(data.count ?? 0)
+      })
+      .catch(err => {
+        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return
+        setSurveys([])
+        setCounts({
+          all: 0,
+          pending: 0,
+          followup_required: 0,
+          field_survey: 0,
+          telephonic: 0,
+          followup_not_required: 0,
+        })
+        setFilteredCounts({
+          all: 0,
+          pending: 0,
+          followup_required: 0,
+          field_survey: 0,
+          telephonic: 0,
+          followup_required_other: 0,
+          followup_not_required: 0,
+        })
+        setTelecallerOptions([])
+        setTotalRows(0)
+        showToast('Failed to load feedback review list', 'error')
+      })
+      .finally(() => setLoading(false))
+  }, [
+    page, pageSize, filterTab, search, filterTelecaller, filterSupportLevel,
+    filterResponseStatus, filterAwareOfCandidate, filterLikelyToVote, filterParty,
+    filterBlock, filterUnion, filterPanchayat, filterBooth, filterDateFrom,
+    filterDateTo, showToast,
+  ])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    reloadRows(controller.signal)
+    return () => controller.abort()
+  }, [reloadRows])
 
   /* ── Derived option lists from actual survey data ── */
   const blockOptions = useMemo(() => {
@@ -297,106 +353,6 @@ export default function FeedbackReview() {
     surveys.forEach(s => { if (s.party_preference) seen.add(s.party_preference) })
     return [...seen].sort().map(n => ({ name: n, abbr: undefined }))
   }, [masterParties, surveys])
-
-  /* ── Filtered surveys ── */
-  const filteredSurveys = useMemo(() => {
-    let list = surveys
-
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(s =>
-        s.voter_name?.toLowerCase().includes(q) ||
-        s.surveyed_by?.toLowerCase().includes(q) ||
-        s.booth_no?.includes(q)
-      )
-    }
-
-    if (filterTelecaller) {
-      list = list.filter(s => {
-        const tc = telecallerByVoterName.get(s.voter_name?.toLowerCase() ?? '')
-        return tc?.name === filterTelecaller
-      })
-    }
-
-    if (filterSupportLevel) {
-      list = list.filter(s => s.support_level === filterSupportLevel)
-    }
-
-    if (filterResponseStatus) {
-      list = list.filter(s => s.response_status === filterResponseStatus)
-    }
-
-    if (filterAwareOfCandidate) {
-      list = list.filter(s => s.aware_of_candidate === filterAwareOfCandidate)
-    }
-
-    if (filterLikelyToVote) {
-      list = list.filter(s => s.likely_to_vote === filterLikelyToVote)
-    }
-
-    if (filterParty) {
-      list = list.filter(s => s.party_preference === filterParty)
-    }
-
-    if (filterBlock) {
-      list = list.filter(s => s.block === filterBlock)
-    }
-
-    if (filterBooth) {
-      list = list.filter(s => s.booth_no === filterBooth)
-    }
-
-    if (filterPanchayat) {
-      list = list.filter(s => {
-        const pan = boothPanchayatMap.get(s.booth_no ?? '')
-        return pan === filterPanchayat
-      })
-    }
-
-    if (filterUnion) {
-      list = list.filter(s => {
-        const pan  = boothPanchayatMap.get(s.booth_no ?? '')
-        const union = pan ? panchayatUnionMap.get(pan) : undefined
-        return union === filterUnion
-      })
-    }
-
-    if (filterDateFrom) {
-      list = list.filter(s => (s.survey_date ?? '') >= filterDateFrom)
-    }
-
-    if (filterDateTo) {
-      list = list.filter(s => (s.survey_date ?? '') <= filterDateTo)
-    }
-
-    if (filterTab !== 'all') {
-      list = list.filter(s => {
-        const dec = decisionMap.get(s.id)
-        if (filterTab === 'pending')               return !dec
-        if (filterTab === 'followup_required')     return dec?.action === 'followup_required'
-        if (filterTab === 'field_survey')          return dec?.action === 'followup_required' && dec?.followup_type === 'field_survey'
-        if (filterTab === 'telephonic')            return dec?.action === 'followup_required' && dec?.followup_type === 'telephonic'
-        if (filterTab === 'followup_not_required') return dec?.action === 'followup_not_required'
-        return true
-      })
-    }
-
-    return list
-  }, [
-    surveys, search, filterTelecaller, filterTab, filterSupportLevel, filterResponseStatus,
-    filterAwareOfCandidate, filterLikelyToVote, filterParty, filterBlock, filterBooth,
-    filterPanchayat, filterUnion, filterDateFrom, filterDateTo,
-    decisionMap, telecallerByVoterName, boothPanchayatMap, panchayatUnionMap,
-  ])
-
-  const counts = useMemo(() => ({
-    all:                   surveys.length,
-    pending:               surveys.filter(s => !decisionMap.has(s.id)).length,
-    followup_required:     surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required').length,
-    field_survey:          surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required' && decisionMap.get(s.id)?.followup_type === 'field_survey').length,
-    telephonic:            surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_required' && decisionMap.get(s.id)?.followup_type === 'telephonic').length,
-    followup_not_required: surveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required').length,
-  }), [surveys, decisionMap])
 
   useEffect(() => {
     setPage(1)
@@ -416,8 +372,7 @@ export default function FeedbackReview() {
     action: 'followup_required' | 'followup_not_required',
     followupType?: 'telephonic' | 'field_survey',
   ) => {
-    const tc       = telecallerByVoterName.get(survey.voter_name?.toLowerCase() ?? '')
-    const existing = decisionMap.get(survey.id)
+    const existing = survey.decision ?? null
     const today    = new Date().toISOString().slice(0, 10)
     const resolvedFollowupType = action === 'followup_not_required'
       ? (existing?.followup_type ?? followupType)
@@ -427,25 +382,20 @@ export default function FeedbackReview() {
     setExpandedFollowup(null)
     try {
       if (existing) {
-        const res = await apiClient.patch(`/telecalling/feedbacks/${existing.id}/`, {
+        await apiClient.patch(`/telecalling/feedbacks/${existing.id}/`, {
           action,
           followup_type: resolvedFollowupType,
           date: today,
         })
-        setDecisions(prev => prev.map(d => d.id === existing.id
-          ? { ...res.data, followup_type: res.data.followup_type ?? resolvedFollowupType }
-          : d
-        ))
       } else {
-        const res = await apiClient.post('/telecalling/feedbacks/', {
+        await apiClient.post('/telecalling/feedbacks/', {
           survey:          survey.id,
           voter_name:      survey.voter_name,
-          telecaller_name: tc?.name ?? survey.surveyed_by ?? '—',
+          telecaller_name: survey.telecaller_name ?? survey.surveyed_by ?? '—',
           action,
           followup_type:   resolvedFollowupType,
           date:            today,
         })
-        setDecisions(prev => [{ ...res.data, followup_type: res.data.followup_type ?? resolvedFollowupType }, ...prev])
       }
 
       if (action === 'followup_required' && followupType === 'field_survey') {
@@ -471,6 +421,7 @@ export default function FeedbackReview() {
         `${action === 'followup_required' ? `Followup Required${typeLabel ? ' — ' + typeLabel : ''}` : 'No Followup'} marked for ${survey.voter_name}`,
         action === 'followup_required' ? 'warning' : 'success'
       )
+      reloadRows()
     } catch {
       showToast('Failed to save decision — please try again', 'error')
     } finally {
@@ -497,8 +448,7 @@ export default function FeedbackReview() {
 
   /* ── Survey row ── */
   const SurveyRow = ({ survey }: { survey: SurveyRecord }) => {
-    const dec     = decisionMap.get(survey.id)
-    const tc      = telecallerByVoterName.get(survey.voter_name?.toLowerCase() ?? '')
+    const dec     = survey.decision ?? null
     const busy    = saving === survey.id
     const showSub = expandedFollowup === survey.id
 
@@ -550,8 +500,8 @@ export default function FeedbackReview() {
             <div className="flex items-center gap-3 mt-0.5 flex-wrap text-[10px] text-muted">
               <span>
                 <i className="ph ph-headset mr-0.5" />
-                {tc?.name ?? survey.surveyed_by ?? '—'}
-                {tc?.phone && <span className="ml-1">{tc.phone}</span>}
+                {survey.telecaller_name ?? survey.surveyed_by ?? '—'}
+                {survey.telecaller_phone && <span className="ml-1">{survey.telecaller_phone}</span>}
               </span>
               {survey.block && <span><i className="ph ph-squares-four mr-0.5" />{survey.block}</span>}
               {survey.survey_date && <span><i className="ph ph-calendar mr-0.5" />{survey.survey_date}</span>}
@@ -646,18 +596,13 @@ export default function FeedbackReview() {
     )
   }
 
-  const pending           = filteredSurveys.filter(s => !decisionMap.has(s.id))
-  const fieldSurveyReq   = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'field_survey' })
-  const telephonicReq    = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'telephonic'    })
-  const followupReqOther = filteredSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && !d?.followup_type                   })
-  const followupNotReq   = filteredSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
-  const pagedSurveys     = filteredSurveys.slice((page - 1) * pageSize, page * pageSize)
-  const pagedPending     = pagedSurveys.filter(s => !decisionMap.has(s.id))
-  const pagedFieldSurveyReq = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'field_survey' })
-  const pagedTelephonicReq  = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && d?.followup_type === 'telephonic' })
-  const pagedFollowupReqOther = pagedSurveys.filter(s => { const d = decisionMap.get(s.id); return d?.action === 'followup_required' && !d?.followup_type })
-  const pagedFollowupNotReq = pagedSurveys.filter(s => decisionMap.get(s.id)?.action === 'followup_not_required')
-  const totalPages      = Math.max(1, Math.ceil(filteredSurveys.length / pageSize))
+  const pagedSurveys = surveys
+  const pagedPending = pagedSurveys.filter(s => !s.decision)
+  const pagedFieldSurveyReq = pagedSurveys.filter(s => s.decision?.action === 'followup_required' && s.decision?.followup_type === 'field_survey')
+  const pagedTelephonicReq = pagedSurveys.filter(s => s.decision?.action === 'followup_required' && s.decision?.followup_type === 'telephonic')
+  const pagedFollowupReqOther = pagedSurveys.filter(s => s.decision?.action === 'followup_required' && !s.decision?.followup_type)
+  const pagedFollowupNotReq = pagedSurveys.filter(s => s.decision?.action === 'followup_not_required')
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
   const pageNums: (number | '...')[] = (() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
     const nums: (number | '...')[] = [1]
@@ -682,8 +627,9 @@ export default function FeedbackReview() {
     return 'ph ph-dot-outline'
   }
 
-  const handleExport = () => {
-    if (!surveys.length) return
+  const handleExport = async () => {
+    const reviewRows = await fetchAllPages<SurveyRecord>('/telecalling/feedbacks/review-list/')
+    if (!reviewRows.length) return
     const headers = [
       'Survey Date', 'Voter Name', 'Phone', 'Booth No', 'Block', 'Village',
       'Support Level', 'Party Preference', 'Response Status',
@@ -691,9 +637,8 @@ export default function FeedbackReview() {
       'Telecaller Name', 'Telecaller Phone',
       'Followup Action', 'Followup Type', 'Decision Date',
     ]
-    const rows = surveys.map(s => {
-      const tc  = telecallerByVoterName.get(s.voter_name?.toLowerCase() ?? '')
-      const dec = decisionMap.get(s.id)
+    const rows = reviewRows.map(s => {
+      const dec = s.decision
       const followupAction = dec?.action === 'followup_required'
         ? 'Followup Required'
         : dec?.action === 'followup_not_required'
@@ -710,7 +655,7 @@ export default function FeedbackReview() {
         s.response_status ? responseLabel(s.response_status) : '',
         s.aware_of_candidate ?? '', s.likely_to_vote ?? '',
         s.remarks ?? '', s.surveyed_by ?? '',
-        tc?.name ?? '', tc?.phone ?? '',
+        s.telecaller_name ?? '', s.telecaller_phone ?? '',
         followupAction, followupType, dec?.date ?? '',
       ]
     })
@@ -744,12 +689,12 @@ export default function FeedbackReview() {
               </span>
               {hasAdvancedFilters && (
                 <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-semibold">
-                  {filteredSurveys.length} shown (filtered)
+                  {totalRows} shown (filtered)
                 </span>
               )}
             </div>
           </div>
-          {surveys.length > 0 && (
+          {counts.all > 0 && (
             <button
               onClick={handleExport}
               className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
@@ -963,7 +908,7 @@ export default function FeedbackReview() {
             <i className="ph ph-spinner-gap animate-spin text-[28px] block mb-2" />
             Loading feedback records…
           </div>
-        ) : surveys.length === 0 ? (
+        ) : counts.all === 0 ? (
           <div className="px-5 py-14 text-center">
             <i className="ph ph-notepad text-[36px] text-border block mb-3" />
             <p className="text-[13px] font-semibold text-heading mb-1">No submitted feedback yet</p>
@@ -971,7 +916,7 @@ export default function FeedbackReview() {
               Submit feedback from the <strong>Feedback</strong> tab first.
             </p>
           </div>
-        ) : filteredSurveys.length === 0 ? (
+        ) : totalRows === 0 ? (
           <div className="px-5 py-10 text-center">
             <i className="ph ph-funnel text-[28px] text-border block mb-2" />
             <p className="text-[12px] text-muted">No records match your filter.</p>
@@ -981,7 +926,7 @@ export default function FeedbackReview() {
             {/* ── Pending Review ── */}
             {(filterTab === 'all' || filterTab === 'pending') && pagedPending.length > 0 && (
               <>
-                <SectionLabel icon="ph ph-clock text-[13px] text-gray-500" label="Pending Review" count={pending.length} color="bg-gray-50 text-gray-600" />
+                <SectionLabel icon="ph ph-clock text-[13px] text-gray-500" label="Pending Review" count={filteredCounts.pending} color="bg-gray-50 text-gray-600" />
                 {pagedPending.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
@@ -989,7 +934,7 @@ export default function FeedbackReview() {
             {/* ── Field Survey Required ── */}
             {(filterTab === 'all' || filterTab === 'followup_required' || filterTab === 'field_survey') && pagedFieldSurveyReq.length > 0 && (
               <>
-                <SectionLabel icon="ph ph-map-trifold text-[13px] text-amber-600" label="Field Survey Required" count={fieldSurveyReq.length} color="bg-amber-50 text-amber-700" />
+                <SectionLabel icon="ph ph-map-trifold text-[13px] text-amber-600" label="Field Survey Required" count={filteredCounts.field_survey} color="bg-amber-50 text-amber-700" />
                 {pagedFieldSurveyReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
@@ -997,7 +942,7 @@ export default function FeedbackReview() {
             {/* ── Telephonic Required ── */}
             {(filterTab === 'all' || filterTab === 'followup_required' || filterTab === 'telephonic') && pagedTelephonicReq.length > 0 && (
               <>
-                <SectionLabel icon="ph ph-phone text-[13px] text-blue-600" label="Telephonic Required" count={telephonicReq.length} color="bg-blue-50 text-blue-700" />
+                <SectionLabel icon="ph ph-phone text-[13px] text-blue-600" label="Telephonic Required" count={filteredCounts.telephonic} color="bg-blue-50 text-blue-700" />
                 {pagedTelephonicReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
@@ -1005,7 +950,7 @@ export default function FeedbackReview() {
             {/* ── Followup Required (no type — legacy records) ── */}
             {(filterTab === 'all' || filterTab === 'followup_required') && pagedFollowupReqOther.length > 0 && (
               <>
-                <SectionLabel icon="ph ph-arrow-clockwise text-[13px] text-orange-500" label="Followup Required" count={followupReqOther.length} color="bg-orange-50 text-orange-600" />
+                <SectionLabel icon="ph ph-arrow-clockwise text-[13px] text-orange-500" label="Followup Required" count={filteredCounts.followup_required_other ?? 0} color="bg-orange-50 text-orange-600" />
                 {pagedFollowupReqOther.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
@@ -1013,16 +958,16 @@ export default function FeedbackReview() {
             {/* ── Followup Not Required ── */}
             {(filterTab === 'all' || filterTab === 'followup_not_required') && pagedFollowupNotReq.length > 0 && (
               <>
-                <SectionLabel icon="ph ph-check-circle text-[13px] text-green-600" label="Followup Not Required" count={followupNotReq.length} color="bg-green-50 text-green-700" />
+                <SectionLabel icon="ph ph-check-circle text-[13px] text-green-600" label="Followup Not Required" count={filteredCounts.followup_not_required} color="bg-green-50 text-green-700" />
                 {pagedFollowupNotReq.map(s => <SurveyRow key={s.id} survey={s} />)}
               </>
             )}
 
-            {filteredSurveys.length > 0 && (
+            {totalRows > 0 && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-alt">
                 <div className="flex items-center gap-3">
                   <span className="text-[11px] text-muted">
-                    Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredSurveys.length)} of {filteredSurveys.length}
+                    Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalRows)} of {totalRows}
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-muted">Rows</span>
@@ -1037,7 +982,7 @@ export default function FeedbackReview() {
                     </select>
                   </div>
                 </div>
-                {filteredSurveys.length > pageSize && (
+                {totalRows > pageSize && (
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setPage(p => Math.max(1, p - 1))}

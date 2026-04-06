@@ -180,7 +180,6 @@ export default function AssignTelecalling() {
   const [debouncedSearch,  setDebouncedSearch]  = useState('')
 
   const [voters,   setVoters]   = useState<VoterRow[]>([])
-  const [statusSourceVoters, setStatusSourceVoters] = useState<VoterRow[]>([])
   const rawVotersRef             = useRef<VoterRow[]>([])
   const [rawCount, setRawCount] = useState(0)
   const [total,    setTotal]    = useState(0)
@@ -195,6 +194,7 @@ export default function AssignTelecalling() {
   /* Workflow status by voter ID (from assignments API). */
   const workflowByVoterRef = useRef<Map<number, WorkflowInfo>>(new Map())
   const [workflowByVoterId, setWorkflowByVoterId] = useState<Map<number, WorkflowInfo>>(new Map())
+  const [workflowSummary, setWorkflowSummary] = useState<Partial<Record<WorkflowStatus | 'unassigned', number>>>({})
 
   const mapVolunteerOptions = (payload: any): Telecaller[] => {
     const rows = Array.isArray(payload) ? payload : (payload?.results ?? [])
@@ -220,27 +220,6 @@ export default function AssignTelecalling() {
         const options = mapVolunteerOptions(r.data)
         setTelecallers(options)
         setAssignableVolunteers(options)
-      })
-      .catch(() => {})
-
-    /* Load assignment workflow state from backend */
-    apiClient.get('/telecalling/assignments/', { params: { limit: 1000, include_workflow: 1 } })
-      .then(r => {
-        const assignments = r.data.results ?? []
-        const nextMap = new Map<number, WorkflowInfo>()
-        assignments.forEach((a: any) => {
-          ;(a.voters ?? []).forEach((v: any) => {
-            if (!v?.voter || nextMap.has(v.voter)) return
-            const status = (v.workflow_status ?? 'assigned') as WorkflowStatus
-            nextMap.set(v.voter, {
-              status,
-              label: v.workflow_label ?? WORKFLOW_LABELS[status] ?? 'Assigned',
-              is_locked: !!v.is_locked,
-            })
-          })
-        })
-        workflowByVoterRef.current = nextMap
-        setWorkflowByVoterId(nextMap)
       })
       .catch(() => {})
   }, [])
@@ -272,14 +251,14 @@ export default function AssignTelecalling() {
 
   /* ── Fetch voters ── */
   useEffect(() => {
-    if (filterWorkflowStatus) return
-
     if (filterBooths.size === 0) {
       setVoters([])
-      setStatusSourceVoters([])
       rawVotersRef.current = []
       setRawCount(0)
       setTotal(0)
+      workflowByVoterRef.current = new Map()
+      setWorkflowByVoterId(new Map())
+      setWorkflowSummary({})
       return
     }
 
@@ -291,16 +270,19 @@ export default function AssignTelecalling() {
       limit:  pageSize,
       offset: (page - 1) * pageSize,
       sort: 'address_asc',
+      include_workflow: 1,
     }
     if (filterBooths.size === 1) params.booth = [...filterBooths][0]
     else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')
     if (debouncedSearch) params.search = debouncedSearch
     if (filterContactStatus) params.contact_status = filterContactStatus
+    if (filterWorkflowStatus) params.workflow_status = filterWorkflowStatus
 
     apiClient.get('/voters/voters/', { params, signal: controller.signal })
       .then(r => {
         const apiCount = r.data.count ?? 0
-        const all: VoterRow[] = (r.data.results ?? []).map((v: any) => ({
+        const results = r.data.results ?? []
+        const all: VoterRow[] = results.map((v: any) => ({
           id: v.id, name: v.name, voter_id: v.voter_id,
           phone: v.phone ?? '', phone2: v.phone2 ?? '',
           alt_phoneno2: v.alt_phoneno2 ?? '', alt_phoneno3: v.alt_phoneno3 ?? '',
@@ -308,9 +290,20 @@ export default function AssignTelecalling() {
           booth: v.booth, booth_name: v.booth_name ?? v.booth_number ?? '',
           age: v.age, gender: v.gender,
         }))
+        const nextWorkflowMap = new Map<number, WorkflowInfo>()
+        results.forEach((v: any) => {
+          const status = (v.workflow_status || 'unassigned') as WorkflowStatus | 'unassigned'
+          nextWorkflowMap.set(v.id, {
+            status: status === 'unassigned' ? 'assigned' : status,
+            label: v.workflow_label || (status === 'unassigned' ? 'Unassigned' : WORKFLOW_LABELS[status as WorkflowStatus] || 'Assigned'),
+            is_locked: !!v.is_locked,
+          })
+        })
         rawVotersRef.current = all
-        setStatusSourceVoters([])
-        setRawCount(apiCount)
+        workflowByVoterRef.current = nextWorkflowMap
+        setWorkflowByVoterId(nextWorkflowMap)
+        setWorkflowSummary(r.data.workflow_summary ?? {})
+        setRawCount(r.data.raw_count ?? apiCount)
         setVoters(all)
         setTotal(apiCount)
       })
@@ -318,65 +311,8 @@ export default function AssignTelecalling() {
       .finally(() => setLoading(false))
 
     return () => controller.abort()
-  }, [page, pageSize, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus])
-
-  useEffect(() => {
-    if (!filterWorkflowStatus) return
-
-    if (filterBooths.size === 0) {
-      setVoters([])
-      setStatusSourceVoters([])
-      rawVotersRef.current = []
-      setRawCount(0)
-      setTotal(0)
-      return
-    }
-
-    const controller = new AbortController()
-    setLoading(true)
-    setSelected(new Set())
-
-    const params: Record<string, any> = {
-      limit: 10000,
-      sort: 'address_asc',
-    }
-    if (filterBooths.size === 1) params.booth = [...filterBooths][0]
-    else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')
-    if (debouncedSearch) params.search = debouncedSearch
-    if (filterContactStatus) params.contact_status = filterContactStatus
-
-    apiClient.get('/voters/voters/', { params, signal: controller.signal })
-      .then(r => {
-        const apiCount = r.data.count ?? 0
-        const all: VoterRow[] = (r.data.results ?? []).map((v: any) => ({
-          id: v.id, name: v.name, voter_id: v.voter_id,
-          phone: v.phone ?? '', phone2: v.phone2 ?? '',
-          alt_phoneno2: v.alt_phoneno2 ?? '', alt_phoneno3: v.alt_phoneno3 ?? '',
-          address: v.address ?? '',
-          booth: v.booth, booth_name: v.booth_name ?? v.booth_number ?? '',
-          age: v.age, gender: v.gender,
-        }))
-        rawVotersRef.current = all
-        setStatusSourceVoters(all)
-        setRawCount(apiCount)
-        setVoters([])
-        setTotal(apiCount)
-      })
-      .catch(err => { if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast('Failed to load voters', 'error') })
-      .finally(() => setLoading(false))
-
-    return () => controller.abort()
-  }, [filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus])
-
-  const workflowFilteredVoters = filterWorkflowStatus
-    ? statusSourceVoters.filter(v => {
-        const status = workflowByVoterId.get(v.id)?.status ?? 'unassigned'
-        return status === filterWorkflowStatus
-      })
-    : []
-  const visibleVoters = filterWorkflowStatus
-    ? workflowFilteredVoters.slice((page - 1) * pageSize, page * pageSize)
-    : voters
+  }, [filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus, page, pageSize, showToast])
+  const visibleVoters = voters
   const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
   const isAllSelected  = selectableVoters.length > 0 && selectableVoters.every(v => selected.has(v.id))
   const toggleAll      = () => {
@@ -431,6 +367,10 @@ export default function AssignTelecalling() {
 
       /* Update local status so the UI reflects this assignment immediately */
       const voterIds = groupVoters.map(v => v.id)
+      const previousStatuses = new Map<number, WorkflowStatus | 'unassigned'>()
+      voterIds.forEach(voterId => {
+        previousStatuses.set(voterId, workflowByVoterRef.current.get(voterId)?.status ?? 'unassigned')
+      })
       const nextMap = new Map(workflowByVoterRef.current)
       voterIds.forEach(voterId => {
         const prev = nextMap.get(voterId)
@@ -443,6 +383,16 @@ export default function AssignTelecalling() {
       })
       workflowByVoterRef.current = nextMap
       setWorkflowByVoterId(nextMap)
+      setWorkflowSummary(prev => {
+        const next = { ...prev }
+        voterIds.forEach(voterId => {
+          const previousStatus = previousStatuses.get(voterId) ?? 'unassigned'
+          const nextStatus = nextMap.get(voterId)?.status ?? 'assigned'
+          next[previousStatus] = Math.max(0, (next[previousStatus] ?? 0) - 1)
+          next[nextStatus] = (next[nextStatus] ?? 0) + 1
+        })
+        return next
+      })
 
       setSelected(new Set())
       showToast(`${groupVoters.length} voter(s) assigned to ${telecaller.name}`, 'success')
@@ -454,7 +404,7 @@ export default function AssignTelecalling() {
   }
 
   /* ── Pagination ── */
-  const effectiveTotal = filterWorkflowStatus ? workflowFilteredVoters.length : total
+  const effectiveTotal = total
   const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize))
   const pageStart  = (page - 1) * pageSize + 1
   const pageEnd    = Math.min(page * pageSize, effectiveTotal)
@@ -494,13 +444,7 @@ export default function AssignTelecalling() {
   }
   const hasFilters   = filterBooths.size > 0 || !!filterWorkflowStatus || !!filterContactStatus || !!filterTelecaller || !!filterVolunteerRole || !!filterSearch
   const assignName   = assignableVolunteers.find(t => String(t.id) === assignTo)?.name ?? ''
-  const workflowCounts = [...workflowByVoterId.values()].reduce(
-    (acc, info) => {
-      acc[info.status] = (acc[info.status] ?? 0) + 1
-      return acc
-    },
-    {} as Partial<Record<WorkflowStatus, number>>
-  )
+  const workflowCounts = workflowSummary
 
   /* ════════════════════════════════════════════════════════
      Render

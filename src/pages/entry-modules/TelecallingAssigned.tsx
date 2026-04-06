@@ -1,5 +1,13 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import apiClient from '../../utils/api'
+
+interface ApiResponse<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+  total_voters?: number
+}
 
 /* ─── Types ──────────────────────────────────────────────── */
 interface AssignmentVoter {
@@ -166,43 +174,50 @@ export default function TelecallingAssigned() {
   const [printingId,  setPrintingId]  = useState<number | null>(null)
   const [filterTelecaller, setFilterTelecaller] = useState('')
   const [filterDate, setFilterDate] = useState('')
+  const [telecallerOptions, setTelecallerOptions] = useState<{ id: string; name: string }[]>([])
+  const [totalAssignments, setTotalAssignments] = useState(0)
+  const [totalVoters, setTotalVoters] = useState(0)
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 10
 
   useEffect(() => {
-    setLoading(true)
-    apiClient.get('/telecalling/assignments/', { params: { limit: 500 } })
-      .then(r => setAssignments(r.data.results ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    apiClient.get('/telecalling/assignments/filters/')
+      .then(r => {
+        const options = (r.data.telecallers ?? []).map((row: { id: number; name: string }) => ({
+          id: String(row.id),
+          name: row.name,
+        }))
+        setTelecallerOptions(options)
+      })
+      .catch(() => setTelecallerOptions([]))
   }, [])
 
-  const telecallerOptions = useMemo(() => {
-    const seen = new Map<string, string>()
-    assignments.forEach(a => {
-      const key = String(a.telecaller_id ?? '')
-      if (key) seen.set(key, a.telecaller_name)
+  useEffect(() => {
+    setLoading(true)
+    apiClient.get<ApiResponse<Assignment>>('/telecalling/assignments/', {
+      params: {
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        include_summary: 1,
+        ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+        ...(filterDate ? { date: filterDate } : {}),
+      },
     })
-    return [...seen.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
-  }, [assignments])
-
-  const filteredAssignments = useMemo(() => {
-    return assignments.filter(a => {
-      if (filterTelecaller && String(a.telecaller_id ?? '') !== filterTelecaller) return false
-      if (filterDate && a.assigned_date !== filterDate) return false
-      return true
-    })
-  }, [assignments, filterTelecaller, filterDate])
+      .then(r => {
+        setAssignments(r.data.results ?? [])
+        setTotalAssignments(r.data.count ?? 0)
+        setTotalVoters(r.data.total_voters ?? 0)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [filterDate, filterTelecaller, page])
 
   useEffect(() => {
     setPage(1)
   }, [filterTelecaller, filterDate])
 
-  const totalVoters = filteredAssignments.reduce((s, a) => s + a.voters.length, 0)
-  const totalPages  = Math.max(1, Math.ceil(filteredAssignments.length / PAGE_SIZE))
-  const pagedAssignments = filteredAssignments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages  = Math.max(1, Math.ceil(totalAssignments / PAGE_SIZE))
+  const hasActiveFilters = !!filterTelecaller || !!filterDate
   const pageNums: (number | '...')[] = (() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
     const nums: (number | '...')[] = [1]
@@ -313,21 +328,24 @@ export default function TelecallingAssigned() {
             <i className="ph ph-spinner-gap animate-spin text-[28px] block mb-2" />
             Loading assignments…
           </div>
-        ) : assignments.length === 0 ? (
+        ) : totalAssignments === 0 ? (
           <div className="px-5 py-16 text-center">
-            <i className="ph ph-phone-outgoing text-[36px] text-border block mb-3" />
-            <p className="text-[13px] font-semibold text-heading mb-1">No assignments yet</p>
-            <p className="text-[12px] text-muted">
-              Go to <strong>Assign Telecalling</strong> tab, select voters and assign them to a telecaller.
-            </p>
-          </div>
-        ) : filteredAssignments.length === 0 ? (
-          <div className="px-5 py-16 text-center">
-            <i className="ph ph-funnel text-[36px] text-border block mb-3" />
-            <p className="text-[13px] font-semibold text-heading mb-1">No assignments match the selected filters</p>
-            <p className="text-[12px] text-muted">
-              Change the telecalling person or date filter to see matching assignment rows.
-            </p>
+            <i className={`text-[36px] text-border block mb-3 ${hasActiveFilters ? 'ph ph-funnel' : 'ph ph-phone-outgoing'}`} />
+            {hasActiveFilters ? (
+              <>
+                <p className="text-[13px] font-semibold text-heading mb-1">No assignments match the selected filters</p>
+                <p className="text-[12px] text-muted">
+                  Change the telecalling person or date filter to see matching assignment rows.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[13px] font-semibold text-heading mb-1">No assignments yet</p>
+                <p className="text-[12px] text-muted">
+                  Go to <strong>Assign Telecalling</strong> tab, select voters and assign them to a telecaller.
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -342,7 +360,7 @@ export default function TelecallingAssigned() {
                 </tr>
               </thead>
               <tbody>
-                {pagedAssignments.map((a, idx) => (
+                {assignments.map((a, idx) => (
                   <tr key={a.id} className="border-b border-border last:border-0 hover:bg-surface-alt transition-colors">
                     <td className="px-5 py-3 text-muted">{(page - 1) * PAGE_SIZE + idx + 1}</td>
 
@@ -389,10 +407,10 @@ export default function TelecallingAssigned() {
               </tbody>
             </table>
 
-            {filteredAssignments.length > PAGE_SIZE && (
+            {totalAssignments > PAGE_SIZE && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-alt">
                 <span className="text-[11px] text-muted">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filteredAssignments.length)} of {filteredAssignments.length}
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalAssignments)} of {totalAssignments}
                 </span>
                 <div className="flex items-center gap-1">
                   <button

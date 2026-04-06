@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { FieldSurveyRecord } from '../../hooks/useEntryAPI'
 import EntryFormPanel from '../../components/entry/EntryFormPanel'
@@ -9,9 +9,30 @@ import { useToast } from '../../context/ToastContext'
 import apiClient from '../../utils/api'
 import { exportToCsv } from '../../utils/exportCsv'
 
+interface ApiResponse<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
+interface SurveyCountSet {
+  all: number
+  pending: number
+  done: number
+}
+
+interface SurveyAssignmentTimeOption {
+  value: string
+  label: string
+  count: number
+}
+
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
 type SupportLevel = 'positive' | 'negative' | 'neutral' | ''
 type ResponseStatus = 'not_reach' | 'no_answer' | 'need_followup' | 'answered' | 'wrong_number' | ''
+
+const API_BATCH_SIZE = 500
 
 const PARTY_PREFERENCE_OPTIONS = [
   'BJP', 'AIADMK', 'DMK', 'Congress', 'PMK', 'DMDK', 'TVK', 'Other', 'No Preference',
@@ -137,6 +158,10 @@ interface FlatVoter {
   assignment_time:  string
 }
 
+interface SurveyAssignmentRow extends FlatVoter {
+  survey_record?: FieldSurveyRecord | null
+}
+
 interface TelecallingAssignmentVoter {
   id:          number
   voter:       number | null
@@ -218,6 +243,64 @@ const flattenAssignments = (assignments: TelecallingAssignment[]): FlatVoter[] =
     }))
   )
 
+async function fetchAllAssignments(params: Record<string, string | number> = {}) {
+  const { data: firstPage } = await apiClient.get<ApiResponse<TelecallingAssignment>>('/telecalling/assignments/', {
+    params: { ...params, limit: API_BATCH_SIZE, offset: 0 },
+  })
+
+  const firstResults = firstPage.results ?? []
+  const totalCount = firstPage.count ?? firstResults.length
+
+  if (!firstPage.next || firstResults.length >= totalCount) {
+    return firstResults
+  }
+
+  const offsets: number[] = []
+  for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
+    offsets.push(offset)
+  }
+
+  const remainingPages = await Promise.all(offsets.map(async offset => {
+    const { data } = await apiClient.get<ApiResponse<TelecallingAssignment>>('/telecalling/assignments/', {
+      params: { ...params, limit: API_BATCH_SIZE, offset },
+    })
+    return data.results ?? []
+  }))
+
+  return firstResults.concat(...remainingPages)
+}
+
+async function fetchAllSurveyVoterRows(
+  params: Record<string, string | number> = {},
+): Promise<SurveyAssignmentRow[]> {
+  const { data: firstPage } = await apiClient.get<
+    ApiResponse<SurveyAssignmentRow>
+  >('/telecalling/assignments/survey-voters/', {
+    params: { ...params, limit: API_BATCH_SIZE, offset: 0 },
+  })
+
+  const firstResults = firstPage.results ?? []
+  const totalCount = firstPage.count ?? firstResults.length
+
+  if (!firstPage.next || firstResults.length >= totalCount) {
+    return firstResults
+  }
+
+  const offsets: number[] = []
+  for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
+    offsets.push(offset)
+  }
+
+  const remainingPages = await Promise.all(offsets.map(async offset => {
+    const { data } = await apiClient.get<ApiResponse<SurveyAssignmentRow>>('/telecalling/assignments/survey-voters/', {
+      params: { ...params, limit: API_BATCH_SIZE, offset },
+    })
+    return data.results ?? []
+  }))
+
+  return firstResults.concat(...remainingPages)
+}
+
 /* ── Section header ── */
 function SectionLabel({ icon, label, count, color }: {
   icon: string; label: string; count: number; color: string
@@ -235,51 +318,31 @@ export default function VoterSurveyEntry() {
   const { fetchFieldSurveys, createFieldSurvey, updateFieldSurvey, deleteFieldSurvey } = useEntryAPI()
   const { showToast } = useToast()
 
-  /* ── Assignments from API ── */
-  const [allAssignments, setAllAssignments] = useState<TelecallingAssignment[]>([])
-  const [assignmentScope, setAssignmentScope] = useState<TelecallingAssignment[]>([])
-  const [displayAssignments, setDisplayAssignments] = useState<TelecallingAssignment[]>([])
+  const PAGE_SIZE = 10
+  const [page, setPage] = useState(1)
+
+  /* ── Paginated assignment-voter rows ── */
+  const [rows, setRows] = useState<SurveyAssignmentRow[]>([])
+  const [loadingRows, setLoadingRows] = useState(false)
+  const [totalRows, setTotalRows] = useState(0)
+  const [scopeCounts, setScopeCounts] = useState<SurveyCountSet>({ all: 0, pending: 0, done: 0 })
+  const [filteredCounts, setFilteredCounts] = useState<SurveyCountSet>({ all: 0, pending: 0, done: 0 })
+  const [assignmentTimeOptions, setAssignmentTimeOptions] = useState<SurveyAssignmentTimeOption[]>([])
   const [telecallerOptions, setTelecallerOptions] = useState<{ id: number; name: string }[]>([])
 
   useEffect(() => {
-    let ignore = false
-
-    apiClient.get('/telecalling/assignments/', { params: { limit: 1000 } })
-      .then(r => {
-        if (ignore) return
-        const assignments: TelecallingAssignment[] = r.data.results ?? []
-        setAllAssignments(assignments)
-        setAssignmentScope(assignments)
-        setDisplayAssignments(assignments)
-
-        const seen = new Map<number, string>()
-        assignments.forEach(a => {
-          if (a.telecaller_id != null) {
-            seen.set(a.telecaller_id, a.telecaller_name)
-          }
-        })
-        setTelecallerOptions(
-          [...seen.entries()]
-            .map(([id, name]) => ({ id, name }))
-            .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
-        )
+    apiClient.get('/telecalling/assignments/filters/')
+      .then(response => {
+        const options = (response.data.telecallers ?? []).map((row: { id: number; name: string }) => ({
+          id: row.id,
+          name: row.name,
+        }))
+        setTelecallerOptions(options)
       })
-      .catch(() => {
-        if (ignore) return
-        setAllAssignments([])
-        setAssignmentScope([])
-        setDisplayAssignments([])
-        setTelecallerOptions([])
-      })
-
-    return () => { ignore = true }
+      .catch(() => setTelecallerOptions([]))
   }, [])
 
-  const allAssignmentVoters = useMemo(() => flattenAssignments(allAssignments), [allAssignments])
-  const allVoters = useMemo(() => flattenAssignments(displayAssignments), [displayAssignments])
-
   /* ── Feedback records ── */
-  const [records, setRecords]     = useState<FieldSurveyRecord[]>([])
   const [isFormOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
 
@@ -318,70 +381,61 @@ export default function VoterSurveyEntry() {
   }
 
   useEffect(() => {
-    fetchFieldSurveys().then(res => { if (res) setRecords(res) })
-  }, [])
-
-  useEffect(() => {
-    if (!filterDate && !filterTelecaller) {
-      setAssignmentScope(allAssignments)
-      return
-    }
-
-    let ignore = false
-    const params: Record<string, string | number> = { limit: 1000 }
-    if (filterDate) params.date = filterDate
-    if (filterTelecaller) params.telecaller = filterTelecaller
-
-    apiClient.get('/telecalling/assignments/', { params })
-      .then(r => {
-        if (ignore) return
-        setAssignmentScope(r.data.results ?? [])
-      })
-      .catch(() => {
-        if (ignore) return
-        setAssignmentScope([])
-      })
-
-    return () => { ignore = true }
-  }, [allAssignments, filterDate, filterTelecaller])
-
-  const assignedListOptions = useMemo(() => {
-    if (!filterDate || !filterTelecaller) return []
-
-    const counts = new Map<string, number>()
-    assignmentScope.forEach(a => {
-      const time = assignmentTimeFromValue(a)
-      if (!time) return
-      counts.set(time, (counts.get(time) ?? 0) + (a.voters?.length ?? 0))
-    })
-
-    return [...counts.entries()]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([value, count]) => ({
-        value,
-        label: `${value} / ${count} ${count === 1 ? 'voter' : 'voters'}`,
-      }))
-  }, [assignmentScope, filterDate, filterTelecaller])
-
-  useEffect(() => {
     setFilterAssignedList('')
   }, [filterDate, filterTelecaller])
 
   useEffect(() => {
-    if (!filterAssignedList || assignedListOptions.some(option => option.value === filterAssignedList)) return
+    if (!filterAssignedList || assignmentTimeOptions.some(option => option.value === filterAssignedList)) return
     setFilterAssignedList('')
-  }, [assignedListOptions, filterAssignedList])
+  }, [assignmentTimeOptions, filterAssignedList])
+
+  const reloadRows = useCallback((signal?: AbortSignal) => {
+    setLoadingRows(true)
+    const params: Record<string, string | number> = {
+      limit: PAGE_SIZE,
+      offset: (page - 1) * PAGE_SIZE,
+      status: filterStatus,
+    }
+    if (filterDate) params.date = filterDate
+    if (filterTelecaller) params.telecaller = filterTelecaller
+    if (filterAssignedList) params.assignment_time = filterAssignedList
+    if (search.trim()) params.search = search.trim()
+
+    apiClient.get('/telecalling/assignments/survey-voters/', { params, signal })
+      .then(response => {
+        const data = response.data as ApiResponse<SurveyAssignmentRow> & {
+          counts?: SurveyCountSet
+          filtered_counts?: SurveyCountSet
+          assignment_times?: SurveyAssignmentTimeOption[]
+        }
+        setRows(data.results ?? [])
+        setTotalRows(data.count ?? 0)
+        setScopeCounts(data.counts ?? { all: 0, pending: 0, done: 0 })
+        setFilteredCounts(data.filtered_counts ?? data.counts ?? { all: 0, pending: 0, done: 0 })
+        setAssignmentTimeOptions(data.assignment_times ?? [])
+      })
+      .catch(err => {
+        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return
+        setRows([])
+        setTotalRows(0)
+        setScopeCounts({ all: 0, pending: 0, done: 0 })
+        setFilteredCounts({ all: 0, pending: 0, done: 0 })
+        setAssignmentTimeOptions([])
+        showToast('Failed to load telecalling feedback list', 'error')
+      })
+      .finally(() => setLoadingRows(false))
+  }, [PAGE_SIZE, page, filterStatus, filterDate, filterTelecaller, filterAssignedList, search, showToast])
 
   useEffect(() => {
-    if (!filterAssignedList || !filterDate || !filterTelecaller) {
-      setDisplayAssignments(assignmentScope)
-      return
-    }
+    const controller = new AbortController()
+    reloadRows(controller.signal)
+    return () => controller.abort()
+  }, [reloadRows])
 
-    setDisplayAssignments(
-      assignmentScope.filter(a => assignmentTimeFromValue(a) === filterAssignedList)
-    )
-  }, [assignmentScope, filterDate, filterTelecaller, filterAssignedList])
+  const records = useMemo(
+    () => rows.map(row => row.survey_record).filter(Boolean) as FieldSurveyRecord[],
+    [rows],
+  )
 
   /* Normalize gender codes → display values */
   const toGenderDisplay = (g?: string) => {
@@ -491,7 +545,7 @@ export default function VoterSurveyEntry() {
         : d
       const updated = await updateFieldSurvey(editingId, payload)
       if (updated) {
-        setRecords(prev => prev.map(rec => rec.id === editingId ? updated : rec))
+        reloadRows()
         showToast('<i class="ph ph-check-circle"></i> Feedback updated!', '#138808')
         closeForm()
       } else {
@@ -500,7 +554,7 @@ export default function VoterSurveyEntry() {
     } else {
       const created = await createFieldSurvey(d)
       if (created) {
-        setRecords(prev => [created, ...prev])
+        reloadRows()
         showToast('<i class="ph ph-check-circle"></i> Feedback saved!', '#138808')
         closeForm()
       } else {
@@ -552,7 +606,7 @@ export default function VoterSurveyEntry() {
 
   const handleDelete = async (id: number) => {
     const ok = await deleteFieldSurvey(id)
-    if (ok) setRecords(prev => prev.filter(rec => rec.id !== id))
+    if (ok) reloadRows()
   }
 
   const recordByVoterId = useMemo(() => {
@@ -667,7 +721,7 @@ export default function VoterSurveyEntry() {
 
     const created = await createFieldSurvey(buildInlinePayload(voter, draft))
     if (created) {
-      setRecords(prev => [created, ...prev])
+      reloadRows()
       clearInlineDraft(voter)
       showToast('<i class="ph ph-check-circle"></i> Survey saved and locked.', '#138808')
     } else {
@@ -681,57 +735,20 @@ export default function VoterSurveyEntry() {
     })
   }
 
-  /* Filtered voter list */
-  const filteredVoters = useMemo(() => {
-    let list = [...allVoters]
-    if (filterDate) list = list.filter(v => v.assigned_date === filterDate)
-    if (filterTelecaller) list = list.filter(v => String(v.telecaller_id) === filterTelecaller)
-    if (filterAssignedList) list = list.filter(v => v.assignment_time === filterAssignedList)
-    if (search) {
-      const q = search.toLowerCase().trim()
-      list = list.filter(v =>
-        v.voter_name.toLowerCase().includes(q) ||
-        (v.voter_id_no ?? '').toLowerCase().includes(q) ||
-        (v.phone ?? '').includes(q) ||
-        sortText(v.address).includes(q)
-      )
-    }
-    return list.sort((a, b) => {
-      const leftAddress = (a.address ?? '').trim()
-      const rightAddress = (b.address ?? '').trim()
-
-      const leftBlank = leftAddress === ''
-      const rightBlank = rightAddress === ''
-      if (leftBlank !== rightBlank) return leftBlank ? 1 : -1
-
-      const addressCompare = leftAddress.localeCompare(rightAddress, 'en', {
-        sensitivity: 'base',
-      })
-      if (addressCompare !== 0) return addressCompare
-
-      return a.id - b.id
-    })
-  }, [allVoters, filterDate, filterTelecaller, filterAssignedList, search])
-
-  const pendingVoters = filteredVoters.filter(v => !getRecordForVoter(v))
-  const doneVoters    = filteredVoters.filter(v =>  getRecordForVoter(v))
+  const filteredVoters = rows
+  const pendingVotersCount = filteredCounts.pending
+  const doneVotersCount = filteredCounts.done
 
   const displayPending = filterStatus !== 'done'
   const displayDone    = filterStatus !== 'pending'
-
-  /* ── Pagination ── */
-  const PAGE_SIZE = 10
-  const [page, setPage] = useState(1)
+  const hasScopeFilters = !!filterDate || !!filterTelecaller || !!filterAssignedList
 
   // Reset page when filters change
   useEffect(() => { setPage(1) }, [filterStatus, filterDate, filterTelecaller, filterAssignedList, search])
 
-  const activeList = filterStatus === 'pending' ? pendingVoters
-                   : filterStatus === 'done'    ? doneVoters
-                   : filteredVoters
-
-  const totalPages  = Math.max(1, Math.ceil(activeList.length / PAGE_SIZE))
-  const pagedList   = activeList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const activeList = filteredVoters
+  const totalPages  = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
+  const pagedList   = filteredVoters
 
   useEffect(() => {
     setPage(prev => Math.min(prev, totalPages))
@@ -971,38 +988,46 @@ export default function VoterSurveyEntry() {
     )
   }
 
-  const handleExport = () => {
-    if (!records.length) return
-    const voterMap = new Map(allAssignmentVoters.map(v => [v.voter_name.toLowerCase(), v]))
+  const handleExport = async () => {
+    const [surveyRecords, assignmentRows] = await Promise.all([
+      fetchFieldSurveys(),
+      fetchAllSurveyVoterRows({ status: 'done' }),
+    ])
+
+    if (!surveyRecords?.length) return
+
+    const voterMap = new Map(
+      assignmentRows.map(v => [(v.voter_name ?? '').toLowerCase(), v] as const),
+    )
     const headers = [
       'Survey Date', 'Voter Name', 'Voter ID No', 'Phone', 'Address', 'Booth',
       'Age', 'Gender', 'Telecaller Name', 'Telecaller Phone',
       'Support Level', 'Party Preference', 'Response Status',
       'Is Registered', 'Aware of Candidate', 'Likely to Vote', 'Remarks',
     ]
-    const rows = records.map(r => {
-      const v = voterMap.get((r.voter_name ?? '').toLowerCase())
+    const exportRows = surveyRecords.map(record => {
+      const voter = voterMap.get((record.voter_name ?? '').toLowerCase())
       return [
-        r.survey_date,
-        r.voter_name,
-        v?.voter_id_no ?? '',
-        r.phone,
-        r.address,
-        r.booth_no,
-        r.age,
-        toGenderDisplay(r.gender),
-        r.surveyed_by ?? v?.telecaller_name ?? '',
-        v?.telecaller_phone ?? '',
-        r.support_level,
-        r.party_preference,
-        r.response_status ? responseLabel(r.response_status) : '',
-        r.is_registered,
-        r.aware_of_candidate,
-        r.likely_to_vote,
-        r.remarks,
+        record.survey_date,
+        record.voter_name,
+        voter?.voter_id_no ?? '',
+        record.phone,
+        record.address,
+        record.booth_no,
+        record.age,
+        toGenderDisplay(record.gender),
+        record.surveyed_by ?? voter?.telecaller_name ?? '',
+        voter?.telecaller_phone ?? '',
+        record.support_level,
+        record.party_preference,
+        record.response_status ? responseLabel(record.response_status) : '',
+        record.is_registered,
+        record.aware_of_candidate,
+        record.likely_to_vote,
+        record.remarks,
       ]
     })
-    exportToCsv(headers, rows, `BJP_VoterSurvey_${new Date().toISOString().slice(0, 10)}.csv`)
+    exportToCsv(headers, exportRows, `BJP_VoterSurvey_${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
   /* ════════════════════════════════════════════════════════
@@ -1018,25 +1043,25 @@ export default function VoterSurveyEntry() {
             <i className="ph ph-phone-outgoing text-[18px] text-navy" />
             <div>
               <h2 className="text-[14px] font-bold text-heading">Telecalling Feedback</h2>
-              {allVoters.length > 0 ? (
+              {scopeCounts.all > 0 ? (
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-bold">
                     <i className="ph ph-clock text-[10px]" />
-                    {allVoters.filter(v => !getRecordForVoter(v)).length} Not Yet Action Taken
+                    {scopeCounts.pending} Not Yet Action Taken
                   </span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
                     <i className="ph ph-check-circle text-[10px]" />
-                    {allVoters.filter(v => getRecordForVoter(v)).length} Action Taken
+                    {scopeCounts.done} Action Taken
                   </span>
                 </div>
-              ) : allAssignments.length > 0 ? (
+              ) : totalRows > 0 ? (
                 <p className="text-[11px] text-muted">No voters match the selected assignment filters</p>
               ) : (
                 <p className="text-[11px] text-muted">No assigned voters yet</p>
               )}
             </div>
           </div>
-          {records.length > 0 && (
+          {scopeCounts.done > 0 && (
             <button
               onClick={handleExport}
               className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
@@ -1053,9 +1078,9 @@ export default function VoterSurveyEntry() {
           {/* Status tabs */}
           <div className="flex rounded-lg border border-border overflow-hidden text-[11px] font-semibold">
             {([
-              { key: 'all',     label: 'All',                  count: allVoters.length },
-              { key: 'pending', label: 'Not Yet Action Taken',  count: allVoters.filter(v => !getRecordForVoter(v)).length },
-              { key: 'done',    label: 'Action Taken',          count: allVoters.filter(v =>  getRecordForVoter(v)).length },
+              { key: 'all',     label: 'All',                  count: scopeCounts.all },
+              { key: 'pending', label: 'Not Yet Action Taken', count: scopeCounts.pending },
+              { key: 'done',    label: 'Action Taken',         count: scopeCounts.done },
             ] as const).map(tab => (
               <button key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
@@ -1101,7 +1126,7 @@ export default function VoterSurveyEntry() {
             <option value="">
               {!filterDate || !filterTelecaller ? 'Select date + telecaller' : 'All Assigned Lists'}
             </option>
-            {assignedListOptions.map(option => (
+            {assignmentTimeOptions.map(option => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
@@ -1129,11 +1154,25 @@ export default function VoterSurveyEntry() {
         </div>
 
         {/* ── List ── */}
-        {allAssignments.length === 0 ? (
+        {loadingRows ? (
+          <div className="px-5 py-14 text-center text-muted">
+            <i className="ph ph-spinner-gap animate-spin text-[28px] block mb-2" />
+            Loading assigned voters…
+          </div>
+        ) : scopeCounts.all === 0 ? (
           <div className="px-5 py-14 text-center">
             <i className="ph ph-phone-slash text-[36px] text-border block mb-3" />
-            <p className="text-[13px] font-semibold text-heading mb-1">No assigned voters yet</p>
-            <p className="text-[11px] text-muted">Go to <strong>Assign Telecalling</strong> to assign voters first.</p>
+            {hasScopeFilters ? (
+              <>
+                <p className="text-[13px] font-semibold text-heading mb-1">No voters match the selected assignment filters</p>
+                <p className="text-[11px] text-muted">Change the selected date or telecaller filters to see assigned voters.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-[13px] font-semibold text-heading mb-1">No assigned voters yet</p>
+                <p className="text-[11px] text-muted">Go to <strong>Assign Telecalling</strong> to assign voters first.</p>
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -1143,7 +1182,7 @@ export default function VoterSurveyEntry() {
                 <SectionLabel
                   icon="ph ph-clock text-orange-500"
                   label="Not Yet Action Taken"
-                  count={pendingVoters.length}
+                  count={filteredCounts.pending}
                   color="bg-orange-50 text-orange-600"
                 />
                 {pagedPending.map(voter => renderVoterRow(voter))}
@@ -1156,7 +1195,7 @@ export default function VoterSurveyEntry() {
                 <SectionLabel
                   icon="ph ph-check-circle text-green-600"
                   label="Action Taken"
-                  count={doneVoters.length}
+                  count={filteredCounts.done}
                   color="bg-green-50 text-green-700"
                 />
                 {pagedDone.map(voter => renderVoterRow(voter))}
@@ -1164,28 +1203,28 @@ export default function VoterSurveyEntry() {
             )}
 
             {/* No match */}
-            {filteredVoters.length === 0 && (
+            {filteredCounts.all === 0 && (
               <div className="px-5 py-12 text-center">
                 <i className="ph ph-magnifying-glass text-[30px] text-border block mb-2" />
                 <p className="text-[12px] text-muted">No voters match your filter.</p>
               </div>
             )}
-            {filteredVoters.length > 0 && !displayPending && pendingVoters.length === 0 && (
+            {filteredCounts.all > 0 && !displayPending && filteredCounts.pending === 0 && (
               <div className="px-5 py-8 text-center text-[12px] text-muted">
                 No pending voters.
               </div>
             )}
-            {filteredVoters.length > 0 && !displayDone && doneVoters.length === 0 && (
+            {filteredCounts.all > 0 && !displayDone && filteredCounts.done === 0 && (
               <div className="px-5 py-8 text-center text-[12px] text-muted">
                 No completed voters yet.
               </div>
             )}
 
             {/* ── Pagination controls ── */}
-            {activeList.length > PAGE_SIZE && (
+            {totalRows > PAGE_SIZE && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-surface-alt">
                 <span className="text-[11px] text-muted">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, activeList.length)} of {activeList.length}
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRows)} of {totalRows}
                 </span>
                 <div className="flex items-center gap-1">
                   <button

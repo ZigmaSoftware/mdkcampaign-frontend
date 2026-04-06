@@ -9,6 +9,38 @@ interface ApiResponse<T> {
   results: T[]
 }
 
+const API_BATCH_SIZE = 500
+
+async function fetchAllPaginated<T>(
+  url: string,
+  params: Record<string, string | number> = {},
+): Promise<T[]> {
+  const { data: firstPage } = await apiClient.get<ApiResponse<T>>(url, {
+    params: { ...params, limit: API_BATCH_SIZE, offset: 0 },
+  })
+
+  const firstResults = firstPage.results || []
+  const totalCount = firstPage.count ?? firstResults.length
+
+  if (!firstPage.next || firstResults.length >= totalCount) {
+    return firstResults
+  }
+
+  const offsets: number[] = []
+  for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
+    offsets.push(offset)
+  }
+
+  const remainingPages = await Promise.all(offsets.map(async offset => {
+    const { data } = await apiClient.get<ApiResponse<T>>(url, {
+      params: { ...params, limit: API_BATCH_SIZE, offset },
+    })
+    return data.results || []
+  }))
+
+  return firstResults.concat(...remainingPages)
+}
+
 interface VoterRecord {
   id: number
   name: string
@@ -805,10 +837,7 @@ export function useEntryAPI(): UseEntryAPIReturn {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await apiClient.get<ApiResponse<FieldSurveyRecord>>('/activities/surveys/', {
-        params: { limit: 1000 },
-      })
-      return data.results || []
+      return await fetchAllPaginated<FieldSurveyRecord>('/activities/surveys/')
     } catch (err) {
       handleError(err, 'fetch field surveys')
       return null

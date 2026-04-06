@@ -147,6 +147,15 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   /** Legacy page-level access check */
   const canAccess = useCallback((pageId: string): boolean => {
     if (!loaded) return true
+    if (pageId === 'dashboard') {
+      return canView('dashboard-home')
+    }
+    if (pageId === 'campaign-dashboard') {
+      return canView('activity-dashboard')
+    }
+    if (pageId === 'task-dashboard') {
+      return canView('task-dashboard')
+    }
     if (allowedPages.includes('*')) return true
     if (allowedPages.includes(pageId)) return true
 
@@ -180,8 +189,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
     const base = fromBackend.length > 0 ? fromBackend : fallback
     const showUserSettings = canView('user-mgmt') || canView('permissions')
-    const showTaskDashboard = canView('event')
-    const showCampaignDashboard = canAccess('report')
+    const showTaskDashboard = canView('task-dashboard')
+    const showCampaignDashboard = canView('activity-dashboard')
 
     const tabs = [...base]
     if (showCampaignDashboard) {

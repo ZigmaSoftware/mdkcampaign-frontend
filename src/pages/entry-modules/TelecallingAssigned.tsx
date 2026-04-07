@@ -35,10 +35,17 @@ interface Assignment {
   created_at:       string
 }
 
-function formatAssignedDateTime(assignment: Assignment) {
-  const time = assignment.created_at.match(/(\d{2}:\d{2}:\d{2})/)?.[1]
-  if (!time) return assignment.assigned_date
-  return `${assignment.assigned_date} ${time}`
+function formatCreatedDateTime(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleString('en-IN', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
 /* ─── Print helpers ──────────────────────────────────────── */
@@ -363,7 +370,8 @@ export default function TelecallingAssigned() {
                   <th className="px-5 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">#</th>
                   <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Telecalling Person</th>
                   <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Voters Assigned</th>
-                  <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Date</th>
+                  <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Assigned Date</th>
+                  <th className="px-4 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">Created Date</th>
                   <th className="px-4 py-[10px]" />
                 </tr>
               </thead>
@@ -394,7 +402,9 @@ export default function TelecallingAssigned() {
                       </span>
                     </td>
 
-                    <td className="px-4 py-3 text-muted">{formatAssignedDateTime(a)}</td>
+                    <td className="px-4 py-3 text-[11px] font-semibold text-heading">{a.assigned_date}</td>
+
+                    <td className="px-4 py-3 text-[11px] text-muted">{formatCreatedDateTime(a.created_at)}</td>
 
                     <td className="px-4 py-3 text-right">
                       <button

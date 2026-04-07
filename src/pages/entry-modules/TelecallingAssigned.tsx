@@ -183,10 +183,18 @@ export default function TelecallingAssigned() {
   useEffect(() => {
     apiClient.get('/telecalling/assignments/filters/')
       .then(r => {
-        const options = (r.data.telecallers ?? []).map((row: { id: number; name: string }) => ({
-          id: String(row.id),
-          name: row.name,
-        }))
+        const seen = new Set<string>()
+        const options = (r.data.telecallers ?? []).reduce((acc: { id: string; name: string }[], row: { id: number; name: string }) => {
+          const normalizedName = String(row.name ?? '').trim().toLowerCase()
+          const key = row.id ? `id:${row.id}` : `name:${normalizedName}`
+          if (!normalizedName || seen.has(key)) return acc
+          seen.add(key)
+          acc.push({
+            id: String(row.id),
+            name: row.name,
+          })
+          return acc
+        }, [])
         setTelecallerOptions(options)
       })
       .catch(() => setTelecallerOptions([]))

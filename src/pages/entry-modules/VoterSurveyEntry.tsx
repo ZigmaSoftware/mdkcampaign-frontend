@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
 import type { FieldSurveyRecord } from '../../hooks/useEntryAPI'
+import { useMasterAPI } from '../../hooks/useMasterAPI'
 import EntryFormPanel from '../../components/entry/EntryFormPanel'
 import FormRow from '../../components/entry/FormRow'
 import { FormGroup, inputCls, selectCls, textareaCls } from '../../components/entry/FormGroup'
@@ -26,6 +27,17 @@ interface SurveyAssignmentTimeOption {
   value: string
   label: string
   count: number
+}
+
+interface NamedOption {
+  id: number
+  name: string
+}
+
+interface BoothMasterOption {
+  id: number
+  number: string
+  name: string
 }
 
 type YNS = 'Yes' | 'No' | 'Not Sure' | ''
@@ -218,6 +230,7 @@ const genderLabel = (g?: string) =>
   g === 'o' || g === 'Other' ? 'Other' : ''
 
 const sortText = (value?: string) => (value ?? '').trim().toLowerCase()
+const normalizeFilterName = (value?: string) => (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
 const assignmentTimeFromValue = (assignment: Pick<TelecallingAssignment, 'assignment_time' | 'created_at'>) =>
   assignment.assignment_time || assignment.created_at.match(/(\d{2}:\d{2}:\d{2})/)?.[1] || ''
 
@@ -316,6 +329,7 @@ function SectionLabel({ icon, label, count, color }: {
 
 export default function VoterSurveyEntry() {
   const { fetchFieldSurveys, createFieldSurvey, updateFieldSurvey, deleteFieldSurvey } = useEntryAPI()
+  const masterApi = useMasterAPI()
   const { showToast } = useToast()
 
   const PAGE_SIZE = 10
@@ -329,17 +343,43 @@ export default function VoterSurveyEntry() {
   const [filteredCounts, setFilteredCounts] = useState<SurveyCountSet>({ all: 0, pending: 0, done: 0 })
   const [assignmentTimeOptions, setAssignmentTimeOptions] = useState<SurveyAssignmentTimeOption[]>([])
   const [telecallerOptions, setTelecallerOptions] = useState<{ id: number; name: string }[]>([])
+  const [masterBooths, setMasterBooths] = useState<BoothMasterOption[]>([])
+  const [masterBlocks, setMasterBlocks] = useState<NamedOption[]>([])
+  const [masterUnions, setMasterUnions] = useState<NamedOption[]>([])
+  const [masterPanchayats, setMasterPanchayats] = useState<{ id: number; name: string; union_name?: string }[]>([])
+  const [masterParties, setMasterParties] = useState<{ id: number; name: string; abbreviation?: string }[]>([])
 
   useEffect(() => {
     apiClient.get('/telecalling/assignments/filters/')
       .then(response => {
-        const options = (response.data.telecallers ?? []).map((row: { id: number; name: string }) => ({
-          id: row.id,
-          name: row.name,
-        }))
+        const seen = new Set<string>()
+        const options = (response.data.telecallers ?? []).reduce((acc: { id: number; name: string }[], row: { id: number; name: string }) => {
+          const name = (row.name ?? '').trim()
+          if (!name) return acc
+
+          const key = row.id != null
+            ? `id:${row.id}`
+            : `name:${normalizeFilterName(name)}`
+
+          if (seen.has(key)) return acc
+          seen.add(key)
+          acc.push({
+            id: row.id,
+            name,
+          })
+          return acc
+        }, [])
         setTelecallerOptions(options)
       })
       .catch(() => setTelecallerOptions([]))
+  }, [])
+
+  useEffect(() => {
+    masterApi.fetchBooths().then(data => data && setMasterBooths(data))
+    masterApi.fetchAreas().then(data => data && setMasterBlocks(data))
+    masterApi.fetchUnions().then(data => data && setMasterUnions(data))
+    masterApi.fetchPanchayats().then(data => data && setMasterPanchayats(data))
+    masterApi.fetchParties().then(data => data && setMasterParties(data))
   }, [])
 
   /* ── Feedback records ── */
@@ -352,6 +392,17 @@ export default function VoterSurveyEntry() {
   const [filterAssignedList, setFilterAssignedList] = useState('')
   const [filterStatus,     setFilterStatus]     = useState<'all' | 'pending' | 'done'>('all')
   const [search, setSearch]                     = useState('')
+  const [filterSupportLevel, setFilterSupportLevel] = useState('')
+  const [filterResponseStatus, setFilterResponseStatus] = useState('')
+  const [filterAwareOfCandidate, setFilterAwareOfCandidate] = useState('')
+  const [filterLikelyToVote, setFilterLikelyToVote] = useState('')
+  const [filterParty, setFilterParty] = useState('')
+  const [filterBlock, setFilterBlock] = useState('')
+  const [filterUnion, setFilterUnion] = useState('')
+  const [filterPanchayat, setFilterPanchayat] = useState('')
+  const [filterBooth, setFilterBooth] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
   const [inlineDrafts, setInlineDrafts]         = useState<Record<string, InlineSurveyDraft>>({})
   const [savingRows, setSavingRows]             = useState<Record<string, boolean>>({})
 
@@ -400,6 +451,17 @@ export default function VoterSurveyEntry() {
     if (filterTelecaller) params.telecaller = filterTelecaller
     if (filterAssignedList) params.assignment_time = filterAssignedList
     if (search.trim()) params.search = search.trim()
+    if (filterSupportLevel) params.support_level = filterSupportLevel
+    if (filterResponseStatus) params.response_status = filterResponseStatus
+    if (filterAwareOfCandidate) params.aware_of_candidate = filterAwareOfCandidate
+    if (filterLikelyToVote) params.likely_to_vote = filterLikelyToVote
+    if (filterParty) params.party = filterParty
+    if (filterBlock) params.block = filterBlock
+    if (filterUnion) params.union = filterUnion
+    if (filterPanchayat) params.panchayat = filterPanchayat
+    if (filterBooth) params.booth = filterBooth
+    if (filterDateFrom) params.date_from = filterDateFrom
+    if (filterDateTo) params.date_to = filterDateTo
 
     apiClient.get('/telecalling/assignments/survey-voters/', { params, signal })
       .then(response => {
@@ -424,7 +486,12 @@ export default function VoterSurveyEntry() {
         showToast('Failed to load telecalling feedback list', 'error')
       })
       .finally(() => setLoadingRows(false))
-  }, [PAGE_SIZE, page, filterStatus, filterDate, filterTelecaller, filterAssignedList, search, showToast])
+  }, [
+    PAGE_SIZE, page, filterStatus, filterDate, filterTelecaller, filterAssignedList,
+    search, filterSupportLevel, filterResponseStatus, filterAwareOfCandidate,
+    filterLikelyToVote, filterParty, filterBlock, filterUnion, filterPanchayat,
+    filterBooth, filterDateFrom, filterDateTo, showToast,
+  ])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -744,7 +811,57 @@ export default function VoterSurveyEntry() {
   const hasScopeFilters = !!filterDate || !!filterTelecaller || !!filterAssignedList
 
   // Reset page when filters change
-  useEffect(() => { setPage(1) }, [filterStatus, filterDate, filterTelecaller, filterAssignedList, search])
+  useEffect(() => { setPage(1) }, [
+    filterStatus, filterDate, filterTelecaller, filterAssignedList, search,
+    filterSupportLevel, filterResponseStatus, filterAwareOfCandidate,
+    filterLikelyToVote, filterParty, filterBlock, filterUnion, filterPanchayat,
+    filterBooth, filterDateFrom, filterDateTo,
+  ])
+
+  const partyOptions = useMemo(() => {
+    if (masterParties.length > 0) return masterParties.map(p => ({ name: p.name, abbr: p.abbreviation }))
+    return PARTY_PREFERENCE_OPTIONS.map(name => ({ name, abbr: undefined }))
+  }, [masterParties])
+
+  const blockOptions = useMemo(
+    () => masterBlocks.map(block => block.name).sort((a, b) => a.localeCompare(b)),
+    [masterBlocks],
+  )
+
+  const unionOptions = useMemo(
+    () => masterUnions.map(union => union.name).sort((a, b) => a.localeCompare(b)),
+    [masterUnions],
+  )
+
+  const panchayatOptions = useMemo(
+    () => masterPanchayats.map(panchayat => panchayat.name).sort((a, b) => a.localeCompare(b)),
+    [masterPanchayats],
+  )
+
+  const boothOptions = useMemo(
+    () => [...masterBooths].sort((left, right) => left.number.localeCompare(right.number, undefined, { numeric: true, sensitivity: 'base' })),
+    [masterBooths],
+  )
+
+  const hasAdvancedFilters = !!(
+    filterSupportLevel || filterResponseStatus || filterAwareOfCandidate ||
+    filterLikelyToVote || filterParty || filterBlock || filterUnion ||
+    filterPanchayat || filterBooth || filterDateFrom || filterDateTo
+  )
+
+  const clearAdvancedFilters = () => {
+    setFilterSupportLevel('')
+    setFilterResponseStatus('')
+    setFilterAwareOfCandidate('')
+    setFilterLikelyToVote('')
+    setFilterParty('')
+    setFilterBlock('')
+    setFilterUnion('')
+    setFilterPanchayat('')
+    setFilterBooth('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+  }
 
   const activeList = filteredVoters
   const totalPages  = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
@@ -1151,6 +1268,142 @@ export default function VoterSurveyEntry() {
               <i className="ph ph-x text-[11px]" /> Clear
             </button>
           )}
+        </div>
+
+        <div className="px-5 py-3 border-b border-border bg-[#fafafa]">
+          <div className="flex items-center gap-1.5 mb-2">
+            <i className="ph ph-funnel text-[12px] text-navy" />
+            <span className="text-[10px] font-bold text-navy uppercase tracking-[0.8px]">Additional Filters</span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Support Level</label>
+              <select value={filterSupportLevel} onChange={e => setFilterSupportLevel(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterSupportLevel ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="positive">Positive</option>
+                <option value="negative">Negative</option>
+                <option value="neutral">Neutral</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Response Status</label>
+              <select value={filterResponseStatus} onChange={e => setFilterResponseStatus(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterResponseStatus ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Statuses</option>
+                <option value="not_reach">Not Reach</option>
+                <option value="no_answer">No Answer</option>
+                <option value="need_followup">Need Followup</option>
+                <option value="wrong_number">Wrong Number</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Aware of Our Candidate?</label>
+              <select value={filterAwareOfCandidate} onChange={e => setFilterAwareOfCandidate(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterAwareOfCandidate ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="Not Sure">Not Sure</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Likely to Vote?</label>
+              <select value={filterLikelyToVote} onChange={e => setFilterLikelyToVote(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterLikelyToVote ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="Not Sure">Not Sure</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Party Reference</label>
+              <select value={filterParty} onChange={e => setFilterParty(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterParty ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Parties</option>
+                {partyOptions.map(party => (
+                  <option key={party.name} value={party.name}>{party.abbr ? `${party.abbr} — ${party.name}` : party.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Block</label>
+              <select value={filterBlock} onChange={e => setFilterBlock(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterBlock ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Blocks</option>
+                {blockOptions.map(block => <option key={block} value={block}>{block}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Booth</label>
+              <select value={filterBooth} onChange={e => setFilterBooth(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterBooth ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Booths</option>
+                {boothOptions.map(booth => (
+                  <option key={booth.id} value={booth.number}>{booth.number} — {booth.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Union</label>
+              <select value={filterUnion} onChange={e => setFilterUnion(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterUnion ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Unions</option>
+                {unionOptions.map(union => <option key={union} value={union}>{union}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Panchayat</label>
+              <select value={filterPanchayat} onChange={e => setFilterPanchayat(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterPanchayat ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Panchayats</option>
+                {panchayatOptions.map(panchayat => <option key={panchayat} value={panchayat}>{panchayat}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Survey Date From</label>
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={e => setFilterDateFrom(e.target.value)}
+                className={`${inputCls} w-full text-[11px] ${filterDateFrom ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Survey Date To</label>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={e => setFilterDateTo(e.target.value)}
+                className={`${inputCls} w-full text-[11px] ${filterDateTo ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+              />
+            </div>
+
+            {hasAdvancedFilters && (
+              <div className="md:col-span-2 flex items-end justify-end">
+                <button onClick={clearAdvancedFilters}
+                  className="flex items-center gap-1 px-3 py-[6px] rounded-lg border border-rose-200 bg-rose-50 text-rose-500 text-[11px] font-medium hover:bg-rose-100 transition-colors">
+                  <i className="ph ph-x-circle text-[12px]" /> Clear Additional Filters
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── List ── */}

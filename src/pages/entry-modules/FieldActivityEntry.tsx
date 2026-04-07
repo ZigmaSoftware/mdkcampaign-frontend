@@ -39,6 +39,8 @@ interface FieldFollowupCountSet {
 
 interface FieldFollowupRow extends FieldSurveyRecord {
   decision?: FeedbackDecision | null
+  telecaller_name?: string
+  telecaller_phone?: string
 }
 
 interface SearchOption {
@@ -142,7 +144,7 @@ function openFieldSurveyPrintWindow({
   surveys: FieldSurveyRecord[]
   getPanchayat: (survey: FieldSurveyRecord) => string | undefined
   getUnion: (survey: FieldSurveyRecord) => string | undefined
-  filters: { status: string; booth: string; volunteer: string; search: string }
+  filters: Record<string, string>
 }) {
   const pageSize = 5
   const rowChunks = Array.from({ length: Math.ceil(surveys.length / pageSize) }, (_, chunkIndex) =>
@@ -153,7 +155,18 @@ function openFieldSurveyPrintWindow({
     filters.status && `Status: ${filters.status}`,
     filters.booth && `Booth: ${filters.booth}`,
     filters.volunteer && `Volunteer: ${filters.volunteer}`,
+    filters.telecaller && `Telecaller: ${filters.telecaller}`,
     filters.search && `Search: ${filters.search}`,
+    filters.support_level && `Support: ${filters.support_level}`,
+    filters.response_status && `Response: ${filters.response_status}`,
+    filters.aware_of_candidate && `Aware: ${filters.aware_of_candidate}`,
+    filters.likely_to_vote && `Likely Vote: ${filters.likely_to_vote}`,
+    filters.party && `Party: ${filters.party}`,
+    filters.block && `Block: ${filters.block}`,
+    filters.union && `Union: ${filters.union}`,
+    filters.panchayat && `Panchayat: ${filters.panchayat}`,
+    filters.date_from && `Date From: ${filters.date_from}`,
+    filters.date_to && `Date To: ${filters.date_to}`,
   ].filter(Boolean)
 
   const win = window.open('', '_blank')
@@ -496,9 +509,12 @@ export default function FieldActivityEntry() {
   const [scopeCounts, setScopeCounts] = useState<FieldFollowupCountSet>({ all: 0, pending: 0, done: 0 })
   const [filteredCounts, setFilteredCounts] = useState<FieldFollowupCountSet>({ all: 0, pending: 0, done: 0 })
   const [volunteerOptions, setVolunteerOptions] = useState<string[]>([])
+  const [telecallerOptions, setTelecallerOptions] = useState<string[]>([])
 
   /* ── Master data ── */
   const [masterBooths,     setMasterBooths]     = useState<{ id: number; number: string; name: string; panchayat_name?: string }[]>([])
+  const [masterBlocks,     setMasterBlocks]     = useState<{ id: number; name: string }[]>([])
+  const [masterUnions,     setMasterUnions]     = useState<{ id: number; name: string }[]>([])
   const [masterPanchayats, setMasterPanchayats] = useState<{ id: number; name: string; union_name?: string }[]>([])
   const [masterParties,    setMasterParties]    = useState<{ id: number; name: string; abbreviation?: string }[]>([])
 
@@ -506,10 +522,23 @@ export default function FieldActivityEntry() {
   const [filterStatus,    setFilterStatus]    = useState<'all' | 'pending' | 'done'>('all')
   const [filterBooth,     setFilterBooth]     = useState('')
   const [filterVolunteer, setFilterVolunteer] = useState('')
+  const [filterTelecaller, setFilterTelecaller] = useState('')
+  const [filterSupportLevel, setFilterSupportLevel] = useState('')
+  const [filterResponseStatus, setFilterResponseStatus] = useState('')
+  const [filterAwareOfCandidate, setFilterAwareOfCandidate] = useState('')
+  const [filterLikelyToVote, setFilterLikelyToVote] = useState('')
+  const [filterParty, setFilterParty] = useState('')
+  const [filterBlock, setFilterBlock] = useState('')
+  const [filterUnion, setFilterUnion] = useState('')
+  const [filterPanchayat, setFilterPanchayat] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
   const [search,          setSearch]          = useState('')
 
   useEffect(() => {
     masterApi.fetchBooths().then(d => d && setMasterBooths(d))
+    masterApi.fetchAreas().then(d => d && setMasterBlocks(d))
+    masterApi.fetchUnions().then(d => d && setMasterUnions(d))
     masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
     masterApi.fetchParties().then(d => d && setMasterParties(d))
   }, [])
@@ -523,6 +552,17 @@ export default function FieldActivityEntry() {
     }
     if (filterBooth) params.booth = filterBooth
     if (filterVolunteer) params.volunteer = filterVolunteer
+    if (filterTelecaller) params.telecaller = filterTelecaller
+    if (filterSupportLevel) params.support_level = filterSupportLevel
+    if (filterResponseStatus) params.response_status = filterResponseStatus
+    if (filterAwareOfCandidate) params.aware_of_candidate = filterAwareOfCandidate
+    if (filterLikelyToVote) params.likely_to_vote = filterLikelyToVote
+    if (filterParty) params.party = filterParty
+    if (filterBlock) params.block = filterBlock
+    if (filterUnion) params.union = filterUnion
+    if (filterPanchayat) params.panchayat = filterPanchayat
+    if (filterDateFrom) params.date_from = filterDateFrom
+    if (filterDateTo) params.date_to = filterDateTo
     if (search.trim()) params.search = search.trim()
 
     apiClient.get('/activities/surveys/followup-list/', { params, signal })
@@ -531,12 +571,14 @@ export default function FieldActivityEntry() {
           counts?: FieldFollowupCountSet
           filtered_counts?: FieldFollowupCountSet
           volunteers?: string[]
+          telecallers?: string[]
         }
         setRows(data.results ?? [])
         setTotalRows(data.count ?? 0)
         setScopeCounts(data.counts ?? { all: 0, pending: 0, done: 0 })
         setFilteredCounts(data.filtered_counts ?? data.counts ?? { all: 0, pending: 0, done: 0 })
         setVolunteerOptions(data.volunteers ?? [])
+        setTelecallerOptions(data.telecallers ?? [])
       })
       .catch(err => {
         if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return
@@ -545,10 +587,16 @@ export default function FieldActivityEntry() {
         setScopeCounts({ all: 0, pending: 0, done: 0 })
         setFilteredCounts({ all: 0, pending: 0, done: 0 })
         setVolunteerOptions([])
+        setTelecallerOptions([])
         showToast('Failed to load field survey list', 'error')
       })
       .finally(() => setLoadingRows(false))
-  }, [PAGE_SIZE, page, filterStatus, filterBooth, filterVolunteer, search, showToast])
+  }, [
+    PAGE_SIZE, page, filterStatus, filterBooth, filterVolunteer, filterTelecaller,
+    filterSupportLevel, filterResponseStatus, filterAwareOfCandidate,
+    filterLikelyToVote, filterParty, filterBlock, filterUnion, filterPanchayat,
+    filterDateFrom, filterDateTo, search, showToast,
+  ])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -598,8 +646,48 @@ export default function FieldActivityEntry() {
       }))
   }, [masterBooths])
 
+  const blockOptions = useMemo(
+    () => masterBlocks.map(block => block.name).sort((a, b) => a.localeCompare(b)),
+    [masterBlocks],
+  )
+
+  const unionOptions = useMemo(
+    () => masterUnions.map(union => union.name).sort((a, b) => a.localeCompare(b)),
+    [masterUnions],
+  )
+
+  const panchayatOptions = useMemo(
+    () => masterPanchayats.map(panchayat => panchayat.name).sort((a, b) => a.localeCompare(b)),
+    [masterPanchayats],
+  )
+
+  const hasAdvancedFilters = !!(
+    filterTelecaller || filterSupportLevel || filterResponseStatus ||
+    filterAwareOfCandidate || filterLikelyToVote || filterParty ||
+    filterBlock || filterUnion || filterPanchayat || filterDateFrom || filterDateTo
+  )
+
+  const clearAdvancedFilters = () => {
+    setFilterTelecaller('')
+    setFilterSupportLevel('')
+    setFilterResponseStatus('')
+    setFilterAwareOfCandidate('')
+    setFilterLikelyToVote('')
+    setFilterParty('')
+    setFilterBlock('')
+    setFilterUnion('')
+    setFilterPanchayat('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+  }
+
   /* ── Pagination ── */
-  useEffect(() => { setPage(1) }, [filterStatus, filterBooth, filterVolunteer, search])
+  useEffect(() => { setPage(1) }, [
+    filterStatus, filterBooth, filterVolunteer, filterTelecaller,
+    filterSupportLevel, filterResponseStatus, filterAwareOfCandidate,
+    filterLikelyToVote, filterParty, filterBlock, filterUnion,
+    filterPanchayat, filterDateFrom, filterDateTo, search,
+  ])
 
   const activeList = rows
   const totalPages  = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
@@ -618,6 +706,17 @@ export default function FieldActivityEntry() {
       ...(filterStatus ? { status: filterStatus } : {}),
       ...(filterBooth ? { booth: filterBooth } : {}),
       ...(filterVolunteer ? { volunteer: filterVolunteer } : {}),
+      ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+      ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
+      ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
+      ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
+      ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+      ...(filterParty ? { party: filterParty } : {}),
+      ...(filterBlock ? { block: filterBlock } : {}),
+      ...(filterUnion ? { union: filterUnion } : {}),
+      ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
+      ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
+      ...(filterDateTo ? { date_to: filterDateTo } : {}),
       ...(search.trim() ? { search: search.trim() } : {}),
     })
 
@@ -629,7 +728,18 @@ export default function FieldActivityEntry() {
         status: statusLabel,
         booth: boothLabel,
         volunteer: filterVolunteer,
+        telecaller: filterTelecaller,
         search: search.trim(),
+        support_level: filterSupportLevel,
+        response_status: filterResponseStatus,
+        aware_of_candidate: filterAwareOfCandidate,
+        likely_to_vote: filterLikelyToVote,
+        party: filterParty,
+        block: filterBlock,
+        union: filterUnion,
+        panchayat: filterPanchayat,
+        date_from: filterDateFrom,
+        date_to: filterDateTo,
       },
     })
   }
@@ -1059,6 +1169,140 @@ export default function FieldActivityEntry() {
               <i className="ph ph-x text-[11px]" /> Clear
             </button>
           )}
+        </div>
+
+        <div className="px-5 py-3 border-b border-border bg-[#fafafa]">
+          <div className="flex items-center gap-1.5 mb-2">
+            <i className="ph ph-funnel text-[12px] text-navy" />
+            <span className="text-[10px] font-bold text-navy uppercase tracking-[0.8px]">Additional Filters</span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Support Level</label>
+              <select value={filterSupportLevel} onChange={e => setFilterSupportLevel(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterSupportLevel ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="positive">Positive</option>
+                <option value="negative">Negative</option>
+                <option value="neutral">Neutral</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Response Status</label>
+              <select value={filterResponseStatus} onChange={e => setFilterResponseStatus(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterResponseStatus ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Statuses</option>
+                <option value="not_reach">Not Reach</option>
+                <option value="no_answer">No Answer</option>
+                <option value="need_followup">Need Followup</option>
+                <option value="wrong_number">Wrong Number</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Aware of Our Candidate?</label>
+              <select value={filterAwareOfCandidate} onChange={e => setFilterAwareOfCandidate(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterAwareOfCandidate ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="Not Sure">Not Sure</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Likely to Vote?</label>
+              <select value={filterLikelyToVote} onChange={e => setFilterLikelyToVote(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterLikelyToVote ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="Not Sure">Not Sure</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Party Reference</label>
+              <select value={filterParty} onChange={e => setFilterParty(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterParty ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Parties</option>
+                {partyOptions.map(party => (
+                  <option key={party.name} value={party.name}>{party.abbreviation ? `${party.abbreviation} — ${party.name}` : party.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Block</label>
+              <select value={filterBlock} onChange={e => setFilterBlock(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterBlock ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Blocks</option>
+                {blockOptions.map(block => <option key={block} value={block}>{block}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Union</label>
+              <select value={filterUnion} onChange={e => setFilterUnion(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterUnion ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Unions</option>
+                {unionOptions.map(union => <option key={union} value={union}>{union}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Panchayat</label>
+              <select value={filterPanchayat} onChange={e => setFilterPanchayat(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterPanchayat ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Panchayats</option>
+                {panchayatOptions.map(panchayat => <option key={panchayat} value={panchayat}>{panchayat}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Telecaller</label>
+              <select value={filterTelecaller} onChange={e => setFilterTelecaller(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterTelecaller ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All Telecallers</option>
+                {telecallerOptions.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Survey Date From</label>
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={e => setFilterDateFrom(e.target.value)}
+                className={`${inputCls} w-full text-[11px] ${filterDateFrom ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Survey Date To</label>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={e => setFilterDateTo(e.target.value)}
+                className={`${inputCls} w-full text-[11px] ${filterDateTo ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}
+              />
+            </div>
+
+            {hasAdvancedFilters && (
+              <div className="md:col-span-2 flex items-end justify-end">
+                <button onClick={clearAdvancedFilters}
+                  className="flex items-center gap-1 px-3 py-[6px] rounded-lg border border-rose-200 bg-rose-50 text-rose-500 text-[11px] font-medium hover:bg-rose-100 transition-colors">
+                  <i className="ph ph-x-circle text-[12px]" /> Clear Additional Filters
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── List ── */}

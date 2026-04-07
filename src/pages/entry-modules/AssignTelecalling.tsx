@@ -17,6 +17,8 @@ interface VoterRow {
   booth_name?: string
   age?: number
   gender?: string
+  assigned_telecaller_name?: string
+  assigned_telecaller_phone?: string
 }
 
 interface Telecaller {
@@ -46,7 +48,7 @@ type WorkflowStatus =
 type StatusFilterValue = WorkflowStatus | 'unassigned' | ''
 
 interface WorkflowInfo {
-  status: WorkflowStatus
+  status: WorkflowStatus | 'unassigned'
   label: string
   is_locked: boolean
 }
@@ -289,12 +291,14 @@ export default function AssignTelecalling() {
           address: v.address ?? '',
           booth: v.booth, booth_name: v.booth_name ?? v.booth_number ?? '',
           age: v.age, gender: v.gender,
+          assigned_telecaller_name: v.assigned_telecaller_name ?? '',
+          assigned_telecaller_phone: v.assigned_telecaller_phone ?? '',
         }))
         const nextWorkflowMap = new Map<number, WorkflowInfo>()
         results.forEach((v: any) => {
           const status = (v.workflow_status || 'unassigned') as WorkflowStatus | 'unassigned'
           nextWorkflowMap.set(v.id, {
-            status: status === 'unassigned' ? 'assigned' : status,
+            status,
             label: v.workflow_label || (status === 'unassigned' ? 'Unassigned' : WORKFLOW_LABELS[status as WorkflowStatus] || 'Assigned'),
             is_locked: !!v.is_locked,
           })
@@ -383,6 +387,26 @@ export default function AssignTelecalling() {
       })
       workflowByVoterRef.current = nextMap
       setWorkflowByVoterId(nextMap)
+      rawVotersRef.current = rawVotersRef.current.map(v =>
+        voterIds.includes(v.id)
+          ? {
+              ...v,
+              assigned_telecaller_name: telecaller.name,
+              assigned_telecaller_phone: telecaller.phone ?? '',
+            }
+          : v
+      )
+      setVoters(prev =>
+        prev.map(v =>
+          voterIds.includes(v.id)
+            ? {
+                ...v,
+                assigned_telecaller_name: telecaller.name,
+                assigned_telecaller_phone: telecaller.phone ?? '',
+              }
+            : v
+        )
+      )
       setWorkflowSummary(prev => {
         const next = { ...prev }
         voterIds.forEach(voterId => {
@@ -611,18 +635,18 @@ export default function AssignTelecalling() {
                     disabled={selectableVoters.length === 0}
                     checked={isAllSelected} onChange={toggleAll} />
                 </th>
-                {['#', 'Voter Name', 'Voter ID', 'Phone Numbers', 'Age / Gender', 'Booth', 'Address'].map(h => (
+                {['#', 'Voter Name', 'Voter ID', 'Phone Numbers', 'Age / Gender', 'Booth', 'Assigned To', 'Address'].map(h => (
                   <th key={h} className="px-3 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-muted">
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-muted">
                   <i className="ph ph-spinner-gap animate-spin mr-2" />Loading voters…
                 </td></tr>
               ) : visibleVoters.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center">
+                <tr><td colSpan={9} className="px-4 py-12 text-center">
                   <i className="ph ph-users-three text-[32px] text-border block mb-2" />
                   <p className="text-[12px] text-muted">
                     {filterBooths.size === 0
@@ -686,6 +710,18 @@ export default function AssignTelecalling() {
                         {v.booth_name
                           ? <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-medium">{v.booth_name}</span>
                           : <span className="text-muted">—</span>}
+                      </td>
+                      <td className="px-3 py-[9px]">
+                        {v.assigned_telecaller_name ? (
+                          <div className="flex flex-col gap-[2px]">
+                            <span className="font-semibold text-heading">{v.assigned_telecaller_name}</span>
+                            {v.assigned_telecaller_phone && (
+                              <span className="text-[10px] font-mono text-muted">{v.assigned_telecaller_phone}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-[9px] text-muted truncate max-w-[180px]">{v.address || '—'}</td>
                     </tr>

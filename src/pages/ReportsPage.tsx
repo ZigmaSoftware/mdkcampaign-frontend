@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import SectionHeader from '../components/ui/SectionHeader'
 import Badge from '../components/ui/Badge'
 import { useAnalyticsAPI } from '../hooks/useAnalyticsAPI'
-import type { WardStat, BoothStat, VolunteerInfo, VoterBasicInfo } from '../hooks/useAnalyticsAPI'
+import type {
+  WardStat,
+  BoothStat,
+  VolunteerInfo,
+  VoterBasicInfo,
+  BoothTelecallerBreakupResponse,
+} from '../hooks/useAnalyticsAPI'
 import { useToast } from '../context/ToastContext'
 import SummaryCards from '../modules/dashboard/components/SummaryCards'
 import { getBoothRanking, getSummary, type BoothRankingRow, type DashboardKpis } from '../modules/dashboard/services/dashboardApi'
@@ -692,6 +698,101 @@ function VoterPopup({
   )
 }
 
+function BoothTelecallerBreakupPopup({
+  title,
+  data,
+  loading,
+  onClose,
+}: {
+  title: string
+  data: BoothTelecallerBreakupResponse | null
+  loading: boolean
+  onClose: () => void
+}) {
+  const rows = data?.rows ?? []
+  const boothTotal = data?.booth_total_voters ?? 0
+  const assignedTotal = data?.assigned_total ?? 0
+  const surveyedTotal = data?.surveyed_total ?? 0
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(11,29,69,0.55)', backdropFilter: 'blur(2px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-surface rounded-card shadow-2xl w-full max-w-[640px] max-h-[86vh] flex flex-col overflow-hidden">
+        <div className="bg-navy px-5 py-3 flex items-center justify-between flex-shrink-0">
+          <div>
+            <div className="text-white text-[12px] font-bold tracking-[0.6px] flex items-center gap-2">
+              <i className="ph ph-chart-bar-horizontal text-saffron" />
+              Telecaller Breakup — {title}
+            </div>
+            <div className="text-white/55 text-[9px] mt-[2px]">
+              {loading ? 'Loading booth assignment breakup…' : `${rows.length} telecaller${rows.length !== 1 ? 's' : ''}`}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-md flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <i className="ph ph-x text-[14px]" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 border-b border-border bg-[#f8fafc]">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Booth Voters', value: boothTotal.toLocaleString() },
+              { label: 'Assigned', value: assignedTotal.toLocaleString() },
+              { label: 'Surveyed', value: surveyedTotal.toLocaleString() },
+            ].map(card => (
+              <div key={card.label} className="rounded-xl border border-border bg-white px-4 py-3 text-center">
+                <div className="text-[18px] font-extrabold text-navy">{card.value}</div>
+                <div className="text-[9px] uppercase tracking-[0.6px] text-muted mt-1">{card.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {loading ? (
+            <p className="text-muted text-[11px] text-center py-10 italic">Loading breakup…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-muted text-[11px] text-center py-10 italic">
+              No telecalling breakup found for this booth.
+            </p>
+          ) : (
+            <table className="data-table w-full text-[11px]">
+              <thead>
+                <tr>
+                  <th className="w-8">#</th>
+                  <th>Telecaller</th>
+                  <th>Phone</th>
+                  <th className="text-right">Assigned</th>
+                  <th className="text-right">Surveyed</th>
+                  <th className="text-right">Pending</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={`${row.telecaller_id ?? row.telecaller_name}-${index}`}>
+                    <td className="text-muted">{index + 1}</td>
+                    <td className="font-semibold text-navy">{row.telecaller_name || 'Unassigned'}</td>
+                    <td className="text-muted">{row.telecaller_phone || '—'}</td>
+                    <td className="text-right font-semibold text-navy">{row.assigned_voters.toLocaleString()}</td>
+                    <td className="text-right font-semibold text-kampgreen">{row.surveyed_voters.toLocaleString()}</td>
+                    <td className="text-right text-muted">{row.pending_voters.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── main component ──────────────────────────────────────────────── */
 export default function ReportsPage() {
   const api = useAnalyticsAPI()
@@ -1099,7 +1200,12 @@ export default function ReportsPage() {
           {boothLoading ? (
             <p className="text-muted text-[11px] text-center py-10 italic">Loading data…</p>
           ) : (
-            <BoothTable rows={filteredBooths} fetchVolunteers={api.fetchBoothVolunteers} fetchVoters={api.fetchBoothVoters} />
+            <BoothTable
+              rows={filteredBooths}
+              fetchVolunteers={api.fetchBoothVolunteers}
+              fetchVoters={api.fetchBoothVoters}
+              fetchTelecallerBreakup={api.fetchBoothTelecallerBreakup}
+            />
           )}
         </div>
       </div>
@@ -1116,10 +1222,12 @@ function BoothTable({
   rows,
   fetchVolunteers,
   fetchVoters,
+  fetchTelecallerBreakup,
 }: {
   rows: BoothStat[]
   fetchVolunteers: (id: number) => Promise<VolunteerInfo[]>
   fetchVoters: (id: number, options?: { contactedOnly?: boolean }) => Promise<VoterBasicInfo[]>
+  fetchTelecallerBreakup: (id: number) => Promise<BoothTelecallerBreakupResponse | null>
 }) {
   const [page, setPage]           = useState(1)
   const [sortKey, setSortKey]     = useState<BoothSortKey>('number')
@@ -1131,6 +1239,9 @@ function BoothTable({
   const [voterList,             setVoterList]             = useState<VoterBasicInfo[]>([])
   const [voterLoad,             setVoterLoad]             = useState(false)
   const [voterPopupContactedOnly, setVoterPopupContactedOnly] = useState(false)
+  const [telecallerPopup, setTelecallerPopup] = useState<{ id: number; title: string } | null>(null)
+  const [telecallerBreakup, setTelecallerBreakup] = useState<BoothTelecallerBreakupResponse | null>(null)
+  const [telecallerLoad, setTelecallerLoad] = useState(false)
   const [addrPopup, setAddrPopup] = useState<{ name: string; number: string; address: string } | null>(null)
 
   useEffect(() => { setPage(1) }, [rows])
@@ -1158,6 +1269,26 @@ function BoothTable({
       .then(v => setVoterList(Array.isArray(v) ? v : []))
       .catch(() => setVoterList([]))
       .finally(() => setVoterLoad(false))
+  }
+
+  const openTelecallerPopup = (b: BoothStat) => {
+    const title = `${b.number ? `#${b.number} — ` : ''}${b.name || 'Booth'}`
+    setTelecallerPopup({ id: b.id, title })
+    setTelecallerBreakup(null)
+    setTelecallerLoad(true)
+    fetchTelecallerBreakup(b.id)
+      .then(data => {
+        setTelecallerBreakup(data ?? {
+          booth_id: b.id,
+          booth_name: b.name || '',
+          booth_number: b.number || '',
+          booth_total_voters: b.total_voters || 0,
+          assigned_total: 0,
+          surveyed_total: 0,
+          rows: [],
+        })
+      })
+      .finally(() => setTelecallerLoad(false))
   }
 
   const sorted = useMemo(() => {
@@ -1200,6 +1331,7 @@ function BoothTable({
               <Th label="Contacted"    colKey="voters_contacted"    {...thProps} className="text-right" />
               <Th label="Coverage"     colKey="coverage_percentage" {...thProps} />
               <Th label="Support"      colKey="positive_pct"        {...thProps} />
+              <th className="text-center whitespace-nowrap">Telecaller</th>
               <Th label="Volunteers"   colKey="volunteer_count"     {...thProps} className="text-center" />
             </tr>
           </thead>
@@ -1257,6 +1389,15 @@ function BoothTable({
                 </td>
                 <td className="text-center">
                   <button
+                    onClick={() => openTelecallerPopup(b)}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-[#cfe1ff] bg-[#edf4ff] text-[#0e6aad] hover:bg-[#0e6aad] hover:text-white transition-all"
+                    title="View telecaller breakup"
+                  >
+                    <i className="ph ph-chart-bar-horizontal text-[13px]" />
+                  </button>
+                </td>
+                <td className="text-center">
+                  <button
                     onClick={() => openVolPopup(b)}
                     className={`
                       inline-flex items-center gap-[4px] px-[8px] py-[3px] rounded-full text-[10px] font-bold
@@ -1283,6 +1424,7 @@ function BoothTable({
               <td className="text-right text-navy">{grandContact.toLocaleString()}</td>
               <td />
               <td />
+              <td />
               <td className="text-center text-navy">{grandVols}</td>
             </tr>
           </tfoot>
@@ -1306,6 +1448,18 @@ function BoothTable({
           loading={voterLoad}
           contactedOnly={voterPopupContactedOnly}
           onClose={() => { setVoterPopup(null); setVoterPopupContactedOnly(false) }}
+        />
+      )}
+
+      {telecallerPopup && (
+        <BoothTelecallerBreakupPopup
+          title={telecallerPopup.title}
+          data={telecallerBreakup}
+          loading={telecallerLoad}
+          onClose={() => {
+            setTelecallerPopup(null)
+            setTelecallerBreakup(null)
+          }}
         />
       )}
 

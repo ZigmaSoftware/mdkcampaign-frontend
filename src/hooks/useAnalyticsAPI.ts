@@ -99,6 +99,26 @@ export interface VoterBasicInfo {
   ward_name: string | null
 }
 
+export interface BoothTelecallerBreakupRow {
+  telecaller_id: number | null
+  telecaller_name: string
+  telecaller_phone: string
+  assigned_voters: number
+  surveyed_voters: number
+  pending_voters: number
+  survey_completion_pct: number
+}
+
+export interface BoothTelecallerBreakupResponse {
+  booth_id: number | null
+  booth_name: string
+  booth_number: string
+  booth_total_voters: number
+  assigned_total: number
+  surveyed_total: number
+  rows: BoothTelecallerBreakupRow[]
+}
+
 interface FixLinksResult { fixed_booths: number; fixed_voters: number }
 
 interface UseAnalyticsAPIReturn {
@@ -111,6 +131,7 @@ interface UseAnalyticsAPIReturn {
   fetchBoothVolunteers: (boothId: number) => Promise<VolunteerInfo[]>
   fetchWardVolunteers: (wardId: number) => Promise<VolunteerInfo[]>
   fetchBoothVoters: (boothId: number, options?: { contactedOnly?: boolean }) => Promise<VoterBasicInfo[]>
+  fetchBoothTelecallerBreakup: (boothId: number) => Promise<BoothTelecallerBreakupResponse | null>
   fixDataLinks: () => Promise<FixLinksResult | null>
 }
 
@@ -233,6 +254,16 @@ export function useAnalyticsAPI(): UseAnalyticsAPIReturn {
     }
   }, [])
 
+  const fetchBoothTelecallerBreakup = useCallback(async (boothId: number): Promise<BoothTelecallerBreakupResponse | null> => {
+    try {
+      const { data } = await apiClient.get<BoothTelecallerBreakupResponse>(`/analytics/booth-telecaller-breakup/${boothId}/`)
+      return data
+    } catch (err) {
+      handleError(err, 'fetch booth telecaller breakup')
+      return null
+    }
+  }, [])
+
   const fixDataLinks = useCallback(async (): Promise<FixLinksResult | null> => {
     try {
       const { data } = await apiClient.post<FixLinksResult>('/analytics/fix-links/')
@@ -253,6 +284,7 @@ export function useAnalyticsAPI(): UseAnalyticsAPIReturn {
     fetchBoothVolunteers,
     fetchWardVolunteers,
     fetchBoothVoters,
+    fetchBoothTelecallerBreakup,
     fixDataLinks,
   }
 }

@@ -1021,7 +1021,23 @@ export default function FieldActivityEntry() {
   }
 
   const handleExport = async () => {
-    const surveys = await fetchAllFieldFollowupRows()
+    const surveys = await fetchAllFieldFollowupRows({
+      ...(filterStatus ? { status: filterStatus } : {}),
+      ...(filterBooth ? { booth: filterBooth } : {}),
+      ...(filterVolunteer ? { volunteer: filterVolunteer } : {}),
+      ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+      ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
+      ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
+      ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
+      ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+      ...(filterParty ? { party: filterParty } : {}),
+      ...(filterBlock ? { block: filterBlock } : {}),
+      ...(filterUnion ? { union: filterUnion } : {}),
+      ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
+      ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
+      ...(filterDateTo ? { date_to: filterDateTo } : {}),
+      ...(search.trim() ? { search: search.trim() } : {}),
+    })
     if (!surveys.length) return
     const headers = [
       'Survey Date', 'Voter Name', 'Phone', 'Address', 'Booth No', 'Block',

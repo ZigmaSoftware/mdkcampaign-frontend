@@ -16,10 +16,15 @@ interface ApiResponse<T> {
 interface SurveyRecord {
   id:                  number
   voter_name:          string
+  voter_id_no?:        string
   phone?:              string
   booth_no?:           string
+  booth_name?:         string
   block?:              string
   village?:            string
+  age?:                number | null
+  gender?:             string
+  address?:            string
   support_level?:      string
   party_preference?:   string
   response_status?:    string
@@ -100,6 +105,11 @@ const responseColor = (s?: string) => {
   if (s === 'wrong_number')  return 'bg-rose-100 text-rose-700'
   return 'bg-gray-100 text-gray-500'
 }
+
+const genderLabel = (g?: string) =>
+  g === 'm' || g === 'Male' ? 'Male' :
+  g === 'f' || g === 'Female' ? 'Female' :
+  g === 'o' || g === 'Other' ? 'Other' : ''
 
 /* ── Section label ── */
 function SectionLabel({ icon, label, count, color }: {
@@ -475,9 +485,18 @@ export default function FeedbackReview() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] font-semibold text-heading">{survey.voter_name}</span>
+              {survey.voter_id_no && (
+                <span className="text-[10px] text-muted font-mono">{survey.voter_id_no}</span>
+              )}
+              {survey.phone && <span className="text-[10px] text-muted">· {survey.phone}</span>}
               {survey.booth_no && (
                 <span className="px-1.5 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-medium">
                   Booth {survey.booth_no}
+                </span>
+              )}
+              {survey.booth_name && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-alt text-heading font-medium border border-border">
+                  {survey.booth_name}
                 </span>
               )}
               {survey.support_level && (
@@ -498,6 +517,12 @@ export default function FeedbackReview() {
             </div>
 
             <div className="flex items-center gap-3 mt-0.5 flex-wrap text-[10px] text-muted">
+              {(genderLabel(survey.gender) || survey.age != null) && (
+                <span>
+                  <i className="ph ph-user mr-0.5" />
+                  {genderLabel(survey.gender) || '—'}{survey.age != null ? `, ${survey.age}` : ''}
+                </span>
+              )}
               <span>
                 <i className="ph ph-headset mr-0.5" />
                 {survey.telecaller_name ?? survey.surveyed_by ?? '—'}
@@ -515,6 +540,13 @@ export default function FeedbackReview() {
                 <span className="italic truncate max-w-[200px]">"{survey.remarks}"</span>
               )}
             </div>
+
+            {survey.address && (
+              <div className="mt-1 text-[10px] text-muted truncate">
+                <i className="ph ph-map-pin mr-1" />
+                {survey.address}
+              </div>
+            )}
 
             {dec && (
               <div className={`inline-flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold
@@ -628,10 +660,26 @@ export default function FeedbackReview() {
   }
 
   const handleExport = async () => {
-    const reviewRows = await fetchAllPages<SurveyRecord>('/telecalling/feedbacks/review-list/')
+    const reviewRows = await fetchAllPages<SurveyRecord>('/telecalling/feedbacks/review-list/', {
+      ...(filterTab ? { tab: filterTab } : {}),
+      ...(search.trim() ? { search: search.trim() } : {}),
+      ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+      ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
+      ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
+      ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
+      ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+      ...(filterParty ? { party: filterParty } : {}),
+      ...(filterBlock ? { block: filterBlock } : {}),
+      ...(filterUnion ? { union: filterUnion } : {}),
+      ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
+      ...(filterBooth ? { booth: filterBooth } : {}),
+      ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
+      ...(filterDateTo ? { date_to: filterDateTo } : {}),
+    })
     if (!reviewRows.length) return
     const headers = [
-      'Survey Date', 'Voter Name', 'Phone', 'Booth No', 'Block', 'Village',
+      'Survey Date', 'Voter Name', 'Voter ID', 'Phone', 'Age', 'Gender',
+      'Booth No', 'Booth Name', 'Address', 'Block', 'Village',
       'Support Level', 'Party Preference', 'Response Status',
       'Aware of Candidate', 'Likely to Vote', 'Remarks', 'Surveyed By',
       'Telecaller Name', 'Telecaller Phone',
@@ -650,7 +698,8 @@ export default function FeedbackReview() {
           ? 'Telephonic'
           : ''
       return [
-        s.survey_date, s.voter_name, s.phone ?? '', s.booth_no ?? '', s.block ?? '', s.village ?? '',
+        s.survey_date, s.voter_name, s.voter_id_no ?? '', s.phone ?? '', s.age ?? '', genderLabel(s.gender),
+        s.booth_no ?? '', s.booth_name ?? '', s.address ?? '', s.block ?? '', s.village ?? '',
         s.support_level ?? '', s.party_preference ?? '',
         s.response_status ? responseLabel(s.response_status) : '',
         s.aware_of_candidate ?? '', s.likely_to_vote ?? '',

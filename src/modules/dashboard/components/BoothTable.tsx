@@ -8,6 +8,18 @@ interface BoothTableProps {
   rows: BoothRankingRow[]
 }
 
+type SortKey =
+  | 'booth_number'
+  | 'total_voters'
+  | 'surveyed_voters'
+  | 'coverage_pct'
+  | 'positive_pct'
+  | 'negative_pct'
+  | 'followup_pct'
+  | 'score'
+
+type SortDirection = 'desc' | 'asc'
+
 function pctClass(value: number) {
   if (value >= 70) return 'text-kampgreen'
   if (value >= 40) return 'text-saffron-dark'
@@ -17,16 +29,65 @@ function pctClass(value: number) {
 export default function BoothTable({ rows }: BoothTableProps) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null)
 
   useEffect(() => {
     setPage(1)
-  }, [rows, pageSize])
+  }, [rows, pageSize, sortConfig])
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+  const sortedRows = useMemo(() => {
+    if (!sortConfig) return rows
+
+    const { key, direction } = sortConfig
+    const multiplier = direction === 'desc' ? -1 : 1
+    return [...rows].sort((left, right) => {
+      const leftValue = left[key]
+      const rightValue = right[key]
+
+      if (typeof leftValue === 'string' || typeof rightValue === 'string') {
+        return String(leftValue ?? '').localeCompare(String(rightValue ?? ''), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }) * multiplier
+      }
+
+      return ((Number(leftValue ?? 0) - Number(rightValue ?? 0)) * multiplier)
+    })
+  }, [rows, sortConfig])
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize))
   const pagedRows = useMemo(
-    () => rows.slice((page - 1) * pageSize, page * pageSize),
-    [rows, page, pageSize],
+    () => sortedRows.slice((page - 1) * pageSize, page * pageSize),
+    [sortedRows, page, pageSize],
   )
+
+  const toggleSort = (key: SortKey) => {
+    setSortConfig(current => {
+      if (!current || current.key !== key) return { key, direction: 'desc' }
+      return { key, direction: current.direction === 'desc' ? 'asc' : 'desc' }
+    })
+  }
+
+  const renderSortableHeader = (label: string, key: SortKey, align: 'left' | 'right' = 'left') => {
+    const isActive = sortConfig?.key === key
+    const direction = isActive ? sortConfig?.direction : null
+    const icon = !isActive
+      ? 'ph-caret-up-down'
+      : direction === 'desc'
+        ? 'ph-sort-descending'
+        : 'ph-sort-ascending'
+
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={`inline-flex w-full items-center gap-1.5 font-inherit uppercase tracking-wide ${align === 'right' ? 'justify-end' : 'justify-start'} hover:text-navy transition-colors`}
+      >
+        <span>{label}</span>
+        <i className={`ph ${icon} text-[11px] ${isActive ? 'text-navy' : 'text-muted'}`} />
+      </button>
+    )
+  }
 
   return (
     <Card
@@ -47,33 +108,33 @@ export default function BoothTable({ rows }: BoothTableProps) {
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Booth</th>
-                  <th>Panchayat</th>
-                  <th className="text-right">Voters</th>
-                  <th className="text-right">Surveyed</th>
-                  <th className="text-right">Coverage</th>
-                  <th className="text-right">Positive</th>
-                  <th className="text-right">Follow-up</th>
-                  <th className="text-right">Score</th>
+                  <th>{renderSortableHeader('Booth', 'booth_number')}</th>
+                  <th className="text-right">{renderSortableHeader('Voters', 'total_voters', 'right')}</th>
+                  <th className="text-right">{renderSortableHeader('Surveyed', 'surveyed_voters', 'right')}</th>
+                  <th className="text-right">{renderSortableHeader('Coverage', 'coverage_pct', 'right')}</th>
+                  <th className="text-right">{renderSortableHeader('Positive', 'positive_pct', 'right')}</th>
+                  <th className="text-right">{renderSortableHeader('Negative', 'negative_pct', 'right')}</th>
+                  <th className="text-right">{renderSortableHeader('Follow-up', 'followup_pct', 'right')}</th>
+                  <th className="text-right">{renderSortableHeader('Score', 'score', 'right')}</th>
                 </tr>
               </thead>
               <tbody>
-                {pagedRows.map(row => (
+                {pagedRows.map((row, index) => (
                   <tr key={row.id}>
                     <td>
                       <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-navy/10 text-navy font-bold">
-                        {row.rank}
+                        {(page - 1) * pageSize + index + 1}
                       </span>
                     </td>
                     <td>
                       <div className="font-bold text-navy">{row.booth_number || '—'} {row.booth_name ? `· ${row.booth_name}` : ''}</div>
                       <div className="text-[10px] text-muted">{row.union || '—'} {row.block ? `· ${row.block}` : ''}</div>
                     </td>
-                    <td className="text-muted">{row.panchayat || '—'}</td>
                     <td className="text-right">{row.total_voters.toLocaleString('en-IN')}</td>
                     <td className="text-right">{row.surveyed_voters.toLocaleString('en-IN')}</td>
                     <td className={`text-right font-bold ${pctClass(row.coverage_pct)}`}>{row.coverage_pct}%</td>
                     <td className={`text-right font-bold ${pctClass(row.positive_pct)}`}>{row.positive_pct}%</td>
+                    <td className={`text-right font-bold ${pctClass(row.negative_pct)}`}>{row.negative_pct}%</td>
                     <td className="text-right">{row.followup_pct}%</td>
                     <td className="text-right font-extrabold text-navy">{row.score}</td>
                   </tr>
@@ -84,7 +145,7 @@ export default function BoothTable({ rows }: BoothTableProps) {
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-[18px] py-[12px]">
             <span className="text-[10px] text-muted">
-              Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, rows.length)} of {rows.length}
+              Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, sortedRows.length)} of {sortedRows.length}
             </span>
             <div className="flex items-center gap-2">
               <select

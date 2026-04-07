@@ -328,7 +328,7 @@ function SectionLabel({ icon, label, count, color }: {
 }
 
 export default function VoterSurveyEntry() {
-  const { fetchFieldSurveys, createFieldSurvey, updateFieldSurvey, deleteFieldSurvey } = useEntryAPI()
+  const { createFieldSurvey, updateFieldSurvey, deleteFieldSurvey } = useEntryAPI()
   const masterApi = useMasterAPI()
   const { showToast } = useToast()
 
@@ -1106,42 +1106,53 @@ export default function VoterSurveyEntry() {
   }
 
   const handleExport = async () => {
-    const [surveyRecords, assignmentRows] = await Promise.all([
-      fetchFieldSurveys(),
-      fetchAllSurveyVoterRows({ status: 'done' }),
-    ])
+    const assignmentRows = await fetchAllSurveyVoterRows({
+      ...(filterStatus ? { status: filterStatus } : {}),
+      ...(filterDate ? { date: filterDate } : {}),
+      ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+      ...(filterAssignedList ? { assignment_time: filterAssignedList } : {}),
+      ...(search.trim() ? { search: search.trim() } : {}),
+      ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
+      ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
+      ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
+      ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+      ...(filterParty ? { party: filterParty } : {}),
+      ...(filterBlock ? { block: filterBlock } : {}),
+      ...(filterUnion ? { union: filterUnion } : {}),
+      ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
+      ...(filterBooth ? { booth: filterBooth } : {}),
+      ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
+      ...(filterDateTo ? { date_to: filterDateTo } : {}),
+    })
 
-    if (!surveyRecords?.length) return
+    if (!assignmentRows.length) return
 
-    const voterMap = new Map(
-      assignmentRows.map(v => [(v.voter_name ?? '').toLowerCase(), v] as const),
-    )
     const headers = [
       'Survey Date', 'Voter Name', 'Voter ID No', 'Phone', 'Address', 'Booth',
       'Age', 'Gender', 'Telecaller Name', 'Telecaller Phone',
       'Support Level', 'Party Preference', 'Response Status',
       'Is Registered', 'Aware of Candidate', 'Likely to Vote', 'Remarks',
     ]
-    const exportRows = surveyRecords.map(record => {
-      const voter = voterMap.get((record.voter_name ?? '').toLowerCase())
+    const exportRows = assignmentRows.map(row => {
+      const record = row.survey_record
       return [
-        record.survey_date,
-        record.voter_name,
-        voter?.voter_id_no ?? '',
-        record.phone,
-        record.address,
-        record.booth_no,
-        record.age,
-        toGenderDisplay(record.gender),
-        record.surveyed_by ?? voter?.telecaller_name ?? '',
-        voter?.telecaller_phone ?? '',
-        record.support_level,
-        record.party_preference,
-        record.response_status ? responseLabel(record.response_status) : '',
-        record.is_registered,
-        record.aware_of_candidate,
-        record.likely_to_vote,
-        record.remarks,
+        record?.survey_date ?? row.assigned_date ?? '',
+        record?.voter_name ?? row.voter_name,
+        row.voter_id_no ?? '',
+        record?.phone ?? row.phone ?? '',
+        record?.address ?? row.address ?? '',
+        record?.booth_no ?? row.booth_no ?? '',
+        record?.age ?? row.age ?? '',
+        toGenderDisplay(record?.gender ?? row.gender),
+        record?.surveyed_by ?? row.telecaller_name ?? '',
+        row.telecaller_phone ?? '',
+        record?.support_level ?? '',
+        record?.party_preference ?? '',
+        record?.response_status ? responseLabel(record.response_status) : '',
+        record?.is_registered ?? '',
+        record?.aware_of_candidate ?? '',
+        record?.likely_to_vote ?? '',
+        record?.remarks ?? '',
       ]
     })
     exportToCsv(headers, exportRows, `BJP_VoterSurvey_${new Date().toISOString().slice(0, 10)}.csv`)

@@ -16,6 +16,10 @@ export interface DashboardBreakdownItem {
   label: string
   count: number
   pct?: number
+  overall_count?: number
+  positive_count?: number
+  neutral_count?: number
+  negative_count?: number
 }
 
 export interface DashboardKpis {
@@ -45,6 +49,8 @@ export interface DashboardSummaryResponse {
   }
   kpis: DashboardKpis
   support_breakdown: DashboardBreakdownItem[]
+  gender_breakdown: DashboardBreakdownItem[]
+  age_breakdown: DashboardBreakdownItem[]
   awareness_breakdown: DashboardBreakdownItem[]
   vote_likelihood_breakdown: DashboardBreakdownItem[]
   response_breakdown: DashboardBreakdownItem[]

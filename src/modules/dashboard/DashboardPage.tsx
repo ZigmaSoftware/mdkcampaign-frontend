@@ -48,6 +48,8 @@ const EMPTY_SUMMARY: DashboardSummaryResponse = {
     telecaller_count: 0,
   },
   support_breakdown: [],
+  gender_breakdown: [],
+  age_breakdown: [],
   awareness_breakdown: [],
   vote_likelihood_breakdown: [],
   response_breakdown: [],
@@ -225,17 +227,7 @@ export default function CampaignDashboardPage() {
 
       <div className="bg-surface rounded-card shadow-card px-[18px] py-[16px] mb-5">
         <SectionHeader title="Filters" icon="ph ph-funnel" subtitle={loadingOptions ? 'Loading filter options…' : 'Read-only scope controls'} />
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
-          <label className="flex flex-col gap-[6px]">
-            <span className="text-[10px] uppercase tracking-[0.6px] text-muted">Date</span>
-            <input
-              type="date"
-              value={draftFilters.date || ''}
-              onChange={e => setDraftFilters(prev => ({ ...prev, date: e.target.value }))}
-              className="form-input text-[11px]"
-            />
-          </label>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
           <label className="flex flex-col gap-[6px]">
             <span className="text-[10px] uppercase tracking-[0.6px] text-muted">Block</span>
             <select
@@ -344,7 +336,6 @@ export default function CampaignDashboardPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
           <div className="flex flex-wrap gap-2">
-            <ActiveFilterBadge label="Date" value={activeFilterValues.date} />
             <ActiveFilterBadge label="Block" value={activeFilterValues.block} />
             <ActiveFilterBadge label="Union" value={activeFilterValues.union} />
             <ActiveFilterBadge label="Panchayat" value={activeFilterValues.panchayat} />
@@ -393,6 +384,8 @@ export default function CampaignDashboardPage() {
         ) : (
           <>
             <SurveyCharts
+              gender={summary.gender_breakdown}
+              age={summary.age_breakdown}
               support={summary.support_breakdown}
               awareness={summary.awareness_breakdown}
               voteLikelihood={summary.vote_likelihood_breakdown}

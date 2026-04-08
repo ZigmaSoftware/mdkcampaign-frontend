@@ -562,6 +562,13 @@ export default function FeedbackReview() {
     setPage(1)
   }, [pageSize])
 
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(totalRows / pageSize))
+    if (page > maxPage) {
+      setPage(maxPage)
+    }
+  }, [page, totalRows, pageSize])
+
   /* ── Action handler ── */
   const handleAction = async (
     survey: SurveyRecord,

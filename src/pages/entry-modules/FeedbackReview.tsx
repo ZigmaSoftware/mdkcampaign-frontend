@@ -84,6 +84,8 @@ interface TimelinePayload {
   events: TimelineEvent[]
 }
 
+type ReviewTab = 'all' | 'pending' | 'followup_required' | 'field_survey' | 'telephonic' | 'followup_not_required'
+
 /* ── Colour helpers ── */
 const supportColor = (s?: string) => {
   if (!s) return 'bg-gray-100 text-gray-500'
@@ -143,6 +145,72 @@ function SectionLabel({ icon, label, count, color }: {
       <span className="ml-auto text-[10px] font-semibold opacity-70">{count}</span>
     </div>
   )
+}
+
+function getDecisionCounters(decision?: FeedbackDecision | null) {
+  const counters = {
+    pending: 0,
+    followup_required: 0,
+    field_survey: 0,
+    telephonic: 0,
+    followup_required_other: 0,
+    followup_not_required: 0,
+  }
+
+  if (!decision) {
+    counters.pending = 1
+    return counters
+  }
+
+  if (decision.action === 'followup_required') {
+    counters.followup_required = 1
+    if (decision.followup_type === 'field_survey') counters.field_survey = 1
+    else if (decision.followup_type === 'telephonic') counters.telephonic = 1
+    else counters.followup_required_other = 1
+    return counters
+  }
+
+  if (decision.action === 'followup_not_required') {
+    counters.followup_not_required = 1
+  }
+
+  return counters
+}
+
+function applyDecisionToCounts(
+  source: ReviewCounts,
+  previousDecision?: FeedbackDecision | null,
+  nextDecision?: FeedbackDecision | null,
+): ReviewCounts {
+  const previous = getDecisionCounters(previousDecision)
+  const next = getDecisionCounters(nextDecision)
+
+  return {
+    ...source,
+    all: source.all ?? 0,
+    pending: Math.max(0, (source.pending ?? 0) - previous.pending + next.pending),
+    followup_required: Math.max(0, (source.followup_required ?? 0) - previous.followup_required + next.followup_required),
+    field_survey: Math.max(0, (source.field_survey ?? 0) - previous.field_survey + next.field_survey),
+    telephonic: Math.max(0, (source.telephonic ?? 0) - previous.telephonic + next.telephonic),
+    followup_required_other: Math.max(
+      0,
+      (source.followup_required_other ?? 0) - previous.followup_required_other + next.followup_required_other,
+    ),
+    followup_not_required: Math.max(
+      0,
+      (source.followup_not_required ?? 0) - previous.followup_not_required + next.followup_not_required,
+    ),
+  }
+}
+
+function matchesReviewTab(tab: ReviewTab, decision?: FeedbackDecision | null) {
+  if (tab === 'all') return true
+  if (tab === 'pending') return !decision
+  if (tab === 'followup_required') return decision?.action === 'followup_required'
+  if (tab === 'field_survey') return decision?.action === 'followup_required' && decision?.followup_type === 'field_survey'
+  if (tab === 'telephonic') return decision?.action === 'followup_required' && decision?.followup_type === 'telephonic'
+  if (tab === 'followup_not_required') return decision?.action === 'followup_not_required'
+  return true
 }
 
 const API_BATCH_SIZE = 500
@@ -331,7 +399,7 @@ export default function FeedbackReview() {
   }, [masterPanchayats])
 
   /* ── Filter states ── */
-  const [filterTab,          setFilterTab]          = useState<'all' | 'pending' | 'followup_required' | 'field_survey' | 'telephonic' | 'followup_not_required'>('all')
+  const [filterTab,          setFilterTab]          = useState<ReviewTab>('all')
   const [filterTelecaller,   setFilterTelecaller]   = useState('')
   const [search,             setSearch]             = useState('')
   const [filterSupportLevel, setFilterSupportLevel] = useState('')
@@ -509,14 +577,18 @@ export default function FeedbackReview() {
     setSaving(survey.id)
     setExpandedFollowup(null)
     try {
+      let savedDecisionId = existing?.id ?? 0
+      let savedDecisionDate = today
       if (existing) {
-        await apiClient.patch(`/telecalling/feedbacks/${existing.id}/`, {
+        const { data } = await apiClient.patch<FeedbackDecision>(`/telecalling/feedbacks/${existing.id}/`, {
           action,
           followup_type: resolvedFollowupType,
           date: today,
         })
+        savedDecisionId = data?.id ?? existing.id
+        savedDecisionDate = data?.date ?? today
       } else {
-        await apiClient.post('/telecalling/feedbacks/', {
+        const { data } = await apiClient.post<FeedbackDecision>('/telecalling/feedbacks/', {
           survey:          survey.id,
           voter_name:      survey.voter_name,
           telecaller_name: survey.telecaller_name ?? survey.surveyed_by ?? '—',
@@ -524,6 +596,8 @@ export default function FeedbackReview() {
           followup_type:   resolvedFollowupType,
           date:            today,
         })
+        savedDecisionId = data?.id ?? 0
+        savedDecisionDate = data?.date ?? today
       }
 
       if (action === 'followup_required' && followupType === 'field_survey') {
@@ -549,7 +623,30 @@ export default function FeedbackReview() {
         `${action === 'followup_required' ? `Followup Required${typeLabel ? ' — ' + typeLabel : ''}` : 'No Followup'} marked for ${survey.voter_name}`,
         action === 'followup_required' ? 'warning' : 'success'
       )
-      reloadRows()
+
+      const nextDecision: FeedbackDecision = {
+        id: savedDecisionId,
+        survey: survey.id,
+        voter_name: survey.voter_name,
+        telecaller_name: survey.telecaller_name ?? survey.surveyed_by ?? '—',
+        action,
+        followup_type: resolvedFollowupType,
+        date: savedDecisionDate,
+      }
+
+      const previousDecision = survey.decision ?? null
+      const matchedBefore = matchesReviewTab(filterTab, previousDecision)
+      const matchedAfter = matchesReviewTab(filterTab, nextDecision)
+
+      setCounts(prev => applyDecisionToCounts(prev, previousDecision, nextDecision))
+      setFilteredCounts(prev => applyDecisionToCounts(prev, previousDecision, nextDecision))
+      setTotalRows(prev => Math.max(0, prev - (matchedBefore ? 1 : 0) + (matchedAfter ? 1 : 0)))
+      setSurveys(prev => {
+        const nextRows = prev
+          .map(row => row.id === survey.id ? { ...row, decision: nextDecision } : row)
+          .filter(row => matchesReviewTab(filterTab, row.decision ?? null))
+        return nextRows
+      })
     } catch {
       showToast('Failed to save decision — please try again', 'error')
     } finally {

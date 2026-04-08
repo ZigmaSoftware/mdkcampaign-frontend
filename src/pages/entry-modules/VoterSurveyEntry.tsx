@@ -158,6 +158,9 @@ interface FlatVoter {
   voter_name:       string
   voter_id_no:      string
   phone:            string
+  phone2?:          string
+  alt_phoneno2?:    string
+  alt_phoneno3?:    string
   address:          string
   booth_name:       string
   booth_no:         string
@@ -180,6 +183,9 @@ interface TelecallingAssignmentVoter {
   voter_name:  string
   voter_id_no: string
   phone:       string
+  phone2?:     string
+  alt_phoneno2?: string
+  alt_phoneno3?: string
   address:     string
   booth_name:  string
   booth_no:    string
@@ -243,6 +249,9 @@ const flattenAssignments = (assignments: TelecallingAssignment[]): FlatVoter[] =
       voter_name:       v.voter_name,
       voter_id_no:      v.voter_id_no ?? '',
       phone:            v.phone ?? '',
+      phone2:           v.phone2 ?? '',
+      alt_phoneno2:     v.alt_phoneno2 ?? '',
+      alt_phoneno3:     v.alt_phoneno3 ?? '',
       address:          v.address ?? '',
       booth_name:       v.booth_name ?? '',
       booth_no:         v.booth_no ?? '',
@@ -255,6 +264,130 @@ const flattenAssignments = (assignments: TelecallingAssignment[]): FlatVoter[] =
       assignment_time:  assignmentTimeFromValue(a),
     }))
   )
+
+function getVoterPhones(record?: Partial<FieldSurveyRecord> | null, voter?: Partial<FlatVoter> | null) {
+  const seen = new Set<string>()
+  return [
+    record?.phone,
+    record?.phone2,
+    record?.alt_phoneno2,
+    record?.alt_phoneno3,
+    voter?.phone,
+    voter?.phone2,
+    voter?.alt_phoneno2,
+    voter?.alt_phoneno3,
+  ]
+    .map(value => (value || '').trim())
+    .filter(value => {
+      if (!value || seen.has(value)) return false
+      seen.add(value)
+      return true
+    })
+}
+
+function esc(value: string | number | undefined | null) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function openVoterSurveyPrintWindow({
+  rows,
+  filters,
+}: {
+  rows: SurveyAssignmentRow[]
+  filters: Record<string, string>
+}) {
+  const activeFilters = [
+    filters.status && `Status: ${filters.status}`,
+    filters.date && `Assigned Date: ${filters.date}`,
+    filters.telecaller && `Telecaller: ${filters.telecaller}`,
+    filters.assignment_list && `Assigned List: ${filters.assignment_list}`,
+    filters.search && `Search: ${filters.search}`,
+    filters.support_level && `Support: ${filters.support_level}`,
+    filters.response_status && `Response: ${filters.response_status}`,
+    filters.aware_of_candidate && `Aware: ${filters.aware_of_candidate}`,
+    filters.likely_to_vote && `Likely Vote: ${filters.likely_to_vote}`,
+    filters.party && `Party: ${filters.party}`,
+    filters.block && `Block: ${filters.block}`,
+    filters.union && `Union: ${filters.union}`,
+    filters.panchayat && `Panchayat: ${filters.panchayat}`,
+    filters.booth && `Booth: ${filters.booth}`,
+    filters.date_from && `Survey Date From: ${filters.date_from}`,
+    filters.date_to && `Survey Date To: ${filters.date_to}`,
+  ].filter(Boolean)
+
+  const bodyRows = rows.map((row, index) => {
+    const record = row.survey_record
+    const phones = getVoterPhones(record, row)
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td>
+          <div class="primary-text">${esc(record?.voter_name ?? row.voter_name)}</div>
+          <div class="secondary-text">${esc(row.voter_id_no || '')}</div>
+        </td>
+        <td>${phones.length ? phones.map(phone => `<div>${esc(phone)}</div>`).join('') : '—'}</td>
+        <td>${esc(record?.booth_no ?? row.booth_no ?? '') || '—'}</td>
+        <td>${esc(record?.surveyed_by ?? row.telecaller_name ?? '') || '—'}</td>
+        <td>${esc(record?.support_level ?? '') || '—'}</td>
+        <td>${esc(record?.party_preference ?? '') || '—'}</td>
+        <td>${esc(record?.response_status ? responseLabel(record.response_status) : '') || '—'}</td>
+        <td>${esc(record?.aware_of_candidate ?? '') || '—'}</td>
+        <td>${esc(record?.likely_to_vote ?? '') || '—'}</td>
+        <td>${esc(record?.address ?? row.address ?? '') || '—'}</td>
+        <td>${esc(record?.remarks ?? '') || '—'}</td>
+      </tr>
+    `
+  }).join('')
+
+  const win = window.open('', '_blank')
+  if (!win) return
+
+  win.document.write(`<!DOCTYPE html><html><head>
+    <title>Voter Survey Print</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#1e293b}
+      h2{color:#0d2455;border-bottom:2px solid #FF9933;padding-bottom:6px;margin-bottom:4px}
+      .meta{font-size:11px;color:#64748b;margin-bottom:8px}
+      .filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
+      .filter-chip{padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:600;border:1px solid #bfdbfe}
+      table{width:100%;border-collapse:collapse}
+      th{background:#0d2455;color:#fff;padding:7px 8px;text-align:left;font-size:11px}
+      td{padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;vertical-align:top}
+      tr:nth-child(even) td{background:#f8faff}
+      .primary-text{font-weight:700;color:#0f172a}
+      .secondary-text{margin-top:4px;font-size:10px;color:#64748b}
+      @media print{body{padding:16px}}
+    </style>
+  </head><body>
+    <h2>Voter Survey</h2>
+    <p class="meta">${rows.length} records &middot; Printed: ${new Date().toLocaleString('en-IN')}</p>
+    ${activeFilters.length ? `<div class="filters">${activeFilters.map(filter => `<span class="filter-chip">${esc(filter)}</span>`).join('')}</div>` : ''}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Voter</th>
+          <th>Phone Numbers</th>
+          <th>Booth</th>
+          <th>Telecaller</th>
+          <th>Support</th>
+          <th>Party</th>
+          <th>Response</th>
+          <th>Aware</th>
+          <th>Likely Vote</th>
+          <th>Address</th>
+          <th>Remarks</th>
+        </tr>
+      </thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+  </body></html>`)
+  win.document.close()
+  win.print()
+}
 
 async function fetchAllAssignments(params: Record<string, string | number> = {}) {
   const { data: firstPage } = await apiClient.get<ApiResponse<TelecallingAssignment>>('/telecalling/assignments/', {
@@ -888,6 +1021,7 @@ export default function VoterSurveyEntry() {
   const renderVoterRow = (voter: FlatVoter) => {
     const rec  = getRecordForVoter(voter)
     const done = !!rec
+    const phones = getVoterPhones(rec, voter)
     const rowKey = getVoterRowKey(voter)
     const inlineDraft = getInlineDraftForVoter(voter)
     const isSaving = !!savingRows[rowKey]
@@ -913,7 +1047,7 @@ export default function VoterSurveyEntry() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] font-semibold text-heading">{voter.voter_name}</span>
               <span className="text-[10px] text-muted font-mono">{voter.voter_id_no}</span>
-              {voter.phone && <span className="text-[10px] text-muted">· {voter.phone}</span>}
+              {phones.length > 0 && <span className="text-[10px] text-muted">· {phones.join(' / ')}</span>}
             </div>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {voter.booth_name && (
@@ -1128,7 +1262,7 @@ export default function VoterSurveyEntry() {
     if (!assignmentRows.length) return
 
     const headers = [
-      'Survey Date', 'Voter Name', 'Voter ID No', 'Phone', 'Address', 'Booth',
+      'Survey Date', 'Voter Name', 'Voter ID No', 'Phone', 'Phone 2', 'Alt Phone 2', 'Alt Phone 3', 'Address', 'Booth',
       'Age', 'Gender', 'Telecaller Name', 'Telecaller Phone',
       'Support Level', 'Party Preference', 'Response Status',
       'Is Registered', 'Aware of Candidate', 'Likely to Vote', 'Remarks',
@@ -1140,6 +1274,9 @@ export default function VoterSurveyEntry() {
         record?.voter_name ?? row.voter_name,
         row.voter_id_no ?? '',
         record?.phone ?? row.phone ?? '',
+        record?.phone2 ?? row.phone2 ?? '',
+        record?.alt_phoneno2 ?? row.alt_phoneno2 ?? '',
+        record?.alt_phoneno3 ?? row.alt_phoneno3 ?? '',
         record?.address ?? row.address ?? '',
         record?.booth_no ?? row.booth_no ?? '',
         record?.age ?? row.age ?? '',
@@ -1156,6 +1293,58 @@ export default function VoterSurveyEntry() {
       ]
     })
     exportToCsv(headers, exportRows, `BJP_VoterSurvey_${new Date().toISOString().slice(0, 10)}.csv`)
+  }
+
+  const handlePrint = async () => {
+    const assignmentRows = await fetchAllSurveyVoterRows({
+      ...(filterStatus ? { status: filterStatus } : {}),
+      ...(filterDate ? { date: filterDate } : {}),
+      ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+      ...(filterAssignedList ? { assignment_time: filterAssignedList } : {}),
+      ...(search.trim() ? { search: search.trim() } : {}),
+      ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
+      ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
+      ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
+      ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+      ...(filterParty ? { party: filterParty } : {}),
+      ...(filterBlock ? { block: filterBlock } : {}),
+      ...(filterUnion ? { union: filterUnion } : {}),
+      ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
+      ...(filterBooth ? { booth: filterBooth } : {}),
+      ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
+      ...(filterDateTo ? { date_to: filterDateTo } : {}),
+    })
+    if (!assignmentRows.length) return
+
+    const statusLabel = filterStatus === 'pending'
+      ? 'Not Yet Action Taken'
+      : filterStatus === 'done'
+        ? 'Action Taken'
+        : 'All'
+    const assignedListLabel = assignmentTimeOptions.find(option => option.value === filterAssignedList)?.label ?? filterAssignedList
+    const telecallerLabel = telecallerOptions.find(option => String(option.id) === filterTelecaller)?.name ?? filterTelecaller
+
+    openVoterSurveyPrintWindow({
+      rows: assignmentRows,
+      filters: {
+        status: statusLabel,
+        date: filterDate,
+        telecaller: telecallerLabel,
+        assignment_list: assignedListLabel,
+        search: search.trim(),
+        support_level: filterSupportLevel,
+        response_status: filterResponseStatus,
+        aware_of_candidate: filterAwareOfCandidate,
+        likely_to_vote: filterLikelyToVote,
+        party: filterParty,
+        block: filterBlock,
+        union: filterUnion,
+        panchayat: filterPanchayat,
+        booth: filterBooth,
+        date_from: filterDateFrom,
+        date_to: filterDateTo,
+      },
+    })
   }
 
   /* ════════════════════════════════════════════════════════
@@ -1189,15 +1378,25 @@ export default function VoterSurveyEntry() {
               )}
             </div>
           </div>
-          {scopeCounts.done > 0 && (
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
-              title="Download all survey records as CSV"
-            >
-              <i className="ph ph-file-csv text-[13px]" />
-              Export CSV
-            </button>
+          {scopeCounts.all > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0"
+                title="Print the current filtered voter survey list"
+              >
+                <i className="ph ph-printer text-[13px]" />
+                Print
+              </button>
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
+                title="Download all survey records as CSV"
+              >
+                <i className="ph ph-file-csv text-[13px]" />
+                Export CSV
+              </button>
+            </div>
           )}
         </div>
 

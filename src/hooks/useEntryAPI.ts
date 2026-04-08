@@ -199,6 +199,9 @@ interface FieldSurveyRecord {
   age?: number
   gender?: string
   phone?: string
+  phone2?: string
+  alt_phoneno2?: string
+  alt_phoneno3?: string
   address?: string
   is_registered?: string
   aware_of_candidate?: string

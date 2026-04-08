@@ -135,6 +135,17 @@ function esc(value: string | number | undefined | null) {
     .replace(/>/g, '&gt;')
 }
 
+function getSurveyPhones(survey: Pick<FieldSurveyRecord, 'phone' | 'phone2' | 'alt_phoneno2' | 'alt_phoneno3'>) {
+  const seen = new Set<string>()
+  return [survey.phone, survey.phone2, survey.alt_phoneno2, survey.alt_phoneno3]
+    .map(value => (value || '').trim())
+    .filter(value => {
+      if (!value || seen.has(value)) return false
+      seen.add(value)
+      return true
+    })
+}
+
 function openFieldSurveyPrintWindow({
   surveys,
   getPanchayat,
@@ -193,6 +204,7 @@ function openFieldSurveyPrintWindow({
       const panchayat = getPanchayat(survey)
       const union = getUnion(survey)
       const location = [survey.block, panchayat, union].filter(Boolean).join(' / ')
+      const phones = getSurveyPhones(survey)
       const support = survey.support_level ?? ''
       const response = survey.response_status ?? ''
       const aware = survey.aware_of_candidate ?? ''
@@ -210,7 +222,7 @@ function openFieldSurveyPrintWindow({
               ${survey.age ? `${genderLabel(survey.gender) ? ' · ' : ''}${esc(survey.age)}` : ''}
             </div>
           </td>
-          <td>${esc(survey.phone) || '—'}</td>
+          <td>${phones.length ? phones.map(phone => `<div>${esc(phone)}</div>`).join('') : '—'}</td>
           <td>${esc(survey.booth_no) || '—'}</td>
           <td>${esc(location) || '—'}</td>
           <td>${esc(survey.assigned_volunteer) || '—'}</td>
@@ -889,6 +901,7 @@ export default function FieldActivityEntry() {
     const uni       = getUnion(survey)
     const completed = survey.decision?.action === 'followup_not_required'
     const locationTrail = [survey.block, pan, uni].filter(Boolean).join(' / ')
+    const surveyPhones = getSurveyPhones(survey)
 
     return (
       <div className={`border-b border-border ${completed ? 'bg-green-50/30' : ''}`}>
@@ -909,7 +922,11 @@ export default function FieldActivityEntry() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] font-semibold text-heading">{survey.voter_name}</span>
-              {survey.phone && <span className="text-[10px] text-muted">· {survey.phone}</span>}
+              {surveyPhones.length > 0 && (
+                <span className="text-[10px] text-muted">
+                  · {surveyPhones.join(' / ')}
+                </span>
+              )}
               {survey.booth_no && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-navy/10 text-navy font-medium">
                   Booth {survey.booth_no}

@@ -4,6 +4,10 @@ import dmkLogo from '../assets/logo/dmk-logo.png'
 import ntkLogo      from '../assets/logo/ntk_logo.png'
 import tvkLogo      from '../assets/logo/tvk_logo.png'
 import notaLogo     from '../assets/logo/nota-logo.png'
+import bjpCandidatePhoto from '../assets/pictures/candidates/bjp-c.jpg.jpeg'
+import dmkCandidatePhoto from '../assets/pictures/candidates/dmk-c.jpg.jpeg'
+import ntkCandidatePhoto from '../assets/pictures/candidates/ntk-c.jpg.jpeg'
+import tvkCandidatePhoto from '../assets/pictures/candidates/tvk-c.jpg.jpeg'
 import SectionHeader from '../components/ui/SectionHeader'
 import { usePollAPI } from '../hooks/usePollAPI'
 import type { PollData, PollOption, VoteRecord } from '../hooks/usePollAPI'
@@ -12,17 +16,22 @@ import { useAuthContext } from '../context/AuthContext'
 import { currentDateLabel } from '../utils/formatters'
 import { usePollClock } from '../hooks/usePollClock'
 
-const PARTY_CONFIG: Record<string, {
+type PartyConfig = {
   logo: string
   border: string
   label: string
-}> = {
-  bjp:   { logo: bjpLogo,      border: '#FF9933', label: 'BJP'  },
-  dmk:   { logo: dmkLogo, border: '#dc0000', label: 'DMK'  },
-  inc:   { logo: dmkLogo, border: '#dc0000', label: 'INC'  },
-  tvk:   { logo: tvkLogo,      border: '#d4a800', label: 'TVK'  },
-  ntk:   { logo: ntkLogo,      border: '#ff6400', label: 'NTK'  },
-  nota:  { logo: notaLogo,     border: '#666',    label: 'NOTA' },
+  candidateName?: string
+  candidateImage?: string
+  constituencyTa?: string
+}
+
+const PARTY_CONFIG: Record<string, PartyConfig> = {
+  bjp:   { logo: bjpLogo,  border: '#FF9933', label: 'BJP', candidateName: 'S கிருத்திகா', candidateImage: bjpCandidatePhoto, constituencyTa: 'மொடக்குறிச்சி' },
+  dmk:   { logo: dmkLogo,  border: '#dc0000', label: 'DMK', candidateName: 'செந்தில்நாதன்', candidateImage: dmkCandidatePhoto, constituencyTa: 'மொடக்குறிச்சி' },
+  inc:   { logo: dmkLogo,  border: '#dc0000', label: 'INC' },
+  tvk:   { logo: tvkLogo,  border: '#d4a800', label: 'TVK', candidateName: 'டி. சண்முகம்', candidateImage: tvkCandidatePhoto, constituencyTa: 'மொடக்குறிச்சி' },
+  ntk:   { logo: ntkLogo,  border: '#ff6400', label: 'NTK', candidateName: 'அருண்', candidateImage: ntkCandidatePhoto, constituencyTa: 'மொடக்குறிச்சி' },
+  nota:  { logo: notaLogo, border: '#666',    label: 'NOTA' },
 }
 
 function PartyLogo({ partyKey, name, size = 44 }: { partyKey: string; name: string; size?: number }) {
@@ -61,9 +70,38 @@ function PartyChip({ partyKey, name }: { partyKey: string; name: string }) {
   )
 }
 
+function CandidateAvatar({ partyKey, name, size = 36 }: { partyKey: string; name: string; size?: number }) {
+  const cfg = PARTY_CONFIG[partyKey]
+  if (!cfg?.candidateImage) return null
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 6, flexShrink: 0,
+      overflow: 'hidden',
+      background: '#f7f1ea',
+      border: `1.5px solid ${cfg.border}`,
+      boxShadow: `0 2px 10px ${cfg.border}33`,
+    }}>
+      <img
+        src={cfg.candidateImage}
+        alt={`${cfg.candidateName ?? name} portrait`}
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      />
+    </div>
+  )
+}
+
 function pct(count: number | null, total: number): number {
   if (count == null || total === 0) return 0
   return Math.round((count / total) * 100)
+}
+
+function getCandidateDetails(partyKey: string) {
+  const cfg = PARTY_CONFIG[partyKey]
+  if (!cfg?.candidateName) return null
+  return {
+    name: cfg.candidateName,
+    constituencyTa: cfg.constituencyTa,
+  }
 }
 
 const PAGE_SIZE = 10
@@ -177,7 +215,7 @@ const pollUrl = `${window.location.origin}/#modakurichi`
         <div className="rounded-card bg-white border border-border shadow-card overflow-hidden">
           <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #f0f0f0' }}>
             <h3 className="text-[12px] font-extrabold text-navy uppercase tracking-[1px] flex items-center gap-2">
-              <i className="ph ph-check-square text-saffron" /> Q1 — Party / Alliance Vote
+              <i className="ph ph-check-square text-saffron" />  Party / Alliance Vote
             </h3>
             <span className="text-[10px] font-bold text-muted">{q1Total} votes</span>
           </div>
@@ -186,12 +224,22 @@ const pollUrl = `${window.location.origin}/#modakurichi`
               const count  = opt.vote_count ?? 0
               const p      = pct(count, q1Total)
               const isTop  = opt.id === leadingQ1?.id && q1Total > 0
+              const candidate = getCandidateDetails(opt.key)
               return (
                 <div key={opt.id}>
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <PartyChip partyKey={opt.key} name={opt.name} />
-                      <span className="text-[12px] font-semibold text-navy">{opt.name}</span>
+                      <CandidateAvatar partyKey={opt.key} name={opt.name} size={28} />
+                      <div>
+                        <div className="text-[12px] font-semibold text-navy">{opt.name}</div>
+                        {candidate && (
+                          <div className="font-tamil text-[10px] text-muted mt-[2px]">
+                            {candidate.name}
+                            {candidate.constituencyTa ? ` · ${candidate.constituencyTa}` : ''}
+                          </div>
+                        )}
+                      </div>
                       {isTop && <span className="text-[8px] font-bold text-[#138808] bg-[#e8f5e9] px-2 py-[2px] rounded-full">🏆 LEADING</span>}
                     </div>
                     <div className="flex items-center gap-2">
@@ -293,6 +341,7 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
         <div>
           {q1Options.map(opt => {
             const isSelected = selectedQ1 === opt.id
+            const candidate = getCandidateDetails(opt.key)
             return (
               <div key={opt.id}
                 onClick={() => !hasVoted && setSelectedQ1(opt.id)}
@@ -304,9 +353,18 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
                   cursor: hasVoted ? 'default' : 'pointer',
                 }}
               >
-                <PartyLogo partyKey={opt.key} name={opt.name} size={48} />
+                <div className="flex items-center gap-[10px]">
+                  <PartyLogo partyKey={opt.key} name={opt.name} size={48} />
+                  <CandidateAvatar partyKey={opt.key} name={opt.name} size={48} />
+                </div>
                 <div className="flex-1">
                   <div className="text-[16px] font-extrabold text-white">{opt.name}</div>
+                  {candidate && (
+                    <div className="font-tamil text-[11px] text-saffron mt-[2px]">
+                      {candidate.name}
+                      {candidate.constituencyTa ? ` · ${candidate.constituencyTa}` : ''}
+                    </div>
+                  )}
                   {opt.name_ta && <div className="font-tamil text-[10px] text-[#888] mt-[2px]">{opt.name_ta}</div>}
                 </div>
                 <div className="w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center"

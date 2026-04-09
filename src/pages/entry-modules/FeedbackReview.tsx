@@ -353,6 +353,7 @@ export default function FeedbackReview() {
   /* ── Core data ── */
   const [surveys,     setSurveys]     = useState<SurveyRecord[]>([])
   const [loading,     setLoading]     = useState(true)
+  const [bulkFetchMode, setBulkFetchMode] = useState<'export' | 'print' | null>(null)
   const [saving,      setSaving]      = useState<number | null>(null)
   const [expandedFollowup, setExpandedFollowup] = useState<number | null>(null)
   const [timelineOpen, setTimelineOpen] = useState(false)
@@ -884,115 +885,136 @@ export default function FeedbackReview() {
   }
 
   const handleExport = async () => {
-    const reviewRows = await fetchAllPages<SurveyRecord>('/telecalling/feedbacks/review-list/', {
-      ...(filterTab ? { tab: filterTab } : {}),
-      ...(search.trim() ? { search: search.trim() } : {}),
-      ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
-      ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
-      ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
-      ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
-      ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
-      ...(filterParty ? { party: filterParty } : {}),
-      ...(filterBlock ? { block: filterBlock } : {}),
-      ...(filterUnion ? { union: filterUnion } : {}),
-      ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
-      ...(filterBooth ? { booth: filterBooth } : {}),
-      ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
-      ...(filterDateTo ? { date_to: filterDateTo } : {}),
-    })
-    if (!reviewRows.length) return
-    const headers = [
-      'Survey Date', 'Voter Name', 'Voter ID', 'Phone', 'Phone 2', 'Alt Phone 2', 'Alt Phone 3', 'Age', 'Gender',
-      'Booth No', 'Booth Name', 'Address', 'Block', 'Village',
-      'Support Level', 'Party Preference', 'Response Status',
-      'Aware of Candidate', 'Likely to Vote', 'Remarks', 'Surveyed By',
-      'Telecaller Name', 'Telecaller Phone',
-      'Followup Action', 'Followup Type', 'Decision Date',
-    ]
-    const rows = reviewRows.map(s => {
-      const dec = s.decision
-      const followupAction = dec?.action === 'followup_required'
-        ? 'Followup Required'
-        : dec?.action === 'followup_not_required'
-          ? 'Followup Not Required'
-          : ''
-      const followupType = dec?.followup_type === 'field_survey'
-        ? 'Field Survey'
-        : dec?.followup_type === 'telephonic'
-          ? 'Telephonic'
-          : ''
-      return [
-        s.survey_date, s.voter_name, s.voter_id_no ?? '', s.phone ?? '', s.phone2 ?? '', s.alt_phoneno2 ?? '', s.alt_phoneno3 ?? '', s.age ?? '', genderLabel(s.gender),
-        s.booth_no ?? '', s.booth_name ?? '', s.address ?? '', s.block ?? '', s.village ?? '',
-        s.support_level ?? '', s.party_preference ?? '',
-        s.response_status ? responseLabel(s.response_status) : '',
-        s.aware_of_candidate ?? '', s.likely_to_vote ?? '',
-        s.remarks ?? '', s.surveyed_by ?? '',
-        s.telecaller_name ?? '', s.telecaller_phone ?? '',
-        followupAction, followupType, dec?.date ?? '',
+    setBulkFetchMode('export')
+    try {
+      const reviewRows = await fetchAllPages<SurveyRecord>('/telecalling/feedbacks/review-list/', {
+        ...(filterTab ? { tab: filterTab } : {}),
+        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+        ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
+        ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
+        ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
+        ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+        ...(filterParty ? { party: filterParty } : {}),
+        ...(filterBlock ? { block: filterBlock } : {}),
+        ...(filterUnion ? { union: filterUnion } : {}),
+        ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
+        ...(filterBooth ? { booth: filterBooth } : {}),
+        ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
+        ...(filterDateTo ? { date_to: filterDateTo } : {}),
+      })
+      if (!reviewRows.length) return
+      const headers = [
+        'Survey Date', 'Voter Name', 'Voter ID', 'Phone', 'Phone 2', 'Alt Phone 2', 'Alt Phone 3', 'Age', 'Gender',
+        'Booth No', 'Booth Name', 'Address', 'Block', 'Village',
+        'Support Level', 'Party Preference', 'Response Status',
+        'Aware of Candidate', 'Likely to Vote', 'Remarks', 'Surveyed By',
+        'Telecaller Name', 'Telecaller Phone',
+        'Followup Action', 'Followup Type', 'Decision Date',
       ]
-    })
-    exportToCsv(headers, rows, `BJP_FeedbackReview_${new Date().toISOString().slice(0, 10)}.csv`)
+      const rows = reviewRows.map(s => {
+        const dec = s.decision
+        const followupAction = dec?.action === 'followup_required'
+          ? 'Followup Required'
+          : dec?.action === 'followup_not_required'
+            ? 'Followup Not Required'
+            : ''
+        const followupType = dec?.followup_type === 'field_survey'
+          ? 'Field Survey'
+          : dec?.followup_type === 'telephonic'
+            ? 'Telephonic'
+            : ''
+        return [
+          s.survey_date, s.voter_name, s.voter_id_no ?? '', s.phone ?? '', s.phone2 ?? '', s.alt_phoneno2 ?? '', s.alt_phoneno3 ?? '', s.age ?? '', genderLabel(s.gender),
+          s.booth_no ?? '', s.booth_name ?? '', s.address ?? '', s.block ?? '', s.village ?? '',
+          s.support_level ?? '', s.party_preference ?? '',
+          s.response_status ? responseLabel(s.response_status) : '',
+          s.aware_of_candidate ?? '', s.likely_to_vote ?? '',
+          s.remarks ?? '', s.surveyed_by ?? '',
+          s.telecaller_name ?? '', s.telecaller_phone ?? '',
+          followupAction, followupType, dec?.date ?? '',
+        ]
+      })
+      exportToCsv(headers, rows, `BJP_FeedbackReview_${new Date().toISOString().slice(0, 10)}.csv`)
+    } catch {
+      showToast('Failed to export feedback review list', 'error')
+    } finally {
+      setBulkFetchMode(null)
+    }
   }
 
   const handlePrint = async () => {
-    const reviewRows = await fetchAllPages<SurveyRecord>('/telecalling/feedbacks/review-list/', {
-      ...(filterTab ? { tab: filterTab } : {}),
-      ...(search.trim() ? { search: search.trim() } : {}),
-      ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
-      ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
-      ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
-      ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
-      ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
-      ...(filterParty ? { party: filterParty } : {}),
-      ...(filterBlock ? { block: filterBlock } : {}),
-      ...(filterUnion ? { union: filterUnion } : {}),
-      ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
-      ...(filterBooth ? { booth: filterBooth } : {}),
-      ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
-      ...(filterDateTo ? { date_to: filterDateTo } : {}),
-    })
-    if (!reviewRows.length) return
+    setBulkFetchMode('print')
+    try {
+      const reviewRows = await fetchAllPages<SurveyRecord>('/telecalling/feedbacks/review-list/', {
+        ...(filterTab ? { tab: filterTab } : {}),
+        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(filterTelecaller ? { telecaller: filterTelecaller } : {}),
+        ...(filterSupportLevel ? { support_level: filterSupportLevel } : {}),
+        ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
+        ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
+        ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+        ...(filterParty ? { party: filterParty } : {}),
+        ...(filterBlock ? { block: filterBlock } : {}),
+        ...(filterUnion ? { union: filterUnion } : {}),
+        ...(filterPanchayat ? { panchayat: filterPanchayat } : {}),
+        ...(filterBooth ? { booth: filterBooth } : {}),
+        ...(filterDateFrom ? { date_from: filterDateFrom } : {}),
+        ...(filterDateTo ? { date_to: filterDateTo } : {}),
+      })
+      if (!reviewRows.length) return
 
-    const tabLabel = filterTab === 'pending'
-      ? 'Pending'
-      : filterTab === 'followup_required'
-        ? 'Followup Required'
-        : filterTab === 'field_survey'
-          ? 'Field Survey'
-          : filterTab === 'telephonic'
-            ? 'Telephonic'
-            : filterTab === 'followup_not_required'
-              ? 'No Followup'
-              : 'All'
+      const tabLabel = filterTab === 'pending'
+        ? 'Pending'
+        : filterTab === 'followup_required'
+          ? 'Followup Required'
+          : filterTab === 'field_survey'
+            ? 'Field Survey'
+            : filterTab === 'telephonic'
+              ? 'Telephonic'
+              : filterTab === 'followup_not_required'
+                ? 'No Followup'
+                : 'All'
 
-    openFeedbackReviewPrintWindow({
-      rows: reviewRows,
-      filters: {
-        tab: tabLabel,
-        search: search.trim(),
-        telecaller: filterTelecaller,
-        support_level: filterSupportLevel,
-        response_status: filterResponseStatus,
-        aware_of_candidate: filterAwareOfCandidate,
-        likely_to_vote: filterLikelyToVote,
-        party: filterParty,
-        block: filterBlock,
-        union: filterUnion,
-        panchayat: filterPanchayat,
-        booth: filterBooth,
-        date_from: filterDateFrom,
-        date_to: filterDateTo,
-      },
-    })
+      openFeedbackReviewPrintWindow({
+        rows: reviewRows,
+        filters: {
+          tab: tabLabel,
+          search: search.trim(),
+          telecaller: filterTelecaller,
+          support_level: filterSupportLevel,
+          response_status: filterResponseStatus,
+          aware_of_candidate: filterAwareOfCandidate,
+          likely_to_vote: filterLikelyToVote,
+          party: filterParty,
+          block: filterBlock,
+          union: filterUnion,
+          panchayat: filterPanchayat,
+          booth: filterBooth,
+          date_from: filterDateFrom,
+          date_to: filterDateTo,
+        },
+      })
+    } catch {
+      showToast('Failed to prepare print view for feedback review', 'error')
+    } finally {
+      setBulkFetchMode(null)
+    }
   }
+
+  const isFetchingRecords = loading || bulkFetchMode !== null
+  const fetchingMessage = bulkFetchMode === 'export'
+    ? 'Preparing records for CSV export...'
+    : bulkFetchMode === 'print'
+      ? 'Preparing records for print...'
+      : 'Fetching feedback survey records...'
 
   /* ════════════════════════════════════════════════════════
      Render
   ════════════════════════════════════════════════════════ */
   return (
-    <div className="page-enter">
-      <div className="bg-surface rounded-card shadow-card overflow-hidden mb-[22px]">
+    <div className="page-enter relative">
+      <div className={`bg-surface rounded-card shadow-card overflow-hidden mb-[22px] transition-[filter] duration-150 ${isFetchingRecords ? 'blur-[1px]' : ''}`}>
 
         {/* ── Header ── */}
         <div className="flex items-center gap-3 px-5 py-3 border-b border-border">
@@ -1023,7 +1045,8 @@ export default function FeedbackReview() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePrint}
-                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0"
+                disabled={isFetchingRecords}
+                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-navy bg-navy text-white text-[11px] font-semibold hover:bg-navy/90 transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                 title="Print the current filtered feedback review list"
               >
                 <i className="ph ph-printer text-[13px]" />
@@ -1031,7 +1054,8 @@ export default function FeedbackReview() {
               </button>
               <button
                 onClick={handleExport}
-                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0"
+                disabled={isFetchingRecords}
+                className="flex items-center gap-1.5 px-3 py-[6px] rounded-lg border border-kampgreen bg-kampgreen/10 text-kampgreen text-[11px] font-semibold hover:bg-kampgreen hover:text-white transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                 title="Download all survey records as CSV"
               >
                 <i className="ph ph-file-csv text-[13px]" />
@@ -1238,12 +1262,7 @@ export default function FeedbackReview() {
         </div>
 
         {/* ── List ── */}
-        {loading ? (
-          <div className="px-5 py-14 text-center text-muted">
-            <i className="ph ph-spinner-gap animate-spin text-[28px] block mb-2" />
-            Loading feedback records…
-          </div>
-        ) : counts.all === 0 ? (
+        {counts.all === 0 ? (
           <div className="px-5 py-14 text-center">
             <i className="ph ph-notepad text-[36px] text-border block mb-3" />
             <p className="text-[13px] font-semibold text-heading mb-1">No submitted feedback yet</p>
@@ -1389,7 +1408,7 @@ export default function FeedbackReview() {
               {timelineLoading ? (
                 <div className="py-12 text-center text-muted">
                   <i className="ph ph-spinner-gap animate-spin text-[24px] block mb-2" />
-                  Loading timeline…
+                  Loading timeline...
                 </div>
               ) : !timelineData || timelineData.events.length === 0 ? (
                 <div className="py-12 text-center text-muted">
@@ -1423,6 +1442,24 @@ export default function FeedbackReview() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isFetchingRecords && (
+        <div className="fixed inset-0 z-[130] bg-black/40 backdrop-blur-[3px] flex items-center justify-center p-4">
+          <div className="w-full max-w-[460px] rounded-xl border border-amber-200 bg-white/95 shadow-2xl px-5 py-4 text-center">
+            <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-amber-100 text-amber-700 mb-3">
+              <i className="ph ph-warning-circle text-[22px]" />
+            </div>
+            <p className="text-[14px] font-bold text-heading">{fetchingMessage}</p>
+            <p className="text-[12px] text-muted mt-1">
+              Please do not reload or close this page until loading is complete.
+            </p>
+            <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-navy/10 text-navy text-[11px] font-semibold">
+              <i className="ph ph-spinner-gap animate-spin text-[12px]" />
+              Loading...
             </div>
           </div>
         </div>

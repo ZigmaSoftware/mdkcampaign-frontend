@@ -85,7 +85,7 @@ interface TimelinePayload {
 }
 
 type ReviewTab = 'all' | 'pending' | 'followup_required' | 'field_survey' | 'telephonic' | 'followup_not_required'
-const DEFAULT_SUPPORT_LEVEL = 'positive'
+const DEFAULT_SUPPORT_LEVEL = 'negative'
 
 /* ── Colour helpers ── */
 const supportColor = (s?: string) => {

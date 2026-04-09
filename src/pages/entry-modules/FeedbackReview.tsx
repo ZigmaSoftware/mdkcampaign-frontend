@@ -85,6 +85,7 @@ interface TimelinePayload {
 }
 
 type ReviewTab = 'all' | 'pending' | 'followup_required' | 'field_survey' | 'telephonic' | 'followup_not_required'
+const DEFAULT_SUPPORT_LEVEL = 'positive'
 
 /* ── Colour helpers ── */
 const supportColor = (s?: string) => {
@@ -402,7 +403,7 @@ export default function FeedbackReview() {
   const [filterTab,          setFilterTab]          = useState<ReviewTab>('all')
   const [filterTelecaller,   setFilterTelecaller]   = useState('')
   const [search,             setSearch]             = useState('')
-  const [filterSupportLevel, setFilterSupportLevel] = useState('')
+  const [filterSupportLevel, setFilterSupportLevel] = useState(DEFAULT_SUPPORT_LEVEL)
   const [filterResponseStatus, setFilterResponseStatus] = useState('')
   const [filterAwareOfCandidate, setFilterAwareOfCandidate] = useState('')
   const [filterLikelyToVote, setFilterLikelyToVote] = useState('')
@@ -425,7 +426,7 @@ export default function FeedbackReview() {
   }, [])
 
   const clearAdvancedFilters = () => {
-    setFilterSupportLevel('')
+    setFilterSupportLevel(DEFAULT_SUPPORT_LEVEL)
     setFilterResponseStatus('')
     setFilterAwareOfCandidate('')
     setFilterLikelyToVote('')

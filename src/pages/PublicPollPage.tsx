@@ -5,6 +5,10 @@ import dmkLogo from '../assets/logo/dmk-logo.png'
 import ntkLogo      from '../assets/logo/ntk_logo.png'
 import tvkLogo      from '../assets/logo/tvk_logo.png'
 import notaLogo     from '../assets/logo/nota-logo.png'
+import bjpCandidatePhoto from '../assets/pictures/candidates/bjp-c.jpg.jpeg'
+import dmkCandidatePhoto from '../assets/pictures/candidates/dmk-c.jpg.jpeg'
+import ntkCandidatePhoto from '../assets/pictures/candidates/ntk-c.jpg.jpeg'
+import tvkCandidatePhoto from '../assets/pictures/candidates/tvk-c.jpg.jpeg'
 import { API_BASE_URL } from '../utils/apiConfig'
 
 /* Plain axios — no auth interceptor (public page, no login needed) */
@@ -16,12 +20,30 @@ const api = axios.create({
 
 /* ── Static display config (matched to backend option key) ── */
 const Q1_STYLE: Record<string, { logo?: string; strip: string; border: string }> = {
-  bjp:   { logo: bjpLogo,      strip: '#FF9933', border: '#FF9933' },
   dmk:   { logo: dmkLogo, strip: '#dc0000', border: '#dc0000' },
+  bjp:   { logo: bjpLogo,      strip: '#FF9933', border: '#FF9933' },
   ntk:   { logo: ntkLogo,      strip: '#ff6400', border: '#ff6400' },
   tvk:   { logo: tvkLogo,      strip: '#ffc800', border: '#d4a800' },
   other: {                     strip: '#aaa',    border: '#ccc'    },
   nota:  { logo: notaLogo,     strip: '#666',    border: '#888'    },
+}
+
+const CANDIDATE_META: Record<string, { name: string; constituencyTa: string; photo: string }> = {
+  bjp: { name: 'S கிருத்திகா', constituencyTa: 'மொடக்குறிச்சி', photo: bjpCandidatePhoto },
+  dmk: { name: 'செந்தில்நாதன்', constituencyTa: 'மொடக்குறிச்சி', photo: dmkCandidatePhoto },
+  tvk: { name: 'டி. சண்முகம்', constituencyTa: 'மொடக்குறிச்சி', photo: tvkCandidatePhoto },
+  ntk: { name: 'அருண்', constituencyTa: 'மொடக்குறிச்சி', photo: ntkCandidatePhoto },
+}
+
+const OPTION_ORDER: Record<string, number> = {
+  dmk: 1,
+  bjp: 2,
+  ntk: 3,
+  tvk: 4,
+  other: 5,
+  others: 5,
+  nota: 6,
+  nita: 6,
 }
 
 interface Option { id: number; key: string; name: string; name_ta: string; sub_label: string; bar_color: string; question_no: number }
@@ -127,7 +149,13 @@ export default function PublicPollPage() {
   const hasNota = q1Raw.some(o => o.key === 'nota')
   const NOTA_ID = 0
   const notaOption: Option = { id: NOTA_ID, key: 'nota', name: 'NOTA', name_ta: 'மேற்கண்ட எவரும் இல்லை', sub_label: 'None Of The Above', bar_color: '#555', question_no: 1 }
-  const q1 = hasNota ? q1Raw : [...q1Raw, notaOption]
+  const q1Base = hasNota ? q1Raw : [...q1Raw, notaOption]
+  const q1 = [...q1Base].sort((a, b) => {
+    const aOrder = OPTION_ORDER[a.key] ?? 999
+    const bOrder = OPTION_ORDER[b.key] ?? 999
+    if (aOrder !== bOrder) return aOrder - bOrder
+    return a.id - b.id
+  })
 
   return (
     <div style={{ minHeight:'100vh', background:'#f5f5f5', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'0 0 32px', fontFamily:F, color:'#111' }}>
@@ -218,7 +246,7 @@ export default function PublicPollPage() {
         {poll && !voted && (
           <>
             <div style={{ background:'#eef5ff', padding:'14px 16px 8px', borderBottom:'1px solid #cfe2ff' }}>
-              <div style={{ fontSize:10, color:'#0d6efd', fontWeight:700, letterSpacing:2, marginBottom:6 }}>கேள்வி 1 · QUESTION 1</div>
+              {/* <div style={{ fontSize:10, color:'#0d6efd', fontWeight:700, letterSpacing:2, marginBottom:6 }}>கேள்வி 1 · QUESTION 1</div> */}
               <div style={{ fontFamily:TA, fontSize:16, fontWeight:700, color:'#1a1a1a', lineHeight:1.4, marginBottom:4 }}>
                 இந்த தேர்தலில் நீங்கள் யாருக்கு வாக்களிப்பீர்கள்?
               </div>
@@ -228,20 +256,33 @@ export default function PublicPollPage() {
               {q1.map(opt => {
                 const s = Q1_STYLE[opt.key] ?? Q1_STYLE.other
                 const isSel = selId === opt.id
+                const candidate = CANDIDATE_META[opt.key]
                 return (
                   <div key={opt.id} className="mk-opt"
                     onClick={() => setSelId(opt.id)}
                     style={{ padding:'10px 0', borderBottom:'1px solid #f5e6d0', background: isSel ? '#eef5ff' : '#fff' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, padding:'0 16px' }}>
                       <div style={{ width:4, flexShrink:0, alignSelf:'stretch', borderRadius:2, minHeight:44, background: s.strip }} />
-                      <div style={{ width:36, height:36, flexShrink:0, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}` }}>
-                        {s.logo
-                          ? <img src={s.logo} alt={opt.name} style={{ width:26, height:26, objectFit:'contain' }} />
-                          : <span style={{ fontSize:9, fontWeight:900, color:'#555' }}>{opt.key.slice(0,3).toUpperCase()}</span>
-                        }
+                      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                        <div style={{ width:36, height:36, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}` }}>
+                          {s.logo
+                            ? <img src={s.logo} alt={opt.name} style={{ width:26, height:26, objectFit:'contain' }} />
+                            : <span style={{ fontSize:9, fontWeight:900, color:'#555' }}>{opt.key.slice(0,3).toUpperCase()}</span>
+                          }
+                        </div>
+                        {candidate && (
+                          <div style={{ width:36, height:36, borderRadius:6, overflow:'hidden', background:'#fff', border:`1.5px solid ${s.border}`, boxShadow:`0 2px 6px ${s.border}33` }}>
+                            <img src={candidate.photo} alt={`${candidate.name} portrait`} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                          </div>
+                        )}
                       </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:13, fontWeight:800, color:'#1a1a1a', letterSpacing:0.5, lineHeight:1.1 }}>{opt.name}</div>
+                        {candidate && (
+                          <div style={{ fontFamily:TA, fontSize:10, color:'#555', marginTop:2 }}>
+                            {candidate.name} · {candidate.constituencyTa}
+                          </div>
+                        )}
                         <div style={{ fontFamily:TA, fontSize:10, color:'#888', marginTop:1 }}>{opt.name_ta}</div>
                       </div>
                       <div style={{ width:20, height:20, borderRadius:'50%', flexShrink:0, border:`2px solid ${isSel ? '#FF9933' : '#ddd'}`, background: isSel ? '#FF9933' : '#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -268,6 +309,7 @@ export default function PublicPollPage() {
         {poll && voted && (() => {
           const votedOpt = q1.find(o => o.id === selId)
           const s = votedOpt ? (Q1_STYLE[votedOpt.key] ?? Q1_STYLE.other) : null
+          const votedCandidate = votedOpt ? CANDIDATE_META[votedOpt.key] : null
           return (
             <div style={{ background:'#fff', borderTop:'3px solid #FF9933' }}>
               {/* Thank you banner */}
@@ -292,14 +334,24 @@ export default function PublicPollPage() {
                   <div style={{ fontSize:9, fontWeight:700, letterSpacing:2, color:'#aaa', marginBottom:8, textAlign:'center' }}>YOU VOTED FOR · நீங்கள் வாக்களித்தது</div>
                   <div style={{ display:'flex', alignItems:'center', gap:12, background:'#eef5ff', border:`1.5px solid ${s.border}`, borderRadius:8, padding:'10px 14px' }}>
                     <div style={{ width:4, alignSelf:'stretch', borderRadius:2, minHeight:40, background:s.strip, flexShrink:0 }} />
-                    <div style={{ width:40, height:40, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}`, flexShrink:0 }}>
-                      {s.logo
-                        ? <img src={s.logo} alt={votedOpt.name} style={{ width:28, height:28, objectFit:'contain' }} />
-                        : <span style={{ fontSize:9, fontWeight:900, color:'#555' }}>{votedOpt.key.slice(0,3).toUpperCase()}</span>
-                      }
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                      <div style={{ width:40, height:40, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', background:'#fff', border:`1.5px solid ${s.border}` }}>
+                        {s.logo
+                          ? <img src={s.logo} alt={votedOpt.name} style={{ width:28, height:28, objectFit:'contain' }} />
+                          : <span style={{ fontSize:9, fontWeight:900, color:'#555' }}>{votedOpt.key.slice(0,3).toUpperCase()}</span>
+                        }
+                      </div>
+                      {votedCandidate && (
+                        <div style={{ width:40, height:40, borderRadius:8, overflow:'hidden', background:'#fff', border:`1.5px solid ${s.border}`, boxShadow:`0 2px 8px ${s.border}33` }}>
+                          <img src={votedCandidate.photo} alt={`${votedCandidate.name} portrait`} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                        </div>
+                      )}
                     </div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:15, fontWeight:900, color:'#1a1a1a', letterSpacing:0.5 }}>{votedOpt.name}</div>
+                      {votedCandidate && (
+                        <div style={{ fontFamily:TA, fontSize:11, color:'#555', marginTop:2 }}>{votedCandidate.name} · {votedCandidate.constituencyTa}</div>
+                      )}
                       <div style={{ fontFamily:TA, fontSize:11, color:'#888', marginTop:2 }}>{votedOpt.name_ta}</div>
                     </div>
                     <div style={{ fontSize:22 }}>✅</div>

@@ -6,12 +6,14 @@ import {
   getBoothRanking,
   getFilterOptions,
   getSummary,
+  getTelecallerDatewisePerformance,
   getTelecallerEfficiency,
   type BoothRankingResponse,
   type DashboardFilterOptions,
   type DashboardKpis,
   type DashboardQueryFilters,
   type DashboardSummaryResponse,
+  type TelecallerDatewisePerformanceResponse,
   type TelecallerEfficiencyResponse,
 } from './services/dashboardApi'
 
@@ -19,6 +21,7 @@ const SummaryCards = lazy(() => import('./components/SummaryCards'))
 const SurveyCharts = lazy(() => import('./components/SurveyCharts'))
 const BoothTable = lazy(() => import('./components/BoothTable'))
 const TelecallingTable = lazy(() => import('./components/TelecallingTable'))
+const TelecallerDatewiseTable = lazy(() => import('./components/TelecallerDatewiseTable'))
 
 const DEFAULT_FILTERS: DashboardQueryFilters = {
   date: '',
@@ -67,6 +70,7 @@ const EMPTY_OPTIONS: DashboardFilterOptions = {
 
 const EMPTY_BOOTHS: BoothRankingResponse = { rows: [] }
 const EMPTY_TELECALLERS: TelecallerEfficiencyResponse = { rows: [] }
+const EMPTY_TELECALLER_DATEWISE: TelecallerDatewisePerformanceResponse = { rows: [] }
 
 function LoadingPanel() {
   return (
@@ -94,6 +98,7 @@ export default function CampaignDashboardPage() {
   const [summary, setSummary] = useState<DashboardSummaryResponse>(EMPTY_SUMMARY)
   const [booths, setBooths] = useState<BoothRankingResponse>(EMPTY_BOOTHS)
   const [telecallers, setTelecallers] = useState<TelecallerEfficiencyResponse>(EMPTY_TELECALLERS)
+  const [telecallerDatewise, setTelecallerDatewise] = useState<TelecallerDatewisePerformanceResponse>(EMPTY_TELECALLER_DATEWISE)
   const [loading, setLoading] = useState(true)
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -148,12 +153,14 @@ export default function CampaignDashboardPage() {
       getSummary(appliedFilters),
       getBoothRanking(appliedFilters),
       getTelecallerEfficiency(appliedFilters),
+      getTelecallerDatewisePerformance(appliedFilters),
     ])
-      .then(([summaryData, boothData, telecallerData]) => {
+      .then(([summaryData, boothData, telecallerData, telecallerDatewiseData]) => {
         if (cancelled) return
         setSummary(summaryData || EMPTY_SUMMARY)
         setBooths(boothData || EMPTY_BOOTHS)
         setTelecallers(telecallerData || EMPTY_TELECALLERS)
+        setTelecallerDatewise(telecallerDatewiseData || EMPTY_TELECALLER_DATEWISE)
       })
       .catch((err: any) => {
         if (cancelled) return
@@ -161,6 +168,7 @@ export default function CampaignDashboardPage() {
         setSummary(EMPTY_SUMMARY)
         setBooths(EMPTY_BOOTHS)
         setTelecallers(EMPTY_TELECALLERS)
+        setTelecallerDatewise(EMPTY_TELECALLER_DATEWISE)
         setError('Unable to load dashboard data right now.')
       })
       .finally(() => {
@@ -397,6 +405,8 @@ export default function CampaignDashboardPage() {
               <BoothTable rows={booths.rows} />
               <TelecallingTable rows={telecallers.rows} />
             </div>
+
+            <TelecallerDatewiseTable rows={telecallerDatewise.rows} />
           </>
         )}
       </Suspense>

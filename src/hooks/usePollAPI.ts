@@ -28,6 +28,7 @@ export interface PollData {
   user_has_voted: boolean
   user_q1_option: number | null
   user_q2_option: number | null
+  poll_session_key?: string | null
 }
 
 export interface VoteRecord {
@@ -42,6 +43,15 @@ export interface VoteRecord {
   q2_option:    string
   q2_key:       string
   timestamp:    string
+}
+
+export interface PollResetWindow {
+  id: number
+  starts_at: string
+  ends_at: string | null
+  is_current: boolean
+  total_votes: number
+  note: string
 }
 
 export interface UserRecord {
@@ -86,11 +96,13 @@ export function usePollAPI() {
     console.error(`[${ctx}]`, err)
   }
 
-  const fetchActivePoll = useCallback(async (): Promise<PollData | null> => {
+  const fetchActivePoll = useCallback(async (sessionKey?: string): Promise<PollData | null> => {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await apiClient.get<PollData>('/polls/active/')
+      const { data } = await apiClient.get<PollData>('/polls/active/', {
+        params: sessionKey ? { session: sessionKey } : undefined,
+      })
       return data
     } catch (err) {
       handleError(err, 'fetch active poll')
@@ -146,21 +158,69 @@ export function usePollAPI() {
     []
   )
 
-  const fetchVotesList = useCallback(async (pollId: number): Promise<VoteRecord[] | null> => {
+  const fetchVotesList = useCallback(
+    async (pollId: number, sessionKey?: string): Promise<VoteRecord[] | null> => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await apiClient.get<VoteRecord[]>(`/polls/${pollId}/votes/`, {
+          params: sessionKey ? { session: sessionKey } : undefined,
+        })
+        return data
+      } catch (err) {
+        handleError(err, 'fetch votes list')
+        return null
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
+  const fetchPollResets = useCallback(async (pollId: number): Promise<PollResetWindow[] | null> => {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await apiClient.get<VoteRecord[]>(`/polls/${pollId}/votes/`)
+      const { data } = await apiClient.get<PollResetWindow[]>(`/polls/${pollId}/resets/`)
       return data
     } catch (err) {
-      handleError(err, 'fetch votes list')
+      handleError(err, 'fetch poll resets')
       return null
     } finally {
       setLoading(false)
     }
   }, [])
 
-  return { loading, error, fetchActivePoll, castVote, updateVote, fetchVotesList }
+  const createPollReset = useCallback(
+    async (pollId: number, startsAt?: string, note?: string): Promise<PollResetWindow | null> => {
+      setLoading(true)
+      setError(null)
+      try {
+        const payload: Record<string, unknown> = {}
+        if (startsAt) payload.starts_at = startsAt
+        if (note) payload.note = note
+        const { data } = await apiClient.post<PollResetWindow>(`/polls/${pollId}/resets/`, payload)
+        return data
+      } catch (err) {
+        handleError(err, 'create poll reset')
+        return null
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
+  return {
+    loading,
+    error,
+    fetchActivePoll,
+    castVote,
+    updateVote,
+    fetchVotesList,
+    fetchPollResets,
+    createPollReset,
+  }
 }
 
 export function useUserAPI() {

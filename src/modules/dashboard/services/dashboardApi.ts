@@ -107,6 +107,14 @@ export interface TelecallerEfficiencyResponse {
   rows: TelecallerEfficiencyRow[]
 }
 
+export interface TelecallerDatewisePerformanceRow extends TelecallerEfficiencyRow {
+  date: string
+}
+
+export interface TelecallerDatewisePerformanceResponse {
+  rows: TelecallerDatewisePerformanceRow[]
+}
+
 export interface TaskPanelSummary {
   total: number
   pending: number
@@ -197,6 +205,13 @@ export async function getBoothRanking(filters: DashboardQueryFilters): Promise<B
 
 export async function getTelecallerEfficiency(filters: DashboardQueryFilters): Promise<TelecallerEfficiencyResponse> {
   const { data } = await apiClient.get<TelecallerEfficiencyResponse>('/dashboard/telecallers/', {
+    params: buildParams(filters),
+  })
+  return data
+}
+
+export async function getTelecallerDatewisePerformance(filters: DashboardQueryFilters): Promise<TelecallerDatewisePerformanceResponse> {
+  const { data } = await apiClient.get<TelecallerDatewisePerformanceResponse>('/dashboard/telecallers/date-wise/', {
     params: buildParams(filters),
   })
   return data

@@ -10,7 +10,7 @@ import ntkCandidatePhoto from '../assets/pictures/candidates/ntk-c.jpg.jpeg'
 import tvkCandidatePhoto from '../assets/pictures/candidates/tvk-c.jpg.jpeg'
 import SectionHeader from '../components/ui/SectionHeader'
 import { usePollAPI } from '../hooks/usePollAPI'
-import type { PollData, PollOption, VoteRecord } from '../hooks/usePollAPI'
+import type { PollData, PollOption, VoteRecord, PollResetWindow } from '../hooks/usePollAPI'
 import { useToast } from '../context/ToastContext'
 import { useAuthContext } from '../context/AuthContext'
 import { currentDateLabel } from '../utils/formatters'
@@ -106,10 +106,46 @@ function getCandidateDetails(partyKey: string) {
 
 const PAGE_SIZE = 10
 
+type PollSessionTab = { key: string; label: string }
+
+function buildPollSessionTabs(resetWindows: PollResetWindow[]): PollSessionTab[] {
+  const asc = [...resetWindows].sort((a, b) => {
+    const d = new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+    if (d !== 0) return d
+    return a.id - b.id
+  })
+
+  const tabs: PollSessionTab[] = [{ key: 'base', label: 'Poll 1' }]
+  asc.forEach((reset, idx) => {
+    tabs.push({ key: String(reset.id), label: `Poll ${idx + 2}` })
+  })
+  return tabs.reverse() // latest first
+}
+
 /* ══════════════════════════════════════════════════════════
    ADMIN DASHBOARD VIEW (src_no style, backend data)
 ══════════════════════════════════════════════════════════ */
-function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: VoteRecord[]; onRefresh: () => void }) {
+function AdminDashboard({
+  poll,
+  votes,
+  sessionTabs,
+  selectedSessionKey,
+  creatingSession,
+  canCreateSession,
+  onSelectSession,
+  onCreateSession,
+  onRefresh,
+}: {
+  poll: PollData
+  votes: VoteRecord[]
+  sessionTabs: PollSessionTab[]
+  selectedSessionKey: string
+  creatingSession: boolean
+  canCreateSession: boolean
+  onSelectSession: (sessionKey: string) => void
+  onCreateSession: () => Promise<void>
+  onRefresh: () => void
+}) {
   const [filterParty, setFilterParty] = useState('')
   const [filterName,  setFilterName]  = useState('')
   const [page,        setPage]        = useState(1)
@@ -126,7 +162,10 @@ function AdminDashboard({ poll, votes, onRefresh }: { poll: PollData; votes: Vot
 
   const q1Sorted = [...q1Options].sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0))
 
-const pollUrl = `${window.location.origin}/#modakurichi`
+  const pollUrl = `${window.location.origin}/#modakurichi`
+  const activeSessionKey = selectedSessionKey === 'latest'
+    ? (sessionTabs[0]?.key ?? 'base')
+    : selectedSessionKey
 
   const filtered = [...votes].filter(v => {
     if (filterParty && v.q1_key !== filterParty) return false
@@ -189,6 +228,55 @@ const pollUrl = `${window.location.origin}/#modakurichi`
           >
             <i className="ph ph-arrows-clockwise" /> Refresh
           </button>
+        </div>
+      </div>
+
+      {/* Poll session controls */}
+      <div className="rounded-card px-5 py-4 mb-5 bg-white border border-border shadow-card">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <div className="text-[12px] font-extrabold text-navy uppercase tracking-[1px]">Poll Sessions</div>
+            <div className="text-[10px] text-muted mt-1">Create a new session. Latest session is shown by default. Old data stays intact.</div>
+          </div>
+          {canCreateSession ? (
+            <button
+              onClick={onCreateSession}
+              disabled={creatingSession}
+              className="flex items-center gap-2 text-[11px] font-bold px-4 py-2 rounded-lg border-none cursor-pointer disabled:opacity-60"
+              style={{ background: '#138808', color: '#fff' }}
+            >
+              <i className={`ph ${creatingSession ? 'ph-circle-notch animate-spin' : 'ph-plus-circle'}`} />
+              Create New Session
+            </button>
+          ) : (
+            <div className="text-[10px] font-semibold text-[#777]">
+              Session creation restricted
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {sessionTabs.map(tab => {
+            const isActive = activeSessionKey === tab.key
+            return (
+              <button
+                key={tab.key}
+                onClick={() => onSelectSession(tab.key)}
+                className="px-4 py-2 rounded-lg text-[11px] font-bold border cursor-pointer"
+                style={{
+                  background: isActive ? '#0d6efd' : '#fff',
+                  color: isActive ? '#fff' : '#0d2455',
+                  borderColor: isActive ? '#0d6efd' : '#ddd',
+                }}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="text-[10px] text-muted">
+          Recent session appears first. Older sessions remain available as tabs.
         </div>
       </div>
 
@@ -445,29 +533,68 @@ function VoterView({ poll, onVoted }: { poll: PollData; onVoted: (updated: PollD
    MAIN PAGE
 ══════════════════════════════════════════════════════════ */
 export default function OpinionPollPage() {
-  const { fetchActivePoll, fetchVotesList } = usePollAPI()
+  const { fetchActivePoll, fetchVotesList, fetchPollResets, createPollReset } = usePollAPI()
+  const { showToast } = useToast()
   const { user } = useAuthContext()
-  const isAdmin = user?.role === 'admin'
+  const isPollSessionManager = (user?.username || '').toLowerCase() === 'poll'
+  const canViewPollManagement = user?.role === 'admin' || isPollSessionManager
 
   const [poll,      setPoll]      = useState<PollData | null>(null)
   const [votes,     setVotes]     = useState<VoteRecord[]>([])
+  const [resetWindows, setResetWindows] = useState<PollResetWindow[]>([])
+  const [selectedSessionKey, setSelectedSessionKey] = useState<string>('latest')
+  const [creatingSession, setCreatingSession] = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [fetchErr,  setFetchErr]  = useState(false)
 
-  const load = useCallback(async () => {
+  const sessionTabs = buildPollSessionTabs(resetWindows)
+
+  const load = useCallback(async (forcedSessionKey?: string) => {
     setLoading(true)
     setFetchErr(false)
-    const data = await fetchActivePoll()
+    const effectiveSessionKey = canViewPollManagement
+      ? (forcedSessionKey !== undefined ? forcedSessionKey : selectedSessionKey)
+      : undefined
+
+    const querySession = effectiveSessionKey && effectiveSessionKey !== 'latest'
+      ? effectiveSessionKey
+      : undefined
+
+    const data = await fetchActivePoll(querySession)
     if (!data) { setFetchErr(true); setLoading(false); return }
     setPoll(data)
-    if (isAdmin) {
-      const voteData = await fetchVotesList(data.id)
+    if (canViewPollManagement) {
+      const voteData = await fetchVotesList(data.id, querySession)
       if (voteData) setVotes(voteData)
+      const resetData = await fetchPollResets(data.id)
+      if (resetData) setResetWindows(resetData)
     }
     setLoading(false)
-  }, [fetchActivePoll, fetchVotesList, isAdmin])
+  }, [fetchActivePoll, fetchVotesList, fetchPollResets, canViewPollManagement, selectedSessionKey])
 
   useEffect(() => { load() }, [load])
+
+  const handleCreateSession = useCallback(
+    async () => {
+      if (!poll) return
+      if (!isPollSessionManager) {
+        showToast('<i class="ph ph-warning"></i> Only Poll Admin can create new sessions.', '#dc2626')
+        return
+      }
+      setCreatingSession(true)
+      const created = await createPollReset(poll.id)
+      if (!created) {
+        showToast('<i class="ph ph-warning"></i> Could not create new session.', '#dc2626')
+        setCreatingSession(false)
+        return
+      }
+      showToast('<i class="ph ph-check-circle"></i> New poll session created.', '#138808')
+      setSelectedSessionKey('latest')
+      await load('latest')
+      setCreatingSession(false)
+    },
+    [poll, isPollSessionManager, createPollReset, showToast, load]
+  )
 
   if (loading) {
     return (
@@ -494,8 +621,20 @@ export default function OpinionPollPage() {
     )
   }
 
-  if (isAdmin) {
-    return <AdminDashboard poll={poll} votes={votes} onRefresh={load} />
+  if (canViewPollManagement) {
+    return (
+      <AdminDashboard
+        poll={poll}
+        votes={votes}
+        sessionTabs={sessionTabs}
+        selectedSessionKey={selectedSessionKey}
+        creatingSession={creatingSession}
+        canCreateSession={isPollSessionManager}
+        onSelectSession={setSelectedSessionKey}
+        onCreateSession={handleCreateSession}
+        onRefresh={() => load()}
+      />
+    )
   }
 
   return <VoterView poll={poll} onVoted={updated => setPoll(updated)} />

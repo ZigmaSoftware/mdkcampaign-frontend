@@ -40,6 +40,8 @@ interface VolunteerRoleOption {
 
 type WorkflowStatus =
   | 'assigned'
+  | 'already_assigned'
+  | 'already_contacted'
   | 'pending_followup'
   | 'pending_field_survey'
   | 'reassigned'
@@ -55,8 +57,23 @@ interface WorkflowInfo {
 
 /* ─── Constants ──────────────────────────────────────────── */
 const genderLabel = (g?: string) => g === 'm' ? 'Male' : g === 'f' ? 'Female' : g === 'o' ? 'Other' : '—'
+const normalizePhone = (value?: string) => {
+  const digits = String(value || '').replace(/\D+/g, '')
+  if (!digits) return ''
+  return digits.length > 10 ? digits.slice(-10) : digits
+}
+const voterPhones = (voter: Pick<VoterRow, 'phone' | 'phone2' | 'alt_phoneno2' | 'alt_phoneno3'>) =>
+  Array.from(new Set([
+    normalizePhone(voter.phone),
+    normalizePhone(voter.phone2),
+    normalizePhone(voter.alt_phoneno2),
+    normalizePhone(voter.alt_phoneno3),
+  ].filter(Boolean)))
+
 const WORKFLOW_LABELS: Record<WorkflowStatus, string> = {
   assigned: 'Assigned',
+  already_assigned: 'Already Assigned',
+  already_contacted: 'Already Contacted',
   pending_followup: 'Pending Follow-up',
   pending_field_survey: 'Pending Field Survey',
   reassigned: 'Reassigned',
@@ -66,6 +83,8 @@ const WORKFLOW_LABELS: Record<WorkflowStatus, string> = {
 const STATUS_FILTER_OPTIONS: { value: Exclude<StatusFilterValue, ''>; label: string }[] = [
   { value: 'unassigned', label: 'Unassigned' },
   { value: 'assigned', label: 'Assigned' },
+  { value: 'already_assigned', label: 'Already Assigned' },
+  { value: 'already_contacted', label: 'Already Contacted' },
   { value: 'pending_followup', label: 'Pending Follow-up' },
   { value: 'pending_field_survey', label: 'Pending Field Survey' },
   { value: 'reassigned', label: 'Reassigned' },
@@ -376,6 +395,14 @@ export default function AssignTelecalling() {
         previousStatuses.set(voterId, workflowByVoterRef.current.get(voterId)?.status ?? 'unassigned')
       })
       const nextMap = new Map(workflowByVoterRef.current)
+      const selectedPhonesByBooth = new Map<string, Set<number>>()
+      groupVoters.forEach(voter => {
+        voterPhones(voter).forEach(phone => {
+          const boothsForPhone = selectedPhonesByBooth.get(phone) ?? new Set<number>()
+          boothsForPhone.add(voter.booth)
+          selectedPhonesByBooth.set(phone, boothsForPhone)
+        })
+      })
       voterIds.forEach(voterId => {
         const prev = nextMap.get(voterId)
         const nextStatus: WorkflowStatus = prev?.status === 'pending_followup' ? 'reassigned' : 'assigned'
@@ -385,10 +412,27 @@ export default function AssignTelecalling() {
           is_locked: true,
         })
       })
+      const relatedCrossBoothIds: number[] = []
+      rawVotersRef.current.forEach(voter => {
+        if (voterIds.includes(voter.id)) return
+        const currentWorkflow = nextMap.get(voter.id)
+        if ((currentWorkflow?.status ?? 'unassigned') !== 'unassigned') return
+        const matchesSelectedPhone = voterPhones(voter).some(phone => {
+          const boothIds = selectedPhonesByBooth.get(phone)
+          return !!boothIds && !boothIds.has(voter.booth)
+        })
+        if (!matchesSelectedPhone) return
+        relatedCrossBoothIds.push(voter.id)
+        nextMap.set(voter.id, {
+          status: 'already_assigned',
+          label: WORKFLOW_LABELS.already_assigned,
+          is_locked: true,
+        })
+      })
       workflowByVoterRef.current = nextMap
       setWorkflowByVoterId(nextMap)
       rawVotersRef.current = rawVotersRef.current.map(v =>
-        voterIds.includes(v.id)
+        voterIds.includes(v.id) || relatedCrossBoothIds.includes(v.id)
           ? {
               ...v,
               assigned_telecaller_name: telecaller.name,
@@ -398,7 +442,7 @@ export default function AssignTelecalling() {
       )
       setVoters(prev =>
         prev.map(v =>
-          voterIds.includes(v.id)
+          voterIds.includes(v.id) || relatedCrossBoothIds.includes(v.id)
             ? {
                 ...v,
                 assigned_telecaller_name: telecaller.name,
@@ -412,6 +456,12 @@ export default function AssignTelecalling() {
         voterIds.forEach(voterId => {
           const previousStatus = previousStatuses.get(voterId) ?? 'unassigned'
           const nextStatus = nextMap.get(voterId)?.status ?? 'assigned'
+          next[previousStatus] = Math.max(0, (next[previousStatus] ?? 0) - 1)
+          next[nextStatus] = (next[nextStatus] ?? 0) + 1
+        })
+        relatedCrossBoothIds.forEach(voterId => {
+          const previousStatus = previousStatuses.get(voterId) ?? 'unassigned'
+          const nextStatus = nextMap.get(voterId)?.status ?? 'already_assigned'
           next[previousStatus] = Math.max(0, (next[previousStatus] ?? 0) - 1)
           next[nextStatus] = (next[nextStatus] ?? 0) + 1
         })
@@ -664,6 +714,10 @@ export default function AssignTelecalling() {
                   const statusClasses =
                     workflow?.status === 'completed'
                       ? 'bg-green-100 text-green-700'
+                      : workflow?.status === 'already_contacted'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : workflow?.status === 'already_assigned'
+                          ? 'bg-violet-100 text-violet-700'
                       : workflow?.status === 'pending_followup'
                         ? 'bg-orange-100 text-orange-700'
                         : workflow?.status === 'reassigned'

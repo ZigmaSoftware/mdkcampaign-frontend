@@ -77,7 +77,7 @@ export default function DashboardPage() {
   const [eventDateFilter,    setEventDateFilter]    = useState('')
   const [eventOutcomeFilter, setEventOutcomeFilter] = useState('')
   const [eventPage,          setEventPage]          = useState(1)
-  const EVENTS_PER_PAGE = 5
+  const EVENTS_PER_PAGE = 10
 
   /* ── Unique task categories from data ── */
   const taskCategories = useMemo(() => {

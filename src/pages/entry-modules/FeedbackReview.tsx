@@ -261,6 +261,7 @@ function openFeedbackReviewPrintWindow({
     filters.response_status && `Response: ${filters.response_status}`,
     filters.aware_of_candidate && `Aware: ${filters.aware_of_candidate}`,
     filters.likely_to_vote && `Likely Vote: ${filters.likely_to_vote}`,
+    filters.remarks && `Remarks: ${filters.remarks}`,
     filters.party && `Party: ${filters.party}`,
     filters.block && `Block: ${filters.block}`,
     filters.union && `Union: ${filters.union}`,
@@ -408,6 +409,7 @@ export default function FeedbackReview() {
   const [filterResponseStatus, setFilterResponseStatus] = useState('')
   const [filterAwareOfCandidate, setFilterAwareOfCandidate] = useState('')
   const [filterLikelyToVote, setFilterLikelyToVote] = useState('')
+  const [filterRemarks,      setFilterRemarks]      = useState('')
   const [filterParty,        setFilterParty]        = useState('')
   const [filterBlock,        setFilterBlock]        = useState('')
   const [filterUnion,        setFilterUnion]        = useState('')
@@ -431,6 +433,7 @@ export default function FeedbackReview() {
     setFilterResponseStatus('')
     setFilterAwareOfCandidate('')
     setFilterLikelyToVote('')
+    setFilterRemarks('')
     setFilterParty('')
     setFilterBlock('')
     setFilterUnion('')
@@ -446,6 +449,7 @@ export default function FeedbackReview() {
     filterSupportLevel || filterResponseStatus || filterAwareOfCandidate ||
     filterLikelyToVote || filterParty || filterBlock || filterUnion ||
     filterPanchayat || filterBooth || filterDateFrom || filterDateTo ||
+    filterRemarks ||
     filterTelecaller || search
   )
 
@@ -462,6 +466,7 @@ export default function FeedbackReview() {
     if (filterResponseStatus) params.response_status = filterResponseStatus
     if (filterAwareOfCandidate) params.aware_of_candidate = filterAwareOfCandidate
     if (filterLikelyToVote) params.likely_to_vote = filterLikelyToVote
+    if (filterRemarks) params.remarks = filterRemarks
     if (filterParty) params.party = filterParty
     if (filterBlock) params.block = filterBlock
     if (filterUnion) params.union = filterUnion
@@ -525,7 +530,7 @@ export default function FeedbackReview() {
       .finally(() => setLoading(false))
   }, [
     page, pageSize, filterTab, search, filterTelecaller, filterSupportLevel,
-    filterResponseStatus, filterAwareOfCandidate, filterLikelyToVote, filterParty,
+    filterResponseStatus, filterAwareOfCandidate, filterLikelyToVote, filterRemarks, filterParty,
     filterBlock, filterUnion, filterPanchayat, filterBooth, filterDateFrom,
     filterDateTo, showToast,
   ])
@@ -556,7 +561,7 @@ export default function FeedbackReview() {
     setPage(1)
   }, [
     filterTab, filterTelecaller, search, filterSupportLevel, filterResponseStatus,
-    filterAwareOfCandidate, filterLikelyToVote, filterParty, filterBlock,
+    filterAwareOfCandidate, filterLikelyToVote, filterRemarks, filterParty, filterBlock,
     filterUnion, filterPanchayat, filterBooth, filterDateFrom, filterDateTo,
   ])
 
@@ -895,6 +900,7 @@ export default function FeedbackReview() {
         ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
         ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
         ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+        ...(filterRemarks ? { remarks: filterRemarks } : {}),
         ...(filterParty ? { party: filterParty } : {}),
         ...(filterBlock ? { block: filterBlock } : {}),
         ...(filterUnion ? { union: filterUnion } : {}),
@@ -954,6 +960,7 @@ export default function FeedbackReview() {
         ...(filterResponseStatus ? { response_status: filterResponseStatus } : {}),
         ...(filterAwareOfCandidate ? { aware_of_candidate: filterAwareOfCandidate } : {}),
         ...(filterLikelyToVote ? { likely_to_vote: filterLikelyToVote } : {}),
+        ...(filterRemarks ? { remarks: filterRemarks } : {}),
         ...(filterParty ? { party: filterParty } : {}),
         ...(filterBlock ? { block: filterBlock } : {}),
         ...(filterUnion ? { union: filterUnion } : {}),
@@ -986,6 +993,7 @@ export default function FeedbackReview() {
           response_status: filterResponseStatus,
           aware_of_candidate: filterAwareOfCandidate,
           likely_to_vote: filterLikelyToVote,
+          remarks: filterRemarks === 'commented' ? 'Commented' : filterRemarks === 'uncommented' ? 'Uncommented' : '',
           party: filterParty,
           block: filterBlock,
           union: filterUnion,
@@ -1228,7 +1236,7 @@ export default function FeedbackReview() {
 
           </div>
 
-          {/* Row 3: Telecaller · Date From · Date To */}
+          {/* Row 3: Telecaller · Remarks · Date From · Date To */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {/* Telecaller */}
             <div>
@@ -1239,6 +1247,17 @@ export default function FeedbackReview() {
                 {telecallerOptions.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
+              </select>
+            </div>
+
+            {/* Remarks */}
+            <div>
+              <label className="block text-[9px] font-bold text-muted uppercase tracking-[0.6px] mb-1">Remarks</label>
+              <select value={filterRemarks} onChange={e => setFilterRemarks(e.target.value)}
+                className={`${selectCls} w-full text-[11px] ${filterRemarks ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`}>
+                <option value="">All</option>
+                <option value="commented">Commented</option>
+                <option value="uncommented">Uncommented</option>
               </select>
             </div>
 
@@ -1256,7 +1275,6 @@ export default function FeedbackReview() {
                 className={`${inputCls} w-full text-[11px] ${filterDateTo ? 'border-saffron bg-[#fffbeb] font-semibold text-navy' : ''}`} />
             </div>
 
-            <div />
             <div />
           </div>
         </div>

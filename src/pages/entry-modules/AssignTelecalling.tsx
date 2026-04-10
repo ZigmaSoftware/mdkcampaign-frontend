@@ -3,6 +3,13 @@ import apiClient from '../../utils/api'
 import { useToast } from '../../context/ToastContext'
 import { inputCls, selectCls } from '../../components/entry/FormGroup'
 
+interface ApiResponse<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
 /* ─── Types ──────────────────────────────────────────────── */
 interface VoterRow {
   id: number
@@ -14,9 +21,13 @@ interface VoterRow {
   alt_phoneno3?: string
   address?: string
   booth: number
+  booth_no?: string
   booth_name?: string
   age?: number
   gender?: string
+  entity_type?: AssignmentCategory
+  source_id?: number | null
+  relation_label?: string
   assigned_telecaller_name?: string
   assigned_telecaller_phone?: string
 }
@@ -37,6 +48,13 @@ interface VolunteerRoleOption {
   id: number
   name: string
 }
+
+interface SchemeOption {
+  id: number
+  name: string
+}
+
+type AssignmentCategory = 'voter' | 'volunteer' | 'beneficiary'
 
 type WorkflowStatus =
   | 'assigned'
@@ -62,6 +80,7 @@ const normalizePhone = (value?: string) => {
   if (!digits) return ''
   return digits.length > 10 ? digits.slice(-10) : digits
 }
+const normalizeName = (value?: string) => String(value || '').trim().toLowerCase()
 const voterPhones = (voter: Pick<VoterRow, 'phone' | 'phone2' | 'alt_phoneno2' | 'alt_phoneno3'>) =>
   Array.from(new Set([
     normalizePhone(voter.phone),
@@ -90,6 +109,23 @@ const STATUS_FILTER_OPTIONS: { value: Exclude<StatusFilterValue, ''>; label: str
   { value: 'reassigned', label: 'Reassigned' },
   { value: 'completed', label: 'Completed' },
 ]
+
+async function fetchAllMasterRows<T>(url: string): Promise<T[]> {
+  const limit = 2000
+  const all: T[] = []
+  let offset = 0
+
+  while (true) {
+    const { data } = await apiClient.get<ApiResponse<T>>(url, {
+      params: { limit, offset },
+    })
+    all.push(...(data.results ?? []))
+    if (!data.next || all.length >= (data.count ?? all.length)) break
+    offset += limit
+  }
+
+  return all
+}
 
 /* ─── Booth multi-select ─────────────────────────────────── */
 function BoothMultiSelect({
@@ -189,13 +225,17 @@ export default function AssignTelecalling() {
   const [booths,      setBooths]      = useState<BoothOption[]>([])
   const [telecallers, setTelecallers] = useState<Telecaller[]>([])
   const [volunteerRoles, setVolunteerRoles] = useState<VolunteerRoleOption[]>([])
+  const [schemes, setSchemes] = useState<SchemeOption[]>([])
   const [assignableVolunteers, setAssignableVolunteers] = useState<Telecaller[]>([])
 
+  const [category, setCategory] = useState<AssignmentCategory>('voter')
   const [filterBooths,     setFilterBooths]     = useState<Set<number>>(new Set())
   const [filterWorkflowStatus, setFilterWorkflowStatus] = useState<StatusFilterValue>('')
   const [filterContactStatus, setFilterContactStatus] = useState('')
   const [filterTelecaller, setFilterTelecaller] = useState('')
   const [filterVolunteerRole, setFilterVolunteerRole] = useState('')
+  const [filterSubjectRole, setFilterSubjectRole] = useState('')
+  const [filterScheme, setFilterScheme] = useState('')
   const [filterDate,       setFilterDate]       = useState('')
   const [filterSearch,     setFilterSearch]     = useState('')
   const [debouncedSearch,  setDebouncedSearch]  = useState('')
@@ -232,8 +272,12 @@ export default function AssignTelecalling() {
       .then(r => setBooths(r.data.results ?? []))
       .catch(() => {})
 
-    apiClient.get('/masters/volunteer-roles/', { params: { limit: 500 } })
-      .then(r => setVolunteerRoles(r.data.results ?? []))
+    fetchAllMasterRows<VolunteerRoleOption>('/masters/volunteer-roles/')
+      .then(rows => setVolunteerRoles(rows))
+      .catch(() => {})
+
+    fetchAllMasterRows<SchemeOption>('/masters/schemes/')
+      .then(rows => setSchemes(rows))
       .catch(() => {})
 
     apiClient.get('/volunteers/volunteers/names/', { params: { role: 'Telecalling', status: 'active' } })
@@ -264,6 +308,11 @@ export default function AssignTelecalling() {
       })
   }, [filterVolunteerRole])
 
+  useEffect(() => {
+    setSelected(new Set())
+    setPage(1)
+  }, [category])
+
   /* ── Debounce search ── */
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(filterSearch); setPage(1) }, 350)
@@ -272,7 +321,7 @@ export default function AssignTelecalling() {
 
   /* ── Fetch voters ── */
   useEffect(() => {
-    if (filterBooths.size === 0) {
+    if (category === 'voter' && filterBooths.size === 0) {
       setVoters([])
       rawVotersRef.current = []
       setRawCount(0)
@@ -287,54 +336,115 @@ export default function AssignTelecalling() {
     setLoading(true)
     setSelected(new Set())
 
-    const params: Record<string, any> = {
-      limit:  pageSize,
-      offset: (page - 1) * pageSize,
-      sort: 'address_asc',
-      include_workflow: 1,
-    }
-    if (filterBooths.size === 1) params.booth = [...filterBooths][0]
-    else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')
-    if (debouncedSearch) params.search = debouncedSearch
-    if (filterContactStatus) params.contact_status = filterContactStatus
-    if (filterWorkflowStatus) params.workflow_status = filterWorkflowStatus
+    if (category === 'voter') {
+      const params: Record<string, any> = {
+        limit:  pageSize,
+        offset: (page - 1) * pageSize,
+        sort: 'address_asc',
+        include_workflow: 1,
+      }
+      if (filterBooths.size === 1) params.booth = [...filterBooths][0]
+      else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')
+      if (debouncedSearch) params.search = debouncedSearch
+      if (filterContactStatus) params.contact_status = filterContactStatus
+      if (filterWorkflowStatus) params.workflow_status = filterWorkflowStatus
 
-    apiClient.get('/voters/voters/', { params, signal: controller.signal })
-      .then(r => {
-        const apiCount = r.data.count ?? 0
-        const results = r.data.results ?? []
-        const all: VoterRow[] = results.map((v: any) => ({
-          id: v.id, name: v.name, voter_id: v.voter_id,
-          phone: v.phone ?? '', phone2: v.phone2 ?? '',
-          alt_phoneno2: v.alt_phoneno2 ?? '', alt_phoneno3: v.alt_phoneno3 ?? '',
-          address: v.address ?? '',
-          booth: v.booth, booth_name: v.booth_name ?? v.booth_number ?? '',
-          age: v.age, gender: v.gender,
-          assigned_telecaller_name: v.assigned_telecaller_name ?? '',
-          assigned_telecaller_phone: v.assigned_telecaller_phone ?? '',
-        }))
-        const nextWorkflowMap = new Map<number, WorkflowInfo>()
-        results.forEach((v: any) => {
-          const status = (v.workflow_status || 'unassigned') as WorkflowStatus | 'unassigned'
-          nextWorkflowMap.set(v.id, {
-            status,
-            label: v.workflow_label || (status === 'unassigned' ? 'Unassigned' : WORKFLOW_LABELS[status as WorkflowStatus] || 'Assigned'),
-            is_locked: !!v.is_locked,
+      apiClient.get('/voters/voters/', { params, signal: controller.signal })
+        .then(r => {
+          const apiCount = r.data.count ?? 0
+          const results = r.data.results ?? []
+          const all: VoterRow[] = results.map((v: any) => ({
+            id: v.id, name: v.name, voter_id: v.voter_id,
+            phone: v.phone ?? '', phone2: v.phone2 ?? '',
+            alt_phoneno2: v.alt_phoneno2 ?? '', alt_phoneno3: v.alt_phoneno3 ?? '',
+            address: v.address ?? '',
+            booth: v.booth, booth_no: v.booth_number ?? '', booth_name: v.booth_name ?? v.booth_number ?? '',
+            age: v.age, gender: v.gender, entity_type: 'voter', source_id: v.id,
+            assigned_telecaller_name: v.assigned_telecaller_name ?? '',
+            assigned_telecaller_phone: v.assigned_telecaller_phone ?? '',
+          }))
+          const nextWorkflowMap = new Map<number, WorkflowInfo>()
+          results.forEach((v: any) => {
+            const status = (v.workflow_status || 'unassigned') as WorkflowStatus | 'unassigned'
+            nextWorkflowMap.set(v.id, {
+              status,
+              label: v.workflow_label || (status === 'unassigned' ? 'Unassigned' : WORKFLOW_LABELS[status as WorkflowStatus] || 'Assigned'),
+              is_locked: !!v.is_locked,
+            })
           })
+          rawVotersRef.current = all
+          workflowByVoterRef.current = nextWorkflowMap
+          setWorkflowByVoterId(nextWorkflowMap)
+          setWorkflowSummary(r.data.workflow_summary ?? {})
+          setRawCount(r.data.raw_count ?? apiCount)
+          setVoters(all)
+          setTotal(apiCount)
         })
-        rawVotersRef.current = all
-        workflowByVoterRef.current = nextWorkflowMap
-        setWorkflowByVoterId(nextWorkflowMap)
-        setWorkflowSummary(r.data.workflow_summary ?? {})
-        setRawCount(r.data.raw_count ?? apiCount)
-        setVoters(all)
-        setTotal(apiCount)
-      })
-      .catch(err => { if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast('Failed to load voters', 'error') })
-      .finally(() => setLoading(false))
+        .catch(err => {
+          if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast('Failed to load voters', 'error')
+        })
+        .finally(() => setLoading(false))
+    } else {
+      const params: Record<string, any> = {
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        category,
+      }
+      if (debouncedSearch) params.search = debouncedSearch
+      if (filterContactStatus) params.contact_status = filterContactStatus
+      if (filterWorkflowStatus) params.workflow_status = filterWorkflowStatus
+      if (category === 'volunteer' && filterSubjectRole) params.role = filterSubjectRole
+      if (category === 'beneficiary' && filterScheme) params.scheme = filterScheme
+
+      apiClient.get('/telecalling/assignments/assignable-people/', { params, signal: controller.signal })
+        .then(r => {
+          const apiCount = r.data.count ?? 0
+          const results = r.data.results ?? []
+          const all: VoterRow[] = results.map((row: any) => ({
+            id: row.id,
+            name: row.name ?? '',
+            voter_id: row.voter_id ?? '',
+            phone: row.phone ?? '',
+            phone2: row.phone2 ?? '',
+            alt_phoneno2: row.alt_phoneno2 ?? '',
+            alt_phoneno3: row.alt_phoneno3 ?? '',
+            address: row.address ?? '',
+            booth: row.booth ?? 0,
+            booth_no: row.booth_no ?? '',
+            booth_name: row.booth_name ?? '',
+            age: row.age,
+            gender: row.gender,
+            entity_type: row.entity_type ?? category,
+            source_id: row.source_id ?? row.id,
+            relation_label: row.relation_label ?? '',
+            assigned_telecaller_name: row.assigned_telecaller_name ?? '',
+            assigned_telecaller_phone: row.assigned_telecaller_phone ?? '',
+          }))
+          const nextWorkflowMap = new Map<number, WorkflowInfo>()
+          results.forEach((row: any) => {
+            const status = (row.workflow_status || 'unassigned') as WorkflowStatus | 'unassigned'
+            nextWorkflowMap.set(row.id, {
+              status,
+              label: row.workflow_label || (status === 'unassigned' ? 'Unassigned' : WORKFLOW_LABELS[status as WorkflowStatus] || 'Assigned'),
+              is_locked: !!row.is_locked,
+            })
+          })
+          rawVotersRef.current = all
+          workflowByVoterRef.current = nextWorkflowMap
+          setWorkflowByVoterId(nextWorkflowMap)
+          setWorkflowSummary(r.data.workflow_summary ?? {})
+          setRawCount(r.data.raw_count ?? apiCount)
+          setVoters(all)
+          setTotal(apiCount)
+        })
+        .catch(err => {
+          if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast(`Failed to load ${category}`, 'error')
+        })
+        .finally(() => setLoading(false))
+    }
 
     return () => controller.abort()
-  }, [filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus, page, pageSize, showToast])
+  }, [category, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus, filterSubjectRole, filterScheme, page, pageSize, showToast])
   const visibleVoters = voters
   const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
   const isAllSelected  = selectableVoters.length > 0 && selectableVoters.every(v => selected.has(v.id))
@@ -353,7 +463,7 @@ export default function AssignTelecalling() {
   /* ── Assign ── */
   const handleAssign = async () => {
     if (!assignTo)           { showToast('Select a telecalling person', 'error'); return }
-    if (selected.size === 0) { showToast('Select at least one voter', 'error');   return }
+    if (selected.size === 0) { showToast(`Select at least one ${category === 'voter' ? 'voter' : category}`, 'error');   return }
 
     const telecaller = assignableVolunteers.find(t => String(t.id) === assignTo)
     if (!telecaller) { showToast('Telecaller not found — please re-select', 'error'); return }
@@ -370,7 +480,7 @@ export default function AssignTelecalling() {
       telecaller_phone: telecaller.phone ?? '',
       assigned_date:    date,
       voters: groupVoters.map(v => ({
-        voter:        v.id,
+        voter:        v.entity_type === 'voter' ? v.id : null,
         voter_name:   v.name,
         voter_id_no:  v.voter_id,
         phone:        v.phone        ?? '',
@@ -378,9 +488,13 @@ export default function AssignTelecalling() {
         alt_phoneno2: v.alt_phoneno2 ?? '',
         alt_phoneno3: v.alt_phoneno3 ?? '',
         address:      v.address      ?? '',
+        booth_no:     v.booth_no     ?? '',
         booth_name:   v.booth_name   ?? '',
         age:          v.age          ?? null,
         gender:       v.gender       ?? '',
+        entity_type:  v.entity_type  ?? category,
+        source_id:    v.source_id    ?? v.id,
+        relation_label: v.relation_label ?? '',
       })),
     }
 
@@ -395,14 +509,24 @@ export default function AssignTelecalling() {
         previousStatuses.set(voterId, workflowByVoterRef.current.get(voterId)?.status ?? 'unassigned')
       })
       const nextMap = new Map(workflowByVoterRef.current)
-      const selectedPhonesByBooth = new Map<string, Set<number>>()
+      const selectedContactKeys = new Set<string>()
       groupVoters.forEach(voter => {
+        const nameKey = normalizeName(voter.name)
+        if (!nameKey) return
         voterPhones(voter).forEach(phone => {
-          const boothsForPhone = selectedPhonesByBooth.get(phone) ?? new Set<number>()
-          boothsForPhone.add(voter.booth)
-          selectedPhonesByBooth.set(phone, boothsForPhone)
+          if (phone) selectedContactKeys.add(`${nameKey}::${phone}`)
         })
       })
+      const selectedPhonesByBooth = new Map<string, Set<number>>()
+      if (category === 'voter') {
+        groupVoters.forEach(voter => {
+          voterPhones(voter).forEach(phone => {
+            const boothsForPhone = selectedPhonesByBooth.get(phone) ?? new Set<number>()
+            boothsForPhone.add(voter.booth)
+            selectedPhonesByBooth.set(phone, boothsForPhone)
+          })
+        })
+      }
       voterIds.forEach(voterId => {
         const prev = nextMap.get(voterId)
         const nextStatus: WorkflowStatus = prev?.status === 'pending_followup' ? 'reassigned' : 'assigned'
@@ -413,22 +537,40 @@ export default function AssignTelecalling() {
         })
       })
       const relatedCrossBoothIds: number[] = []
-      rawVotersRef.current.forEach(voter => {
-        if (voterIds.includes(voter.id)) return
-        const currentWorkflow = nextMap.get(voter.id)
-        if ((currentWorkflow?.status ?? 'unassigned') !== 'unassigned') return
-        const matchesSelectedPhone = voterPhones(voter).some(phone => {
-          const boothIds = selectedPhonesByBooth.get(phone)
-          return !!boothIds && !boothIds.has(voter.booth)
+      if (category === 'voter') {
+        rawVotersRef.current.forEach(voter => {
+          if (voterIds.includes(voter.id)) return
+          const currentWorkflow = nextMap.get(voter.id)
+          if ((currentWorkflow?.status ?? 'unassigned') !== 'unassigned') return
+          const matchesSelectedPhone = voterPhones(voter).some(phone => {
+            const boothIds = selectedPhonesByBooth.get(phone)
+            return !!boothIds && !boothIds.has(voter.booth)
+          })
+          if (!matchesSelectedPhone) return
+          relatedCrossBoothIds.push(voter.id)
+          nextMap.set(voter.id, {
+            status: 'already_assigned',
+            label: WORKFLOW_LABELS.already_assigned,
+            is_locked: true,
+          })
         })
-        if (!matchesSelectedPhone) return
-        relatedCrossBoothIds.push(voter.id)
-        nextMap.set(voter.id, {
-          status: 'already_assigned',
-          label: WORKFLOW_LABELS.already_assigned,
-          is_locked: true,
+      } else {
+        rawVotersRef.current.forEach(voter => {
+          if (voterIds.includes(voter.id)) return
+          const currentWorkflow = nextMap.get(voter.id)
+          if ((currentWorkflow?.status ?? 'unassigned') !== 'unassigned') return
+          const nameKey = normalizeName(voter.name)
+          if (!nameKey) return
+          const matchesSelectedContact = voterPhones(voter).some(phone => selectedContactKeys.has(`${nameKey}::${phone}`))
+          if (!matchesSelectedContact) return
+          relatedCrossBoothIds.push(voter.id)
+          nextMap.set(voter.id, {
+            status: 'already_assigned',
+            label: WORKFLOW_LABELS.already_assigned,
+            is_locked: true,
+          })
         })
-      })
+      }
       workflowByVoterRef.current = nextMap
       setWorkflowByVoterId(nextMap)
       rawVotersRef.current = rawVotersRef.current.map(v =>
@@ -469,7 +611,7 @@ export default function AssignTelecalling() {
       })
 
       setSelected(new Set())
-      showToast(`${groupVoters.length} voter(s) assigned to ${telecaller.name}`, 'success')
+      showToast(`${groupVoters.length} ${category === 'voter' ? 'voter' : category}(s) assigned to ${telecaller.name}`, 'success')
     } catch {
       showToast('Failed to save assignment — please try again', 'error')
     } finally {
@@ -501,24 +643,41 @@ export default function AssignTelecalling() {
     setFilterVolunteerRole(value)
     setAssignTo('')
   }
+  const applyCategory = (value: AssignmentCategory) => {
+    setCategory(value)
+    setFilterWorkflowStatus('')
+    setFilterContactStatus('')
+    setFilterSearch('')
+    setDebouncedSearch('')
+    setFilterBooths(new Set())
+    setFilterSubjectRole('')
+    setFilterScheme('')
+  }
+  const applySubjectRole = (value: string) => { setFilterSubjectRole(value); setPage(1) }
+  const applyScheme = (value: string) => { setFilterScheme(value); setPage(1) }
   const applyDate    = (v: string)          => { setFilterDate(v) }
   const applySearch  = (v: string)          => { setFilterSearch(v) }
   useEffect(() => { setPage(1) }, [pageSize])
   const clearAll     = () => {
+    setCategory('voter')
     setFilterBooths(new Set())
     setFilterWorkflowStatus('')
     setFilterContactStatus('')
     setFilterDate('')
     setFilterTelecaller('')
     setFilterVolunteerRole('')
+    setFilterSubjectRole('')
+    setFilterScheme('')
     setFilterSearch('')
     setDebouncedSearch('')
     setAssignTo('')
     setPage(1)
   }
-  const hasFilters   = filterBooths.size > 0 || !!filterWorkflowStatus || !!filterContactStatus || !!filterTelecaller || !!filterVolunteerRole || !!filterSearch
+  const hasFilters   = category !== 'voter' || filterBooths.size > 0 || !!filterWorkflowStatus || !!filterContactStatus || !!filterTelecaller || !!filterVolunteerRole || !!filterSubjectRole || !!filterScheme || !!filterSearch
   const assignName   = assignableVolunteers.find(t => String(t.id) === assignTo)?.name ?? ''
   const workflowCounts = workflowSummary
+  const categoryLabel = category === 'voter' ? 'Voter' : category === 'volunteer' ? 'Volunteer' : 'Beneficiary'
+  const categoryFieldLabel = category === 'voter' ? 'Booth' : category === 'volunteer' ? 'Role' : 'Scheme'
 
   /* ════════════════════════════════════════════════════════
      Render
@@ -538,8 +697,8 @@ export default function AssignTelecalling() {
             <div>
               <h2 className="text-[14px] font-bold text-heading">Assign Telecalling</h2>
               <p className="text-[11px] text-muted">
-                Select voters and assign to a telecalling volunteer
-                {rawCount > 0 && <span className="ml-1 font-semibold text-navy">· {rawCount.toLocaleString('en-IN')} voters</span>}
+                Select {category === 'voter' ? 'voters' : category === 'volunteer' ? 'volunteers' : 'beneficiaries'} and assign to a telecalling volunteer
+                {rawCount > 0 && <span className="ml-1 font-semibold text-navy">· {rawCount.toLocaleString('en-IN')} {category === 'voter' ? 'records' : category === 'volunteer' ? 'volunteers' : 'beneficiaries'}</span>}
                 {(workflowCounts.pending_followup ?? 0) > 0 && (
                   <span className="ml-1 text-orange-500 font-medium">· {workflowCounts.pending_followup} pending follow-up</span>
                 )}
@@ -568,12 +727,22 @@ export default function AssignTelecalling() {
         <div className="flex flex-wrap items-end gap-3 px-5 py-3 bg-surface-alt border-b border-border">
 
           <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Category</label>
+            <select value={category} onChange={e => applyCategory(e.target.value as AssignmentCategory)}
+              className={`${selectCls} w-[160px]`}>
+              <option value="voter">Voter</option>
+              <option value="volunteer">Volunteer</option>
+              <option value="beneficiary">Beneficiary</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Search</label>
             <div className="relative">
               <i className="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-muted pointer-events-none" />
               <input
                 type="text"
-                placeholder="Name, Voter ID or Phone…"
+                placeholder={`Name, ${category === 'voter' ? 'Voter ID' : 'ID'} or Phone…`}
                 value={filterSearch}
                 onChange={e => applySearch(e.target.value)}
                 className={`${inputCls} pl-7 w-[190px]`}
@@ -587,10 +756,34 @@ export default function AssignTelecalling() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Booth</label>
-            <BoothMultiSelect booths={booths} selected={filterBooths} onChange={applyBooths} />
-          </div>
+          {category === 'voter' ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Booth</label>
+              <BoothMultiSelect booths={booths} selected={filterBooths} onChange={applyBooths} />
+            </div>
+          ) : category === 'volunteer' ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Role</label>
+              <select value={filterSubjectRole} onChange={e => applySubjectRole(e.target.value)}
+                className={`${selectCls} w-[190px]`}>
+                <option value="">All Roles</option>
+                {volunteerRoles.map(role => (
+                  <option key={role.id} value={role.name}>{role.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Scheme</label>
+              <select value={filterScheme} onChange={e => applyScheme(e.target.value)}
+                className={`${selectCls} w-[210px]`}>
+                <option value="">All Schemes</option>
+                {schemes.map(scheme => (
+                  <option key={scheme.id} value={scheme.name}>{scheme.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Status</label>
@@ -685,7 +878,7 @@ export default function AssignTelecalling() {
                     disabled={selectableVoters.length === 0}
                     checked={isAllSelected} onChange={toggleAll} />
                 </th>
-                {['#', 'Voter Name', 'Voter ID', 'Phone Numbers', 'Age / Gender', 'Booth', 'Assigned To', 'Address'].map(h => (
+                {['#', `${categoryLabel} Name`, category === 'voter' ? 'Voter ID' : 'ID', 'Phone Numbers', 'Age / Gender', categoryFieldLabel, 'Assigned To', 'Address'].map(h => (
                   <th key={h} className="px-3 py-[10px] text-[10px] font-bold uppercase tracking-wide text-muted">{h}</th>
                 ))}
               </tr>
@@ -693,17 +886,17 @@ export default function AssignTelecalling() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={9} className="px-4 py-12 text-center text-muted">
-                  <i className="ph ph-spinner-gap animate-spin mr-2" />Loading voters…
+                  <i className="ph ph-spinner-gap animate-spin mr-2" />Loading {category === 'voter' ? 'voters' : category === 'volunteer' ? 'volunteers' : 'beneficiaries'}…
                 </td></tr>
               ) : visibleVoters.length === 0 ? (
                 <tr><td colSpan={9} className="px-4 py-12 text-center">
                   <i className="ph ph-users-three text-[32px] text-border block mb-2" />
                   <p className="text-[12px] text-muted">
-                    {filterBooths.size === 0
+                    {category === 'voter' && filterBooths.size === 0
                       ? 'Select a booth to view voters.'
                       : rawCount === 0
-                        ? 'No voters found for selected booth(s).'
-                        : 'All voters have been assigned.'}
+                        ? `No ${category === 'voter' ? 'voters' : category === 'volunteer' ? 'volunteers' : 'beneficiaries'} found for the selected filters.`
+                        : `All ${category === 'voter' ? 'voters' : category === 'volunteer' ? 'volunteers' : 'beneficiaries'} have been assigned.`}
                   </p>
                 </td></tr>
               ) : (
@@ -749,7 +942,7 @@ export default function AssignTelecalling() {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-[9px] text-muted font-mono text-[11px]">{v.voter_id}</td>
+                      <td className="px-3 py-[9px] text-muted font-mono text-[11px]">{v.voter_id || '—'}</td>
                       <td className="px-3 py-[9px]">
                         {phones.length === 0 ? <span className="text-muted">—</span> : (
                           <div className="flex flex-col gap-[2px]">
@@ -761,8 +954,10 @@ export default function AssignTelecalling() {
                       </td>
                       <td className="px-3 py-[9px] text-muted">{v.age ?? '—'} / {genderLabel(v.gender)}</td>
                       <td className="px-3 py-[9px]">
-                        {v.booth_name
+                        {category === 'voter' && v.booth_name
                           ? <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-medium">{v.booth_name}</span>
+                          : category !== 'voter' && v.relation_label
+                            ? <span className="px-2 py-0.5 rounded-full bg-navy/10 text-navy text-[10px] font-medium">{v.relation_label}</span>
                           : <span className="text-muted">—</span>}
                       </td>
                       <td className="px-3 py-[9px]">
@@ -790,7 +985,7 @@ export default function AssignTelecalling() {
         {!loading && effectiveTotal > 0 && (
           <div className="flex items-center justify-between px-5 py-2 border-t border-border bg-surface-alt text-[11px] text-muted flex-wrap gap-2">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="font-medium">{pageStart}–{pageEnd} <span className="font-normal">of {effectiveTotal.toLocaleString('en-IN')} voters</span></span>
+              <span className="font-medium">{pageStart}–{pageEnd} <span className="font-normal">of {effectiveTotal.toLocaleString('en-IN')} {category === 'voter' ? 'records' : category === 'volunteer' ? 'volunteers' : 'beneficiaries'}</span></span>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted">Rows</span>
                 <select
@@ -833,7 +1028,7 @@ export default function AssignTelecalling() {
                         px-5 py-3 rounded-xl shadow-2xl flex items-center gap-4 border border-white/10">
           <i className="ph ph-users text-saffron text-[15px]" />
           <span className="text-[12px]">
-            <strong className="text-saffron">{selected.size}</strong> voter(s) → <strong>{assignName}</strong>
+            <strong className="text-saffron">{selected.size}</strong> {category === 'voter' ? 'voter' : category}(s) → <strong>{assignName}</strong>
           </span>
           <button onClick={handleAssign} disabled={assigning}
             className="bg-saffron text-navy px-4 py-1.5 rounded-lg text-[12px] font-bold

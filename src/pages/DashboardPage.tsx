@@ -9,9 +9,8 @@ import SummaryCards from '../modules/dashboard/components/SummaryCards'
 import { getSummary, type DashboardKpis } from '../modules/dashboard/services/dashboardApi'
 import {
   useDashboardData,
-  getEventTypeBadge,
-  getEventStatusDisplay,
-  formatEventDate,
+  extractEventOutcome,
+  formatEventDateTime,
   getTaskStatusDisplay,
   formatTaskDateTime,
 } from '../hooks/useDashboardData'
@@ -75,9 +74,10 @@ export default function DashboardPage() {
   const [taskCategoryFilter, setTaskCategoryFilter] = useState('')
 
   /* ── Event filters ── */
-  const today = new Date().toISOString().split('T')[0]
-  const [eventTypeFilter,   setEventTypeFilter]   = useState('')
-  const [eventStatusFilter, setEventStatusFilter] = useState('')
+  const [eventDateFilter,    setEventDateFilter]    = useState('')
+  const [eventOutcomeFilter, setEventOutcomeFilter] = useState('')
+  const [eventPage,          setEventPage]          = useState(1)
+  const EVENTS_PER_PAGE = 5
 
   /* ── Unique task categories from data ── */
   const taskCategories = useMemo(() => {
@@ -101,13 +101,39 @@ export default function DashboardPage() {
       .slice(0, 20)
   }, [tasks, taskStatusFilter, taskCategoryFilter])
 
+  const eventOutcomes = useMemo(() => {
+    const seen = new Set<string>()
+    const outcomes: string[] = []
+    events.forEach(event => {
+      const outcome = extractEventOutcome(event.outcome_notes)
+      if (outcome && !seen.has(outcome)) {
+        seen.add(outcome)
+        outcomes.push(outcome)
+      }
+    })
+    return outcomes.sort((a, b) => a.localeCompare(b))
+  }, [events])
+
   /* ── Filtered events ── */
   const filteredEvents = useMemo(() => {
     return events
-      .filter(e => !eventTypeFilter   || e.event_type === eventTypeFilter)
-      .filter(e => !eventStatusFilter || e.status    === eventStatusFilter)
+      .filter(e => !eventDateFilter || e.scheduled_date === eventDateFilter)
+      .filter(e => !eventOutcomeFilter || extractEventOutcome(e.outcome_notes) === eventOutcomeFilter)
       .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
-  }, [events, eventTypeFilter, eventStatusFilter])
+  }, [events, eventDateFilter, eventOutcomeFilter])
+
+  useEffect(() => {
+    setEventPage(1)
+  }, [eventDateFilter, eventOutcomeFilter])
+
+  const eventTotalPages = Math.max(1, Math.ceil(filteredEvents.length / EVENTS_PER_PAGE))
+  const safeEventPage = Math.min(eventPage, eventTotalPages)
+  const paginatedEvents = useMemo(() => {
+    const start = (safeEventPage - 1) * EVENTS_PER_PAGE
+    return filteredEvents.slice(start, start + EVENTS_PER_PAGE)
+  }, [filteredEvents, safeEventPage])
+  const eventPageStart = filteredEvents.length === 0 ? 0 : (safeEventPage - 1) * EVENTS_PER_PAGE + 1
+  const eventPageEnd = Math.min(safeEventPage * EVENTS_PER_PAGE, filteredEvents.length)
 
   /* ── Stat values from API only ── */
   const totalVoters      = analytics?.total_voters       ?? 0
@@ -368,33 +394,25 @@ export default function DashboardPage() {
           >
             {/* Filters */}
             <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-border">
+              <input
+                type="date"
+                value={eventDateFilter}
+                onChange={e => setEventDateFilter(e.target.value)}
+                className={`form-input text-[10px] py-[3px] w-auto ${eventDateFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
+              />
               <select
-                value={eventTypeFilter}
-                onChange={e => setEventTypeFilter(e.target.value)}
-                className={`form-input text-[10px] py-[3px] pr-6 w-auto ${eventTypeFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
+                value={eventOutcomeFilter}
+                onChange={e => setEventOutcomeFilter(e.target.value)}
+                className={`form-input text-[10px] py-[3px] pr-6 w-auto ${eventOutcomeFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
               >
-                <option value="">All Types</option>
-                <option value="rally">Rally</option>
-                <option value="meeting">Meeting</option>
-                <option value="training">Training</option>
-                <option value="door_door">Door-to-Door</option>
-                <option value="nagar_kirtan">Nagar Kirtan</option>
-                <option value="stage_show">Stage Show</option>
+                <option value="">All Outcomes</option>
+                {eventOutcomes.map(outcome => (
+                  <option key={outcome} value={outcome}>{outcome}</option>
+                ))}
               </select>
-              <select
-                value={eventStatusFilter}
-                onChange={e => setEventStatusFilter(e.target.value)}
-                className={`form-input text-[10px] py-[3px] pr-6 w-auto ${eventStatusFilter ? 'border-saffron bg-[#fffbeb] font-semibold' : ''}`}
-              >
-                <option value="">All Status</option>
-                <option value="planned">Planned</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              {(eventTypeFilter || eventStatusFilter) && (
+              {(eventDateFilter || eventOutcomeFilter) && (
                 <button
-                  onClick={() => { setEventTypeFilter(''); setEventStatusFilter('') }}
+                  onClick={() => { setEventDateFilter(''); setEventOutcomeFilter(''); setEventPage(1) }}
                   className="text-[10px] font-bold text-kampr flex items-center gap-1"
                 >
                   <i className="ph ph-x-circle" /> Clear
@@ -404,26 +422,34 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="data-table w-full">
                 <thead>
-                  <tr><th>Date</th><th>Event</th><th>Type</th><th>Status</th></tr>
+                  <tr>
+                    <th>DateTime</th>
+                    <th>Location</th>
+                    <th>Outcome</th>
+                  </tr>
                 </thead>
                 <tbody>
                 
-                  {filteredEvents.length > 0
-                    ? filteredEvents.map(ev => {
-                        const badge = getEventTypeBadge(ev.event_type)
-                        const statusDisp = getEventStatusDisplay(ev.status)
+                  {paginatedEvents.length > 0
+                    ? paginatedEvents.map(ev => {
                         return (
                           <tr key={ev.id}>
-                            <td><b>{formatEventDate(ev.scheduled_date)}</b></td>
-                            <td>{ev.title}</td>
-                            <td><Badge label={badge.label} variant={badge.variant} /></td>
-                            <td className={statusDisp.className}>{statusDisp.text}</td>
+                            <td><b>{formatEventDateTime(ev.scheduled_date, ev.scheduled_time)}</b></td>
+                            <td>
+                              <div className="max-w-[320px] text-[12px] font-bold text-muted whitespace-normal">
+                                {ev.location || '—'}
+                                {ev.description ? ` (${ev.description})` : ''}
+                              </div>
+                            </td>
+                            <td className="whitespace-normal text-[11px]">
+                              {extractEventOutcome(ev.outcome_notes) || '—'}
+                            </td>
                           </tr>
                         )
                       })
                     : (
                         <tr>
-                          <td colSpan={4} className="text-center text-muted py-8 text-[12px]">
+                          <td colSpan={3} className="text-center text-muted py-8 text-[12px]">
                             No events found.
                           </td>
                         </tr>
@@ -439,6 +465,46 @@ export default function DashboardPage() {
                 </tbody>
               </table>
             </div>
+            {filteredEvents.length > EVENTS_PER_PAGE && (
+              <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-border text-[11px] text-muted flex-wrap">
+                <span>
+                  {eventPageStart}–{eventPageEnd} of {filteredEvents.length} events
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setEventPage(1)}
+                    disabled={safeEventPage === 1}
+                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30"
+                  >
+                    «
+                  </button>
+                  <button
+                    onClick={() => setEventPage(prev => Math.max(1, prev - 1))}
+                    disabled={safeEventPage === 1}
+                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30"
+                  >
+                    ‹
+                  </button>
+                  <span className="px-2 text-[11px] font-semibold text-heading">
+                    Page {safeEventPage} / {eventTotalPages}
+                  </span>
+                  <button
+                    onClick={() => setEventPage(prev => Math.min(eventTotalPages, prev + 1))}
+                    disabled={safeEventPage === eventTotalPages}
+                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30"
+                  >
+                    ›
+                  </button>
+                  <button
+                    onClick={() => setEventPage(eventTotalPages)}
+                    disabled={safeEventPage === eventTotalPages}
+                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-border disabled:opacity-30"
+                  >
+                    »
+                  </button>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 

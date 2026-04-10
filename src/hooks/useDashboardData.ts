@@ -18,6 +18,7 @@ export interface ActivityLogItem {
 export interface CampaignEventItem {
   id: number
   title: string
+  description?: string
   event_type: string
   scheduled_date: string
   scheduled_time?: string
@@ -25,6 +26,7 @@ export interface CampaignEventItem {
   status: string
   expected_attendees?: number
   actual_attendees?: number
+  outcome_notes?: string
 }
 
 export interface TaskItem {
@@ -72,9 +74,27 @@ export function useDashboardData(): UseDashboardDataReturn {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const fetchAllEvents = async (): Promise<CampaignEventItem[]> => {
+      const all: CampaignEventItem[] = []
+      const limit = 200
+      let offset = 0
+
+      while (true) {
+        const { data } = await apiClient.get('/campaigns/events/', {
+          params: { limit, offset },
+        })
+        const rows: CampaignEventItem[] = data?.results || []
+        all.push(...rows)
+        if (!data?.next || all.length >= (data?.count || 0)) break
+        offset += limit
+      }
+
+      return all
+    }
+
     Promise.allSettled([
       apiClient.get('/activities/logs/', { params: { limit: 8 } }),
-      apiClient.get('/campaigns/events/', { params: { limit: 100 } }),
+      fetchAllEvents(),
       apiClient.get('/campaigns/tasks/', { params: { limit: 100 } }),
       apiClient.get('/analytics/dashboard/'),
     ]).then(([activitiesRes, eventsRes, tasksRes, analyticsRes]) => {
@@ -82,7 +102,7 @@ export function useDashboardData(): UseDashboardDataReturn {
         setActivities(activitiesRes.value.data.results || [])
       }
       if (eventsRes.status === 'fulfilled') {
-        setEvents(eventsRes.value.data.results || [])
+        setEvents(eventsRes.value || [])
       }
       if (tasksRes.status === 'fulfilled') {
         setTasks(tasksRes.value.data.results || [])
@@ -164,6 +184,38 @@ export function getEventStatusDisplay(status: string): { text: string; className
 export function formatEventDate(dateStr: string): string {
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
+}
+
+export function formatEventDateTime(dateStr: string, timeStr?: string): string {
+  if (!dateStr) return '—'
+  const datePart = new Date(dateStr).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
+  if (!timeStr) return datePart
+
+  const [hoursRaw, minutesRaw] = String(timeStr).split(':')
+  const hours = Number(hoursRaw)
+  const minutes = Number(minutesRaw)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return `${datePart} · ${timeStr}`
+
+  const eventDate = new Date(dateStr)
+  eventDate.setHours(hours, minutes, 0, 0)
+  const timePart = eventDate.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+  return `${datePart} · ${timePart}`
+}
+
+export function extractEventOutcome(outcomeNotes?: string): string {
+  const text = String(outcomeNotes || '').trim()
+  if (!text) return ''
+
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const outcomeLine = lines.find(line => /^Outcome\s*:/i.test(line))
+  if (outcomeLine) {
+    return outcomeLine.replace(/^Outcome\s*:\s*/i, '').trim()
+  }
+  return lines[0] || ''
 }
 
 export function getTaskStatusDisplay(status: string): { text: string; bg: string; color: string } {

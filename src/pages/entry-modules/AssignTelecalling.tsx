@@ -266,6 +266,25 @@ export default function AssignTelecalling() {
     }))
   }
 
+  const loadTelecallerOptions = async (volunteerRole = ''): Promise<Telecaller[]> => {
+    const scopedParams: Record<string, string> = { status: 'active' }
+    if (volunteerRole) scopedParams.volunteer_role = volunteerRole
+    else scopedParams.role = 'Telecalling'
+
+    try {
+      const scopedResponse = await apiClient.get('/volunteers/volunteers/names/', { params: scopedParams })
+      const scopedOptions = mapVolunteerOptions(scopedResponse.data)
+      if (scopedOptions.length > 0) return scopedOptions
+    } catch {
+      // Fall back to all active volunteers below.
+    }
+
+    const fallbackResponse = await apiClient.get('/volunteers/volunteers/names/', {
+      params: { status: 'active' },
+    })
+    return mapVolunteerOptions(fallbackResponse.data)
+  }
+
   /* ── Fetch masters + already-assigned IDs ── */
   useEffect(() => {
     apiClient.get('/masters/booths/', { params: { limit: 500 } })
@@ -280,9 +299,8 @@ export default function AssignTelecalling() {
       .then(rows => setSchemes(rows))
       .catch(() => {})
 
-    apiClient.get('/volunteers/volunteers/names/', { params: { role: 'Telecalling', status: 'active' } })
-      .then(r => {
-        const options = mapVolunteerOptions(r.data)
+    loadTelecallerOptions()
+      .then(options => {
         setTelecallers(options)
         setAssignableVolunteers(options)
       })
@@ -290,13 +308,8 @@ export default function AssignTelecalling() {
   }, [])
 
   useEffect(() => {
-    const params: Record<string, string> = { status: 'active' }
-    if (filterVolunteerRole) params.volunteer_role = filterVolunteerRole
-    else params.role = 'Telecalling'
-
-    apiClient.get('/volunteers/volunteers/names/', { params })
-      .then(r => {
-        const options = mapVolunteerOptions(r.data)
+    loadTelecallerOptions(filterVolunteerRole)
+      .then(options => {
         setAssignableVolunteers(options)
         if (assignTo && !options.some(v => String(v.id) === assignTo)) {
           setAssignTo('')

@@ -625,8 +625,12 @@ export default function AssignTelecalling() {
 
       setSelected(new Set())
       showToast(`${groupVoters.length} ${category === 'voter' ? 'voter' : category}(s) assigned to ${telecaller.name}`, 'success')
-    } catch {
-      showToast('Failed to save assignment — please try again', 'error')
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.detail ??
+        err?.response?.data?.voters?.[0] ??
+        'Failed to save assignment — please try again'
+      showToast(message, 'error')
     } finally {
       setAssigning(false)
     }

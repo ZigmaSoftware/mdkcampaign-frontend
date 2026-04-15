@@ -128,16 +128,6 @@ function getSurveyPhones(survey: Pick<SurveyRecord, 'phone' | 'phone2' | 'alt_ph
     })
 }
 
-function dedupeTelecallerNames(names: string[]) {
-  const seen = new Set<string>()
-  return names.filter(name => {
-    const normalized = String(name || '').trim().toLowerCase()
-    if (!normalized || seen.has(normalized)) return false
-    seen.add(normalized)
-    return true
-  })
-}
-
 function esc(value: string | number | undefined | null) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -510,7 +500,7 @@ export default function FeedbackReview() {
           followup_required_other: 0,
           followup_not_required: 0,
         })
-        setTelecallerOptions(dedupeTelecallerNames(data.telecallers ?? []))
+        setTelecallerOptions(data.telecallers ?? [])
         setTotalRows(data.count ?? 0)
       })
       .catch(err => {

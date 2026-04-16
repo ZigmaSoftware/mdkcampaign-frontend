@@ -401,19 +401,15 @@ async function fetchAllAssignments(params: Record<string, string | number> = {})
     return firstResults
   }
 
-  const offsets: number[] = []
+  const remainingPages: TelecallingAssignment[] = []
   for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
-    offsets.push(offset)
-  }
-
-  const remainingPages = await Promise.all(offsets.map(async offset => {
     const { data } = await apiClient.get<ApiResponse<TelecallingAssignment>>('/telecalling/assignments/', {
       params: { ...params, limit: API_BATCH_SIZE, offset },
     })
-    return data.results ?? []
-  }))
+    remainingPages.push(...(data.results ?? []))
+  }
 
-  return firstResults.concat(...remainingPages)
+  return firstResults.concat(remainingPages)
 }
 
 async function fetchAllSurveyVoterRows(
@@ -432,19 +428,15 @@ async function fetchAllSurveyVoterRows(
     return firstResults
   }
 
-  const offsets: number[] = []
+  const remainingPages: SurveyAssignmentRow[] = []
   for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
-    offsets.push(offset)
-  }
-
-  const remainingPages = await Promise.all(offsets.map(async offset => {
     const { data } = await apiClient.get<ApiResponse<SurveyAssignmentRow>>('/telecalling/assignments/survey-voters/', {
       params: { ...params, limit: API_BATCH_SIZE, offset },
     })
-    return data.results ?? []
-  }))
+    remainingPages.push(...(data.results ?? []))
+  }
 
-  return firstResults.concat(...remainingPages)
+  return firstResults.concat(remainingPages)
 }
 
 /* ── Section header ── */
@@ -508,11 +500,27 @@ export default function VoterSurveyEntry() {
   }, [])
 
   useEffect(() => {
-    masterApi.fetchBooths().then(data => data && setMasterBooths(data))
-    masterApi.fetchAreas().then(data => data && setMasterBlocks(data))
-    masterApi.fetchUnions().then(data => data && setMasterUnions(data))
-    masterApi.fetchPanchayats().then(data => data && setMasterPanchayats(data))
-    masterApi.fetchParties().then(data => data && setMasterParties(data))
+    let cancelled = false
+
+    const loadFilters = async () => {
+      const booths = await masterApi.fetchBooths()
+      if (!cancelled && booths) setMasterBooths(booths)
+
+      const blocks = await masterApi.fetchAreas()
+      if (!cancelled && blocks) setMasterBlocks(blocks)
+
+      const unions = await masterApi.fetchUnions()
+      if (!cancelled && unions) setMasterUnions(unions)
+
+      const panchayats = await masterApi.fetchPanchayats()
+      if (!cancelled && panchayats) setMasterPanchayats(panchayats)
+
+      const parties = await masterApi.fetchParties()
+      if (!cancelled && parties) setMasterParties(parties)
+    }
+
+    void loadFilters()
+    return () => { cancelled = true }
   }, [])
 
   /* ── Feedback records ── */

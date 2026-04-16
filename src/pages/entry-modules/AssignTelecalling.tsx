@@ -111,7 +111,7 @@ const STATUS_FILTER_OPTIONS: { value: Exclude<StatusFilterValue, ''>; label: str
 ]
 
 async function fetchAllMasterRows<T>(url: string): Promise<T[]> {
-  const limit = 2000
+  const limit = 500
   const all: T[] = []
   let offset = 0
 
@@ -272,14 +272,6 @@ export default function AssignTelecalling() {
       .then(r => setBooths(r.data.results ?? []))
       .catch(() => {})
 
-    fetchAllMasterRows<VolunteerRoleOption>('/masters/volunteer-roles/')
-      .then(rows => setVolunteerRoles(rows))
-      .catch(() => {})
-
-    fetchAllMasterRows<SchemeOption>('/masters/schemes/')
-      .then(rows => setSchemes(rows))
-      .catch(() => {})
-
     apiClient.get('/volunteers/volunteers/names/', { params: { role: 'Telecalling', status: 'active' } })
       .then(r => {
         const options = mapVolunteerOptions(r.data)
@@ -288,6 +280,20 @@ export default function AssignTelecalling() {
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (category !== 'volunteer' || volunteerRoles.length > 0) return
+    fetchAllMasterRows<VolunteerRoleOption>('/masters/volunteer-roles/')
+      .then(rows => setVolunteerRoles(rows))
+      .catch(() => {})
+  }, [category, volunteerRoles.length])
+
+  useEffect(() => {
+    if (category !== 'beneficiary' || schemes.length > 0) return
+    fetchAllMasterRows<SchemeOption>('/masters/schemes/')
+      .then(rows => setSchemes(rows))
+      .catch(() => {})
+  }, [category, schemes.length])
 
   useEffect(() => {
     const params: Record<string, string> = { status: 'active' }
@@ -342,6 +348,7 @@ export default function AssignTelecalling() {
         offset: (page - 1) * pageSize,
         sort: 'address_asc',
         include_workflow: 1,
+        include_summary: 0,
       }
       if (filterBooths.size === 1) params.booth = [...filterBooths][0]
       else if (filterBooths.size > 1) params.booth = [...filterBooths].join(',')

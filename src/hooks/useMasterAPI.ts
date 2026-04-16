@@ -9,6 +9,32 @@ interface ApiResponse<T> {
   results: T[]
 }
 
+const MASTER_BATCH_SIZE = 500
+const MASTER_CACHE_TTL_MS = 2 * 60 * 1000
+const masterListCache = new Map<string, { expiresAt: number; data: unknown[] }>()
+const masterListInflight = new Map<string, Promise<unknown[] | null>>()
+
+function stableParamsKey(params?: Record<string, any>): string {
+  if (!params) return ''
+  return Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => {
+      if (Array.isArray(value)) return `${key}=${value.join(',')}`
+      return `${key}=${String(value)}`
+    })
+    .join('&')
+}
+
+function listCacheKey(url: string, params?: Record<string, any>): string {
+  return `${url}?${stableParamsKey(params)}`
+}
+
+function clearMasterListCaches() {
+  masterListCache.clear()
+  masterListInflight.clear()
+}
+
 interface Country { id: number; name: string; code: string }
 interface State   { id: number; name: string; code: string; country: number }
 interface District { id: number; name: string; code: string; state: number; state_name?: string }
@@ -122,28 +148,55 @@ export function useMasterAPI() {
 
   // ── generic helpers ──────────────────────────────────────────────
   const getList = useCallback(async <T>(url: string, params?: any): Promise<T[] | null> => {
+    const cacheKey = listCacheKey(url, params)
+    const cached = masterListCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data as T[]
+    }
+
+    const inflight = masterListInflight.get(cacheKey)
+    if (inflight) {
+      return inflight as Promise<T[] | null>
+    }
+
     setLoading(true); setError(null)
-    try {
-      const BATCH = 2000
-      const all: T[] = []
-      let offset = 0
-      while (true) {
-        const { data } = await apiClient.get<ApiResponse<T>>(url, {
-          params: { limit: BATCH, offset, ...params },
+    const requestPromise = (async () => {
+      try {
+        const all: T[] = []
+        let offset = 0
+        while (true) {
+          const { data } = await apiClient.get<ApiResponse<T>>(url, {
+            params: { limit: MASTER_BATCH_SIZE, offset, ...params },
+          })
+          all.push(...(data.results || []))
+          if (!data.next || all.length >= data.count) break
+          offset += MASTER_BATCH_SIZE
+        }
+        masterListCache.set(cacheKey, {
+          expiresAt: Date.now() + MASTER_CACHE_TTL_MS,
+          data: all as unknown[],
         })
-        all.push(...(data.results || []))
-        if (!data.next || all.length >= data.count) break
-        offset += BATCH
+        return all
+      } catch (err) {
+        handleError(err, `fetch ${url}`)
+        return null
       }
-      return all
-    } catch (err) { handleError(err, `fetch ${url}`); return null }
-    finally { setLoading(false) }
+    })()
+
+    masterListInflight.set(cacheKey, requestPromise as Promise<unknown[] | null>)
+    try {
+      return await requestPromise
+    } finally {
+      masterListInflight.delete(cacheKey)
+      setLoading(false)
+    }
   }, [])
 
   const createOne = useCallback(async <T>(url: string, payload: any): Promise<T | null> => {
     setLoading(true); setError(null)
     try {
       const { data } = await apiClient.post<T>(url, payload)
+      clearMasterListCaches()
       return data
     } catch (err) { handleError(err, `create ${url}`); return null }
     finally { setLoading(false) }
@@ -153,6 +206,7 @@ export function useMasterAPI() {
     setLoading(true); setError(null)
     try {
       const { data } = await apiClient.patch<T>(url, payload)
+      clearMasterListCaches()
       return data
     } catch (err) { handleError(err, `update ${url}`); return null }
     finally { setLoading(false) }
@@ -160,7 +214,11 @@ export function useMasterAPI() {
 
   const deleteOne = useCallback(async (url: string): Promise<boolean> => {
     setLoading(true); setError(null)
-    try { await apiClient.delete(url); return true }
+    try {
+      await apiClient.delete(url)
+      clearMasterListCaches()
+      return true
+    }
     catch (err) { handleError(err, `delete ${url}`); return false }
     finally { setLoading(false) }
   }, [])
@@ -338,6 +396,7 @@ export function useMasterAPI() {
       const { data } = await apiClient.post(endpoint, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+      clearMasterListCaches()
       return data
     } catch (err) { handleError(err, `bulk upload ${endpoint}`); return null }
     finally { setLoading(false) }

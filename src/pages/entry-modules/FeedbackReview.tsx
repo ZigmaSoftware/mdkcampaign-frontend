@@ -231,19 +231,15 @@ async function fetchAllPages<T>(
     return firstResults
   }
 
-  const offsets: number[] = []
+  const remainingPages: T[] = []
   for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
-    offsets.push(offset)
-  }
-
-  const remainingPages = await Promise.all(offsets.map(async offset => {
     const { data } = await apiClient.get<ApiResponse<T>>(url, {
       params: { ...params, limit: API_BATCH_SIZE, offset },
     })
-    return data.results ?? []
-  }))
+    remainingPages.push(...(data.results ?? []))
+  }
 
-  return firstResults.concat(...remainingPages)
+  return firstResults.concat(remainingPages)
 }
 
 function openFeedbackReviewPrintWindow({
@@ -421,11 +417,27 @@ export default function FeedbackReview() {
   const [pageSize,           setPageSize]           = useState(10)
 
   useEffect(() => {
-    masterApi.fetchBooths().then(d => d && setMasterBooths(d))
-    masterApi.fetchAreas().then(d => d && setMasterBlocks(d))
-    masterApi.fetchUnions().then(d => d && setMasterUnions(d))
-    masterApi.fetchPanchayats().then(d => d && setMasterPanchayats(d))
-    masterApi.fetchParties().then(d => d && setMasterParties(d))
+    let cancelled = false
+
+    const loadMasterFilters = async () => {
+      const booths = await masterApi.fetchBooths()
+      if (!cancelled && booths) setMasterBooths(booths)
+
+      const blocks = await masterApi.fetchAreas()
+      if (!cancelled && blocks) setMasterBlocks(blocks)
+
+      const unions = await masterApi.fetchUnions()
+      if (!cancelled && unions) setMasterUnions(unions)
+
+      const panchayats = await masterApi.fetchPanchayats()
+      if (!cancelled && panchayats) setMasterPanchayats(panchayats)
+
+      const parties = await masterApi.fetchParties()
+      if (!cancelled && parties) setMasterParties(parties)
+    }
+
+    void loadMasterFilters()
+    return () => { cancelled = true }
   }, [])
 
   const clearAdvancedFilters = () => {

@@ -112,21 +112,17 @@ async function fetchAllPages<T>(
     return firstResults
   }
 
-  const offsets: number[] = []
+  const remainingPages: T[] = []
   for (let offset = API_BATCH_SIZE; offset < totalCount; offset += API_BATCH_SIZE) {
-    offsets.push(offset)
-  }
-
-  const remainingPages = await Promise.all(offsets.map(async offset => {
     assertNotAborted(signal)
     const { data } = await apiClient.get<ApiResponse<T>>(url, {
       params: { ...params, limit: API_BATCH_SIZE, offset },
       signal,
     })
-    return data.results ?? []
-  }))
+    remainingPages.push(...(data.results ?? []))
+  }
 
-  return firstResults.concat(...remainingPages)
+  return firstResults.concat(remainingPages)
 }
 
 async function runWithConcurrency<T>(

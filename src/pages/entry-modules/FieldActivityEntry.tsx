@@ -343,20 +343,16 @@ async function fetchAllFieldFollowupRows(
     return firstResults
   }
 
-  const offsets: number[] = []
+  const remainingPages: FieldFollowupRow[] = []
   for (let offset = batchSize; offset < totalCount; offset += batchSize) {
-    offsets.push(offset)
-  }
-
-  const remainingPages = await Promise.all(offsets.map(async offset => {
     const { data } = await apiClient.get<ApiResponse<FieldFollowupRow>>(
       '/activities/surveys/followup-list/',
       { params: { ...params, limit: batchSize, offset } },
     )
-    return data.results ?? []
-  }))
+    remainingPages.push(...(data.results ?? []))
+  }
 
-  return firstResults.concat(...remainingPages)
+  return firstResults.concat(remainingPages)
 }
 
 function AsyncSearchSelect({

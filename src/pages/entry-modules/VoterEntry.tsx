@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useEntryAPI } from '../../hooks/useEntryAPI'
-import type { VoterRecord, VolunteerRecord, BeneficiaryRecord, BoothRecord, FieldSurveyRecord } from '../../hooks/useEntryAPI'
+import type { VoterRecord, VolunteerRecord, BeneficiaryRecord, BoothRecord } from '../../hooks/useEntryAPI'
 import { useMasterAPI } from '../../hooks/useMasterAPI'
 import type { Village, Party, Scheme, Ward, Panchayat, Union, Area } from '../../hooks/useMasterAPI'
 import EntryListHeader from '../../components/entry/EntryListHeader'
@@ -138,7 +138,6 @@ export default function VoterEntry() {
   const [villages,   setVillages]   = useState<Village[]>([])
   const [parties,    setParties]    = useState<Party[]>([])
   const [schemes,    setSchemes]    = useState<Scheme[]>([])
-  const [surveys,    setSurveys]    = useState<FieldSurveyRecord[]>([])
 
   const [editing,    setEditing]   = useState<VoterRecord | null>(null)
   const [isFormOpen, setFormOpen]  = useState(false)
@@ -164,6 +163,8 @@ export default function VoterEntry() {
 
   const [volunteers,      setVolunteers]      = useState<VolunteerRecord[]>([])
   const [beneficiaries,   setBeneficiaries]   = useState<BeneficiaryRecord[]>([])
+  const [loadingMatches,  setLoadingMatches]  = useState(false)
+  const [matchesLoaded,   setMatchesLoaded]   = useState(false)
   const [voterTypeFilter, setVoterTypeFilter] = useState<'' | 'volunteer' | 'beneficiary'>('')
   const [ageFromFilter,   setAgeFromFilter]   = useState('')
   const [ageToFilter,     setAgeToFilter]     = useState('')
@@ -222,19 +223,76 @@ export default function VoterEntry() {
 
 
   useEffect(() => {
-    loadVoters(1, '')
-    apiRef.current.fetchBooths().then(d => d && setBooths(d))
-    masterApiRef.current.fetchWards().then(d => d && setWards(d))
-    masterApiRef.current.fetchAreas().then(d => d && setBlocks(d))
-    masterApiRef.current.fetchUnions().then(d => d && setUnions(d))
-    masterApiRef.current.fetchPanchayats().then(d => d && setPanchayats(d))
-    masterApiRef.current.fetchVillages().then(d => d && setVillages(d))
-    masterApiRef.current.fetchParties().then(d => d && setParties(d))
-    masterApiRef.current.fetchSchemes().then(d => d && setSchemes(d))
-    apiRef.current.fetchFieldSurveys().then(d => d && setSurveys(d))
-    apiRef.current.fetchVolunteers(undefined, undefined, undefined, 1, 1000).then(d => d && setVolunteers(d.results))
-    apiRef.current.fetchBeneficiaries(undefined, undefined, undefined, 1, 1000).then(d => d && setBeneficiaries(d.results))
+    let cancelled = false
+
+    const loadInitialData = async () => {
+      loadVoters(1, '')
+
+      const [boothsData, villagesData] = await Promise.all([
+        apiRef.current.fetchBooths(),
+        masterApiRef.current.fetchVillages(),
+      ])
+      if (cancelled) return
+      if (boothsData) setBooths(boothsData)
+      if (villagesData) setVillages(villagesData)
+
+      const stagedLoaders: Array<() => Promise<void>> = [
+        async () => {
+          const data = await masterApiRef.current.fetchWards()
+          if (!cancelled && data) setWards(data)
+        },
+        async () => {
+          const data = await masterApiRef.current.fetchAreas()
+          if (!cancelled && data) setBlocks(data)
+        },
+        async () => {
+          const data = await masterApiRef.current.fetchUnions()
+          if (!cancelled && data) setUnions(data)
+        },
+        async () => {
+          const data = await masterApiRef.current.fetchPanchayats()
+          if (!cancelled && data) setPanchayats(data)
+        },
+        async () => {
+          const data = await masterApiRef.current.fetchParties()
+          if (!cancelled && data) setParties(data)
+        },
+        async () => {
+          const data = await masterApiRef.current.fetchSchemes()
+          if (!cancelled && data) setSchemes(data)
+        },
+      ]
+
+      for (const loader of stagedLoaders) {
+        if (cancelled) break
+        await loader()
+      }
+    }
+
+    void loadInitialData()
+    return () => { cancelled = true }
   }, [loadVoters])
+
+  const loadVolunteerBeneficiaryMatches = useCallback(async () => {
+    if (loadingMatches || matchesLoaded) return
+    setLoadingMatches(true)
+    try {
+      const [volunteerData, beneficiaryData] = await Promise.all([
+        apiRef.current.fetchVolunteers(undefined, undefined, undefined, 1, 1000),
+        apiRef.current.fetchBeneficiaries(undefined, undefined, undefined, 1, 1000),
+      ])
+      if (volunteerData) setVolunteers(volunteerData.results)
+      if (beneficiaryData) setBeneficiaries(beneficiaryData.results)
+      setMatchesLoaded(true)
+    } finally {
+      setLoadingMatches(false)
+    }
+  }, [loadingMatches, matchesLoaded])
+
+  useEffect(() => {
+    if (!voterTypeFilter && boothVolModal == null) return
+    void loadVolunteerBeneficiaryMatches()
+  }, [voterTypeFilter, boothVolModal, loadVolunteerBeneficiaryMatches])
 
   useEffect(() => {
     setAgeRangeError(getAgeRangeError(ageFromFilter, ageToFilter))
@@ -1086,7 +1144,11 @@ export default function VoterEntry() {
 
                   {/* Body */}
                   <div className="overflow-y-auto flex-1 px-5 py-4">
-                    {vols.length === 0 ? (
+                    {loadingMatches ? (
+                      <p className="text-muted text-[11px] text-center py-8 italic">
+                        Loading volunteers...
+                      </p>
+                    ) : vols.length === 0 ? (
                       <p className="text-muted text-[11px] text-center py-8 italic">
                         No volunteers assigned to this booth.
                       </p>

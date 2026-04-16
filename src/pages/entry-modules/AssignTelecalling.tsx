@@ -355,6 +355,7 @@ export default function AssignTelecalling() {
       if (debouncedSearch) params.search = debouncedSearch
       if (filterContactStatus) params.contact_status = filterContactStatus
       if (filterWorkflowStatus) params.workflow_status = filterWorkflowStatus
+      if (filterTelecaller) params.telecaller = filterTelecaller
 
       apiClient.get('/voters/voters/', { params, signal: controller.signal })
         .then(r => {
@@ -400,6 +401,7 @@ export default function AssignTelecalling() {
       if (debouncedSearch) params.search = debouncedSearch
       if (filterContactStatus) params.contact_status = filterContactStatus
       if (filterWorkflowStatus) params.workflow_status = filterWorkflowStatus
+      if (filterTelecaller) params.telecaller = filterTelecaller
       if (category === 'volunteer' && filterSubjectRole) params.role = filterSubjectRole
       if (category === 'beneficiary' && filterScheme) params.scheme = filterScheme
 
@@ -451,7 +453,7 @@ export default function AssignTelecalling() {
     }
 
     return () => controller.abort()
-  }, [category, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus, filterSubjectRole, filterScheme, page, pageSize, showToast])
+  }, [category, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus, filterTelecaller, filterSubjectRole, filterScheme, page, pageSize, showToast])
   const visibleVoters = voters
   const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
   const isAllSelected  = selectableVoters.length > 0 && selectableVoters.every(v => selected.has(v.id))
@@ -650,6 +652,7 @@ export default function AssignTelecalling() {
   const applyBooths  = (next: Set<number>) => { setFilterBooths(next); setPage(1) }
   const applyWorkflowStatus = (value: StatusFilterValue) => { setFilterWorkflowStatus(value); setPage(1) }
   const applyContactStatus = (value: string) => { setFilterContactStatus(value); setPage(1) }
+  const applyTelecaller = (value: string) => { setFilterTelecaller(value); setPage(1) }
   const applyVolunteerRole = (value: string) => {
     setFilterVolunteerRole(value)
     setAssignTo('')
@@ -726,7 +729,7 @@ export default function AssignTelecalling() {
           {/* Telecalling person — top right */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-medium text-muted whitespace-nowrap">Telecalling Person</span>
-            <select value={filterTelecaller} onChange={e => setFilterTelecaller(e.target.value)}
+            <select value={filterTelecaller} onChange={e => applyTelecaller(e.target.value)}
               className={`${selectCls} w-[190px]`}>
               <option value="">All Telecallers</option>
               {telecallers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}

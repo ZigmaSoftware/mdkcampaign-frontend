@@ -251,6 +251,7 @@ export default function AssignTelecalling() {
 
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [assignTo, setAssignTo] = useState('')
+  const requestSeqRef = useRef(0)
 
   /* Workflow status by voter ID (from assignments API). */
   const workflowByVoterRef = useRef<Map<number, WorkflowInfo>>(new Map())
@@ -314,11 +315,6 @@ export default function AssignTelecalling() {
       })
   }, [filterVolunteerRole])
 
-  useEffect(() => {
-    setSelected(new Set())
-    setPage(1)
-  }, [category])
-
   /* ── Debounce search ── */
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(filterSearch); setPage(1) }, 350)
@@ -339,6 +335,7 @@ export default function AssignTelecalling() {
     }
 
     const controller = new AbortController()
+    const requestId = ++requestSeqRef.current
     setLoading(true)
     setSelected(new Set())
 
@@ -357,8 +354,9 @@ export default function AssignTelecalling() {
       if (filterWorkflowStatus) params.workflow_status = filterWorkflowStatus
       if (filterTelecaller) params.telecaller = filterTelecaller
 
-      apiClient.get('/voters/voters/', { params, signal: controller.signal })
+      apiClient.get('/voters/voters/', { params, signal: controller.signal, timeout: 90000 })
         .then(r => {
+          if (requestSeqRef.current !== requestId) return
           const apiCount = r.data.count ?? 0
           const results = r.data.results ?? []
           const all: VoterRow[] = results.map((v: any) => ({
@@ -389,9 +387,12 @@ export default function AssignTelecalling() {
           setTotal(apiCount)
         })
         .catch(err => {
+          if (requestSeqRef.current !== requestId) return
           if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast('Failed to load voters', 'error')
         })
-        .finally(() => setLoading(false))
+        .finally(() => {
+          if (requestSeqRef.current === requestId) setLoading(false)
+        })
     } else {
       const params: Record<string, any> = {
         limit: pageSize,
@@ -405,8 +406,9 @@ export default function AssignTelecalling() {
       if (category === 'volunteer' && filterSubjectRole) params.role = filterSubjectRole
       if (category === 'beneficiary' && filterScheme) params.scheme = filterScheme
 
-      apiClient.get('/telecalling/assignments/assignable-people/', { params, signal: controller.signal })
+      apiClient.get('/telecalling/assignments/assignable-people/', { params, signal: controller.signal, timeout: 90000 })
         .then(r => {
+          if (requestSeqRef.current !== requestId) return
           const apiCount = r.data.count ?? 0
           const results = r.data.results ?? []
           const all: VoterRow[] = results.map((row: any) => ({
@@ -447,12 +449,17 @@ export default function AssignTelecalling() {
           setTotal(apiCount)
         })
         .catch(err => {
+          if (requestSeqRef.current !== requestId) return
           if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') showToast(`Failed to load ${category}`, 'error')
         })
-        .finally(() => setLoading(false))
+        .finally(() => {
+          if (requestSeqRef.current === requestId) setLoading(false)
+        })
     }
 
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+    }
   }, [category, filterBooths, debouncedSearch, filterContactStatus, filterWorkflowStatus, filterTelecaller, filterSubjectRole, filterScheme, page, pageSize, showToast])
   const visibleVoters = voters
   const selectableVoters = visibleVoters.filter(v => !(workflowByVoterId.get(v.id)?.is_locked ?? false))
@@ -658,6 +665,8 @@ export default function AssignTelecalling() {
     setAssignTo('')
   }
   const applyCategory = (value: AssignmentCategory) => {
+    setSelected(new Set())
+    setPage(1)
     setCategory(value)
     setFilterWorkflowStatus('')
     setFilterContactStatus('')
